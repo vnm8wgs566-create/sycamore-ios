@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Sycamore</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+
+	<!-- SwiftUI lifecycle: one scene, never more. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+
+	<!-- An empty launch screen is a plain white plate, which is what the design opens on. -->
+	<key>UILaunchScreen</key>
+	<dict/>
+
+	<!-- Portrait only. Every frame in the design is a phone held upright. -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+
+	<!-- The palette is light-only; there is no dark variant of these tokens. -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
+
+	<!-- The one system resource the app touches: the profile avatar's photo well. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pick a photo for your profile so the people you work with can put a face to your name.</string>
+
+	<!--
+	  The design is set in Manrope, and every type token in Typography.swift — the negative
+	  tracking, the 800 weights — was measured against its metrics.
+
+	  One file, not five: Google Fonts ships Manrope as a variable font whose weight axis
+	  runs 200–800, and CoreText exposes its named instances individually, so
+	  Manrope-Regular / -Medium / -SemiBold / -Bold / -ExtraBold all resolve from this
+	  single registration — which is exactly what FontFamily probes for.
+	-->
+	<key>UIAppFonts</key>
+	<array>
+		<string>Manrope[wght].ttf</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,61 @@
+# XcodeGen spec for the Sycamore iOS app.
+#
+# `Sycamore.xcodeproj` is checked in and is the primary artefact; this file is the fallback
+# for regenerating it from scratch:
+#
+#     brew install xcodegen && xcodegen generate
+#
+# Keep the two in step — bundle id, deployment target, Info.plist path and device family are
+# duplicated between them by necessity.
+
+name: Sycamore
+
+options:
+  bundleIdPrefix: org.sycamore
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  xcodeVersion: "1600"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # No SWIFT_STRICT_CONCURRENCY here on purpose: SWIFT_VERSION 6.0 already implies
+    # complete checking, and stating it separately is what let this file drift out of
+    # step with the checked-in pbxproj, which sets only SWIFT_VERSION.
+
+targets:
+  Sycamore:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+
+    sources:
+      - path: Sycamore
+        excludes:
+          # Consumed via INFOPLIST_FILE; it must not also be copied in as a bundle resource.
+          - "Resources/Info.plist"
+          # Instructions for dropping the Manrope faces in — documentation, not a resource.
+          # Without this the synchronised group ships it inside the .app.
+          - "Resources/Fonts/README.md"
+
+    settings:
+      base:
+        PRODUCT_NAME: Sycamore
+        PRODUCT_BUNDLE_IDENTIFIER: org.sycamore.app
+        INFOPLIST_FILE: Sycamore/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        # 1 = iPhone. The design is portrait phone only.
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        ENABLE_PREVIEWS: YES
+        SWIFT_EMIT_LOC_STRINGS: NO
+        CODE_SIGN_STYLE: Automatic
+        # No entitlements: the app makes no network calls and uses no capabilities. The
+        # photo picker runs out of process, so it needs the usage string and nothing else.
+        # Expressed by absence — an empty CODE_SIGN_ENTITLEMENTS is a path Xcode still tries
+        # to resolve, and the checked-in pbxproj correctly sets no such key.
