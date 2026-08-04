@@ -89,6 +89,32 @@ struct TypeStyle: Sendable, Equatable {
     /// Letter-spacing in points, which is what SwiftUI's `tracking(_:)` wants.
     var tracking: CGFloat { size * trackingEm }
 
+    /// The Dynamic Type ramp this style scales along.
+    ///
+    /// Derived from the point size rather than spelled out on each of the fifty-odd styles
+    /// below: a hand-written table would have to be edited every time a style is added, and
+    /// the one that got forgotten would be the one that silently stopped scaling. The bands
+    /// mirror Apple's own sizes, so `.body` (14.5) rides the body ramp and `.badge` (9.5)
+    /// rides the caption2 ramp.
+    ///
+    /// This picks the *rate* of growth, not the rendered size — at the default setting every
+    /// style still draws at exactly the `size` the design specifies.
+    var textStyle: Font.TextStyle {
+        switch size {
+        case 28...: .largeTitle
+        case 22..<28: .title
+        case 20..<22: .title2
+        case 17..<20: .title3
+        case 15.5..<17: .headline
+        case 14..<15.5: .body
+        case 13..<14: .callout
+        case 12.5..<13: .subheadline
+        case 11.5..<12.5: .footnote
+        case 10.5..<11.5: .caption
+        default: .caption2
+        }
+    }
+
     /// SwiftUI's `lineSpacing` is *extra* space between lines rather than a line box height,
     /// so a `1.5` multiple on a 14.5pt face becomes 7.25pt of added leading. That slightly
     /// over-states the gap (the font's own leading is already in there) but it is the closest
@@ -295,8 +321,13 @@ extension Font {
 
     /// The design's font for a style — Manrope when it is bundled, otherwise the system face at
     /// the matching weight.
-    static func sycamore(_ style: TypeStyle) -> Font {
-        sycamore(size: style.size, weight: style.weight, monospaced: style.isMonospaced)
+    ///
+    /// `size` is passed in already scaled for Dynamic Type by `TypeStyleModifier`, so every
+    /// face here is built at a literal point size. Scaling in one place keeps the Manrope and
+    /// system paths growing at the same rate; letting each build its own relative font made
+    /// them diverge as soon as one weight failed to register.
+    static func sycamore(_ style: TypeStyle, size: CGFloat? = nil) -> Font {
+        sycamore(size: size ?? style.size, weight: style.weight, monospaced: style.isMonospaced)
     }
 
     static func sycamore(size: CGFloat, weight: TypeWeight, monospaced: Bool = false) -> Font {
@@ -305,11 +336,21 @@ extension Font {
             return .system(size: size, weight: weight.fontWeight, design: .monospaced)
         }
         if let face = FontFamily.availableManropeFaces[weight.rawValue] {
-            // `fixedSize` rather than `size` so custom and fallback behave identically under
-            // Dynamic Type: `Font.system(size:)` does not scale either.
             return .custom(face, fixedSize: size)
         }
         return .system(size: size, weight: weight.fontWeight)
+    }
+
+    /// Variant for `Text`, which cannot host the `@ScaledMetric` the view modifier uses.
+    /// `relativeTo:` gets the same growth out of SwiftUI directly.
+    static func sycamore(_ style: TypeStyle, scaledRelativeTo textStyle: Font.TextStyle) -> Font {
+        if style.isMonospaced {
+            return .system(style.textStyle, design: .monospaced).weight(style.weight.fontWeight)
+        }
+        if let face = FontFamily.availableManropeFaces[style.weight.rawValue] {
+            return .custom(face, size: style.size, relativeTo: textStyle)
+        }
+        return .system(textStyle).weight(style.weight.fontWeight)
     }
 }
 
@@ -319,13 +360,31 @@ private struct TypeStyleModifier: ViewModifier {
     let style: TypeStyle
     let color: Color?
 
+    /// The design's point size, grown by whatever the reader has asked for. Every text style
+    /// in the app arrives here, so this one property is what makes the app respect Dynamic
+    /// Type at all — before it, `Font.custom(_:fixedSize:)` and `Font.system(size:)` both
+    /// pinned the size and the UI rendered identically at every setting.
+    ///
+    /// Tracking and line spacing are derived from the *unscaled* size on purpose: they are
+    /// proportions of the design's drawn size, and scaling them again would compound.
+    @ScaledMetric private var scaledSize: CGFloat
+
+    init(style: TypeStyle, color: Color?) {
+        self.style = style
+        self.color = color
+        self._scaledSize = ScaledMetric(wrappedValue: style.size, relativeTo: style.textStyle)
+    }
+
     func body(content: Content) -> some View {
         let styled = content
-            .font(.sycamore(style))
+            .font(.sycamore(style, size: scaledSize))
             .tracking(style.tracking)
             .lineSpacing(style.lineSpacing)
             .textCase(style.isUppercased ? .uppercase : nil)
 
+        // Branching rather than `.foregroundStyle(color ?? .primary)`: passing no colour has
+        // to leave the inherited style alone, and defaulting to `.primary` would quietly
+        // repaint every call site that inherits its colour from an ancestor.
         if let color {
             styled.foregroundStyle(color)
         } else {
@@ -342,15 +401,22 @@ extension View {
 }
 
 extension Text {
-    /// `Text`-flavoured variant so styled runs can be concatenated with `+`.
+    /// `Text`-flavoured variant, for the places that need a `Text` rather than a `View` — a
+    /// field `prompt:`, or a styled run interpolated into another string:
+    ///
+    ///     let code = Text(camp.inviteCode).typeStyle(.monoInline)
+    ///     Text("Share \(code) with your staff")
+    ///
+    /// Interpolate them like that rather than joining runs with `+`.
+    ///
     /// Line spacing and casing have no `Text` equivalent — reach for `View.typeStyle(_:)` when
     /// the copy is multi-line, and uppercase the string yourself for `.sectionHeader`/`.badge`.
     func typeStyle(_ style: TypeStyle, color: Color? = nil) -> Text {
         var text = self
-            .font(.sycamore(style))
+            .font(.sycamore(style, scaledRelativeTo: style.textStyle))
             .tracking(style.tracking)
         if let color {
-            text = text.foregroundColor(color)
+            text = text.foregroundStyle(color)
         }
         return text
     }

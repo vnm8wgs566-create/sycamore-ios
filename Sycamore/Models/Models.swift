@@ -354,10 +354,16 @@ struct Player: Identifiable, Hashable, Codable, Sendable {
     }
 
     /// Matches the search field, which looks at kids and coaches together.
+    ///
+    /// `localizedStandardContains` rather than a lowercased `contains`: it folds case *and*
+    /// diacritics the way the reader's locale expects, so searching "jose" finds José and
+    /// "muller" finds Müller. Lowercasing alone leaves the accent in place and misses both.
+    /// It handles the folding itself, so the needle is only trimmed.
     func matches(search term: String) -> Bool {
-        let needle = term.trimmingCharacters(in: .whitespaces).lowercased()
+        let needle = term.trimmingCharacters(in: .whitespaces)
         guard !needle.isEmpty else { return true }
-        return displayName.lowercased().contains(needle) || firstName.lowercased().contains(needle)
+        return displayName.localizedStandardContains(needle)
+            || firstName.localizedStandardContains(needle)
     }
 }
 
@@ -413,10 +419,11 @@ struct StaffMember: Identifiable, Hashable, Codable, Sendable {
         return role.staffRowLabel
     }
 
+    /// See `Player.matches(search:)` for why this folds through `localizedStandardContains`.
     func matches(search term: String) -> Bool {
-        let needle = term.trimmingCharacters(in: .whitespaces).lowercased()
+        let needle = term.trimmingCharacters(in: .whitespaces)
         guard !needle.isEmpty else { return true }
-        return name.lowercased().contains(needle)
+        return name.localizedStandardContains(needle)
     }
 }
 
@@ -726,7 +733,7 @@ extension Camp {
         for index in groups.indices {
             let members = players.filter { $0.groupID == groups[index].id }
             groups[index].playerCount = members.count
-            groups[index].presentCount = members.filter { !isAway($0.id, on: .today) }.count
+            groups[index].presentCount = members.count { !isAway($0.id, on: .today) }
             groups[index].coachID = coach(forGroup: groups[index].id)?.id
         }
     }

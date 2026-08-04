@@ -72,9 +72,14 @@ struct CampPickerView: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                SectionHeader("Your camps")
-                membershipCard
-                    .padding(.bottom, Spacing.hero)
+                if store.memberships.isEmpty {
+                    noCamps
+                        .padding(.bottom, Spacing.hero)
+                } else {
+                    SectionHeader("Your camps")
+                    membershipCard
+                        .padding(.bottom, Spacing.hero)
+                }
 
                 SectionHeader("Join with a code")
                 joinRow
@@ -96,6 +101,18 @@ struct CampPickerView: View {
     }
 
     // MARK: Memberships
+
+    /// Shown in place of the `YOUR CAMPS` header and its card when the account belongs to no
+    /// camp yet. Without it the header rendered with nothing under it, which read as a screen
+    /// that had failed to load rather than one waiting for a first camp.
+    private var noCamps: some View {
+        ContentUnavailableView(
+            "No camps yet",
+            systemImage: "tent",
+            description: Text("Join with a code below, or create your own.")
+        )
+        .frame(maxWidth: .infinity)
+    }
 
     private var membershipCard: some View {
         Card(radius: Radius.cardLarge) {

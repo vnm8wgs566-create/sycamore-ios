@@ -9,6 +9,16 @@
 
 import SwiftUI
 
+// MARK: - Touch target
+
+/// The 44pt minimum touch target. Several of the design's controls are drawn smaller than
+/// that — a 34×32 stepper button, a 32pt close disc — and shrinking them is not an option
+/// without redrawing the design. Where that happens the drawn size is left exactly as the
+/// design has it and only the frame that takes the tap is grown to this.
+enum HitTarget {
+    static let minimum: CGFloat = 44
+}
+
 // MARK: - Hairline
 
 /// A one-device-pixel rule. `Divider()` is not used anywhere because the design's rules are
@@ -140,7 +150,7 @@ struct Card<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(background)
         .clipShape(shape)
-        .overlay(shape.strokeBorder(borderColor, lineWidth: borderWidth))
+        .overlay { shape.strokeBorder(borderColor, lineWidth: borderWidth) }
     }
 }
 
@@ -213,7 +223,7 @@ struct CardRow<Content: View>: View {
         .padding(.horizontal, horizontalPadding)
         .padding(.vertical, verticalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
+        .contentShape(.rect)
     }
 }
 
@@ -341,7 +351,7 @@ struct Chip: View {
         .padding(.vertical, metrics.verticalPadding)
         .frame(maxWidth: fillsWidth ? .infinity : nil)
         .background(background, in: shape)
-        .overlay(shape.strokeBorder(border, lineWidth: BorderWidth.hairline))
+        .overlay { shape.strokeBorder(border, lineWidth: BorderWidth.hairline) }
         .contentShape(shape)
 
         if let action {
@@ -541,20 +551,6 @@ struct StepperControl: View {
     var valueWidth: CGFloat = 30
     var glyphSize: CGFloat = 15
 
-    init(
-        value: Binding<Int>,
-        range: ClosedRange<Int> = 1...99,
-        step: Int = 1,
-        valueWidth: CGFloat = 30,
-        glyphSize: CGFloat = 15
-    ) {
-        self._value = value
-        self.range = range
-        self.step = step
-        self.valueWidth = valueWidth
-        self.glyphSize = glyphSize
-    }
-
     var body: some View {
         HStack(spacing: 2) {
             button("minus", enabled: value > range.lowerBound) {
@@ -581,6 +577,9 @@ struct StepperControl: View {
                 .foregroundStyle(enabled ? Theme.ink : Theme.inkGhost)
                 .frame(width: 34, height: 32)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous))
+                // The white button still draws 34×32; the frame outside it only carries the tap.
+                .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -817,8 +816,18 @@ struct CircleIconButton: View {
     @ViewBuilder
     var body: some View {
         if let action {
-            Button(action: action) { circle }
-                .buttonStyle(.plain)
+            Button(action: action) {
+                // The design draws these discs at 32–40pt, so several of them sat under the
+                // 44pt minimum and `contentShape(Circle())` clipped the tap to exactly what
+                // was drawn. The outer frame carries the touch without moving the circle.
+                //
+                // Only the tappable variant gets it: the decorative one has no touch to
+                // widen, and padding it out to 44pt would push its neighbours around.
+                circle
+                    .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
         } else {
             circle.accessibilityAddTraits(.isImage)
         }
@@ -844,27 +853,19 @@ struct CircleIconButton: View {
                         Circle()
                             .fill(Theme.accent)
                             .frame(width: 8, height: 8)
-                            .overlay(Circle().strokeBorder(Theme.surface, lineWidth: BorderWidth.input))
+                            .overlay { Circle().strokeBorder(Theme.surface, lineWidth: BorderWidth.input) }
                             .offset(x: -5, y: 5)
                     }
                 }
-                .contentShape(Circle())
     }
 }
 
 // MARK: - Mock status bar
 
-private struct ShowsMockStatusBarKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
 extension EnvironmentValues {
     /// Off in the real app, where the system draws the status bar. Previews turn it on so the
     /// frame lines up with the design.
-    var showsMockStatusBar: Bool {
-        get { self[ShowsMockStatusBarKey.self] }
-        set { self[ShowsMockStatusBarKey.self] = newValue }
-    }
+    @Entry var showsMockStatusBar = false
 }
 
 extension View {
@@ -1017,7 +1018,9 @@ struct ErrorBanner: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.danger)
                         .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
+                        // The glyph stays 22pt; only the tap area reaches the minimum.
+                        .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss")
@@ -1033,7 +1036,7 @@ struct ErrorBanner: View {
                 shape.fill(Theme.dangerTint)
             }
         }
-        .overlay(shape.strokeBorder(Theme.dangerBorder, lineWidth: BorderWidth.hairline))
+        .overlay { shape.strokeBorder(Theme.dangerBorder, lineWidth: BorderWidth.hairline) }
         .shadow(Shadows.tabItem)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isSummaryElement)
@@ -1065,7 +1068,7 @@ struct WorkingIndicator: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .background(Theme.surface, in: Capsule(style: .continuous))
-        .overlay(Capsule(style: .continuous).strokeBorder(Theme.hairline, lineWidth: BorderWidth.hairline))
+        .overlay { Capsule(style: .continuous).strokeBorder(Theme.hairline, lineWidth: BorderWidth.hairline) }
         .shadow(Shadows.tabItem)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
@@ -1175,7 +1178,7 @@ struct SearchField: View {
                     RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
                         .fill(Theme.color(for: .moss))
                         .frame(width: 46, height: 46)
-                        .overlay(Text("🌳").font(.system(size: 23)))
+                        .overlay { Text("🌳").font(.system(size: 23)) }
                     VStack(alignment: .leading, spacing: 2) {
                         Text("UCLA Tennis Camp").typeStyle(.rowTitleLg, color: Theme.ink)
                         Text("Coach · Sycamore, Court 3").typeStyle(.metaStrong, color: Theme.inkMuted)

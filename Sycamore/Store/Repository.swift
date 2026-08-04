@@ -25,7 +25,7 @@ struct SignInChallenge: Hashable, Sendable {
     var email: String
     var codeLength: Int = 6
     var resendAfter: Int = 42
-    var sentAt: Date = Date()
+    var sentAt: Date = .now
 }
 
 enum SycamoreError: LocalizedError, Equatable {
@@ -145,10 +145,17 @@ actor InMemoryRepository: SycamoreRepository {
     /// The last code we "sent", per email. The offline build accepts any six digits.
     private var pendingChallenges: [String: SignInChallenge] = [:]
 
+    /// Empty by default: a fresh install has no account, no memberships and no camps until
+    /// someone signs in and creates or joins one.
+    ///
+    /// These used to default to `SampleData`, which meant the shipped app opened already
+    /// populated with a fictional camp. The fixtures are still there and still used — every
+    /// `#Preview` and the `AppStore.preview` family pass them in explicitly — but they are no
+    /// longer what a real person sees on first launch.
     init(
-        accounts: [Account] = [SampleData.account],
-        memberships: [Membership] = SampleData.memberships,
-        camps: [Camp] = SampleData.camps
+        accounts: [Account] = [],
+        memberships: [Membership] = [],
+        camps: [Camp] = []
     ) {
         self.accounts = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         self.membershipRecords = memberships
@@ -158,8 +165,8 @@ actor InMemoryRepository: SycamoreRepository {
     // MARK: Identity
 
     func requestSignInCode(email: String) async throws -> SignInChallenge {
-        let address = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard address.contains("@"), address.contains(".") else { throw SycamoreError.invalidEmail }
+        let address = EmailAddress.normalised(email)
+        guard EmailAddress.isValid(address) else { throw SycamoreError.invalidEmail }
         let challenge = SignInChallenge(email: address)
         pendingChallenges[address] = challenge
         return challenge
@@ -172,8 +179,10 @@ actor InMemoryRepository: SycamoreRepository {
     }
 
     func signInWithApple(identityToken: String) async throws -> Account {
-        // A real client would exchange the token; offline we land on the sample account.
-        try signIn(email: SampleData.account.email)
+        // A real client would exchange the token for the address behind it. Offline there is
+        // nothing to exchange, so we stand in a relay address of the shape Apple actually
+        // hands out; `signIn` creates the person if this is their first time.
+        try signIn(email: "apple.user@privaterelay.appleid.com")
     }
 
     func signOut() async throws {

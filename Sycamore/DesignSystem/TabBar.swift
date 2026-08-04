@@ -32,8 +32,8 @@ struct FloatingTabBar: View {
         }
         .padding(6)
         .background(plate)
-        .overlay(ring)
-        .overlay(innerHighlight)
+        .overlay { ring }
+        .overlay { innerHighlight }
         .shadow(Shadows.tabBar)
     }
 
@@ -84,7 +84,7 @@ struct FloatingTabBar: View {
     private var plate: some View {
         Capsule(style: .continuous)
             .fill(.ultraThinMaterial)
-            .overlay(Capsule(style: .continuous).fill(Theme.tabBarPlate))
+            .overlay { Capsule(style: .continuous).fill(Theme.tabBarPlate) }
     }
 
     /// `0 0 0 .5px rgba(11,11,12,.07)`.

@@ -13,9 +13,6 @@
 //
 
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
 
 struct RankView: View {
 
@@ -49,6 +46,18 @@ struct RankView: View {
             ladder
         }
         .background(Theme.surface)
+        // Both taps hang off the whole screen rather than off `ladder`: they key on drag
+        // state, not on layout, and `ladder`'s expression is already at the edge of what the
+        // type-checker will chew through in reasonable time.
+        //
+        // The lift itself — one firmer tap as the row leaves the ladder.
+        .sensoryFeedback(trigger: drag?.row.id) { previous, current in
+            previous == nil && current != nil ? .impact(weight: .medium) : nil
+        }
+        // And a lighter one each time the row crosses a boundary on its way down.
+        .sensoryFeedback(trigger: drag?.slot ?? nil) { _, current in
+            current != nil ? .impact(weight: .light) : nil
+        }
     }
 
     // MARK: - Header
@@ -133,7 +142,9 @@ struct RankView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Theme.chevron)
                             .frame(width: 22, height: 22)
-                            .contentShape(Rectangle())
+                            // Drawn size unchanged; the outer frame only carries the tap.
+                            .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                            .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Fold \(section.venue.name)")
@@ -203,6 +214,9 @@ struct RankView: View {
             .font(.system(size: 19, weight: .regular))
             .foregroundStyle(isLifted ? Theme.accent : Theme.chevron)
             .frame(width: 22, height: 38)
+            // Drawn size unchanged; the outer frame only carries the tap.
+            .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+            .contentShape(.rect)
             .contentShape(Rectangle())
             .gesture(dragGesture(for: row))
             .accessibilityLabel("Reorder \(row.player.displayName)")
@@ -252,7 +266,7 @@ struct RankView: View {
                         .fill(Theme.surface)
                         .shadow(Shadows.liftedRow)
                 }
-                .overlay(shape.strokeBorder(Theme.accent, lineWidth: BorderWidth.input))
+                .overlay { shape.strokeBorder(Theme.accent, lineWidth: BorderWidth.input) }
                 .padding(.horizontal, Spacing.gutter)
                 .offset(y: drag.origin.minY + drag.translation)
                 .allowsHitTesting(false)
@@ -360,7 +374,6 @@ struct RankView: View {
             refoldOnEnd: wasFolded,
             awaitingGeometry: wasFolded
         )
-        hapticTick(strong: true)
     }
 
     /// Recapture the frames after an unfold, and shift `translation` by exactly as much as
@@ -391,7 +404,6 @@ struct RankView: View {
         // Aim with the middle of the lifted card rather than the fingertip.
         let centre = state.origin.midY + translation
         let nearest = state.slots.min { abs($0.y - centre) < abs($1.y - centre) }
-        if nearest != state.slot { hapticTick() }
         state.slot = nearest
 
         drag = state
@@ -437,14 +449,6 @@ struct RankView: View {
         await store.commitRankOrder(assignments)
     }
 
-    // `UIFeedbackGenerator` is main-actor-isolated, so this cannot be nonisolated even
-    // though every caller already runs on the main actor.
-    @MainActor
-    private func hapticTick(strong: Bool = false) {
-        #if canImport(UIKit)
-        UIImpactFeedbackGenerator(style: strong ? .medium : .light).impactOccurred()
-        #endif
-    }
 }
 
 // MARK: - Drag state

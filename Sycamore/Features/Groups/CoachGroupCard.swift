@@ -86,6 +86,14 @@ struct CoachGroupCard: View {
             openRowID = nil
             reorder = nil
         }
+        // The lift itself — one firmer tap as the row leaves the ladder.
+        .sensoryFeedback(trigger: reorder?.row.id) { previous, current in
+            previous == nil && current != nil ? .impact(weight: .medium) : nil
+        }
+        // And a lighter one each time the row crosses a boundary on its way down.
+        .sensoryFeedback(trigger: reorder?.slot ?? nil) { _, current in
+            current != nil ? .impact(weight: .light) : nil
+        }
     }
 
     // MARK: Reorder
@@ -114,7 +122,7 @@ struct CoachGroupCard: View {
                         .fill(Theme.surface)
                         .shadow(Shadows.liftedRow)
                 }
-                .overlay(shape.strokeBorder(Theme.accent, lineWidth: BorderWidth.input))
+                .overlay { shape.strokeBorder(Theme.accent, lineWidth: BorderWidth.input) }
                 .padding(.horizontal, 8)
                 .offset(y: reorder.origin.minY + reorder.translation)
                 .allowsHitTesting(false)
@@ -138,7 +146,6 @@ struct CoachGroupCard: View {
         // A row mid-swipe and a row mid-lift are two different answers to the same touch.
         openRowID = nil
         reorder = CourtReorder(row: row, sourceIndex: index, origin: origin, slots: dropSlots())
-        hapticTick(strong: true)
     }
 
     private func updateReorder(to translation: CGFloat) {
@@ -147,7 +154,6 @@ struct CoachGroupCard: View {
 
         let centre = state.origin.midY + translation
         let nearest = state.slots.min { abs($0.y - centre) < abs($1.y - centre) }
-        if nearest != state.slot { hapticTick() }
         state.slot = nearest
 
         reorder = state
@@ -192,14 +198,6 @@ struct CoachGroupCard: View {
         }
     }
 
-    // `UIFeedbackGenerator` is main-actor-isolated, so this cannot be nonisolated even
-    // though every caller already runs on the main actor.
-    @MainActor
-    private func hapticTick(strong: Bool = false) {
-        #if canImport(UIKit)
-        UIImpactFeedbackGenerator(style: strong ? .medium : .light).impactOccurred()
-        #endif
-    }
 
     // MARK: Header
 
@@ -352,6 +350,9 @@ private struct PlayerSwipeRow: View {
         Self.layout(row, isLifted: false, showsLeavingEarlyBadge: showsLeavingEarlyBadge) {
             Self.handleGlyph(isLifted: false)
                 .frame(width: 22, height: 38)
+                // Drawn size unchanged; the outer frame only carries the tap.
+                .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                .contentShape(.rect)
                 .contentShape(Rectangle())
                 .gesture(reorderGesture)
                 .accessibilityLabel("Reorder \(row.player.displayName)")

@@ -315,10 +315,10 @@ extension View {
                     RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                         .fill(color)
                         .frame(height: 46)
-                        .overlay(
+                        .overlay {
                             RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                                 .stroke(Theme.strokeAlt, lineWidth: BorderWidth.hairline)
-                        )
+                        }
                     Text(name)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Theme.inkMuted)

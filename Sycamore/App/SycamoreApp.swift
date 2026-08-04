@@ -22,6 +22,13 @@ struct SycamoreApp: App {
         WindowGroup {
             RootView(store: store)
                 .preferredColorScheme(.light)
+                // Text scales with the reader's setting, but only to the first accessibility
+                // step. The design is transcribed from CSS at fixed point sizes — a 34×32
+                // stepper, a 42pt tab pill, stat tiles sized to their numerals — and past
+                // `.accessibility1` those frames clip rather than reflow. A cap that holds the
+                // layout together is worth more than uncapped growth that breaks it; lifting
+                // it is a layout job, not a typography one.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
         #if os(macOS)
         // The macOS build exists only so `swift build` typechecks the shared sources.

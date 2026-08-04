@@ -182,7 +182,7 @@ struct ProfileView: View {
                         // The venue's own tint token, not a guess from its emoji.
                         .fill(Theme.color(for: assignment.venueTint))
                         .frame(width: 44, height: 44)
-                        .overlay(Text(assignment.venueIcon).font(.system(size: 21)))
+                        .overlay { Text(assignment.venueIcon).font(.system(size: 21)) }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(assignment.pathLabel)
@@ -278,10 +278,9 @@ struct ProfileView: View {
     /// Mirrors what the repository will accept, so Save is never live for a value that would
     /// be thrown away. An emergency number is optional, so clearing it is a real edit.
     private func canSave(_ field: AccountField) -> Bool {
-        let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         switch field {
-        case .email: return value.contains("@") && value.contains(".")
-        case .emergencyPhone: return true
+        case .email: EmailAddress.isValid(draft)
+        case .emergencyPhone: true
         }
     }
 
@@ -393,7 +392,7 @@ private struct AvatarWell: View {
             Circle()
                 .fill(Theme.accent)
                 .frame(width: 26, height: 26)
-                .overlay(Circle().strokeBorder(Theme.surface, lineWidth: BorderWidth.avatarRing))
+                .overlay { Circle().strokeBorder(Theme.surface, lineWidth: BorderWidth.avatarRing) }
                 .overlay {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 12))
@@ -497,7 +496,7 @@ private struct AccountFieldEditor: View {
         let base = TextField(
             "",
             text: $text,
-            prompt: Text(field.placeholder).foregroundColor(Theme.inkFaint)
+            prompt: Text(field.placeholder).foregroundStyle(Theme.inkFaint)
         )
         .textFieldStyle(.plain)
         .typeStyle(.fieldValue, color: Theme.ink)
