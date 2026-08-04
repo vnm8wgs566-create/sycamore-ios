@@ -116,9 +116,19 @@ enum Theme {
     static let accentBorder = Color(light: "C9DDFB", dark: "27425F")
     /// App-mark glyph only.
     static let lime = Color(light: "CBFF3C", dark: "CBFF3C")
-    /// The tile the app mark sits on. Fixed, unlike `ink`: a logo that flips from black to
-    /// white with the scheme is a different logo, and the lime ball is drawn to sit on dark.
-    static let markTile = Color(hex: "0B0B0C")
+
+    // MARK: App mark
+    //
+    // From `Sycamore Logo v2.dc.html`. The mark is a sycamore samara — the winged seed that
+    // spins as it falls — drawn as a filled wing over a seed head. All three fixed: a logo
+    // that changes colour with the scheme is a different logo.
+
+    /// The seed head and the wing's leading half.
+    static let markGreen = Color(hex: "14603C")
+    /// The wing's trailing half, a shade up so the two halves read apart at 24pt.
+    static let markGreenLight = Color(hex: "3F7D53")
+    /// The tile the mark sits on.
+    static let markTile = Color(hex: "F7F5EF")
     /// Label on a filled `accent` button. Fixed white rather than `surface`, which inverts to
     /// near-black in the dark and put dark text on a blue fill. Button copy is 16.5pt bold —
     /// large text — so white over either accent clears the 3:1 the guidelines ask for there.

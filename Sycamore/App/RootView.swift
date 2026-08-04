@@ -41,9 +41,15 @@ struct RootView: View {
             VerifyView()
 
         case .signedIn:
-            // `CampPickerView` owns its own `NavigationStack` and pushes `CreateCampView`,
-            // so it is presented bare rather than wrapped in a stack of ours.
-            if store.camp == nil {
+            // Loading a camp is the one wait in the app big enough to fill the screen —
+            // everything else is a row toggling. The seeds fall here rather than a spinner
+            // sitting in the middle of nothing.
+            if store.camp == nil && store.isWorking {
+                SeedLoadingView(label: "Loading your camp")
+                    .transition(.opacity)
+            } else if store.camp == nil {
+                // `CampPickerView` owns its own `NavigationStack` and pushes `CreateCampView`,
+                // so it is presented bare rather than wrapped in a stack of ours.
                 CampPickerView()
             } else {
                 MainTabView(store: store)

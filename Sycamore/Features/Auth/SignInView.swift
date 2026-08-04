@@ -30,17 +30,13 @@ struct SignInView: View {
 
     private var mark: some View {
         VStack(alignment: .leading, spacing: 0) {
-            RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous)
-                .fill(Theme.markTile)
-                .frame(width: 56, height: 56)
-                .overlay {
-                    // The design's glyph is Phosphor's `tennis-ball` — a ball, not a player.
-                    // `figure.tennis` was the wrong call: it reads as a figure mid-swing at
-                    // 29pt and loses the mark's simplicity.
-                    Image(systemName: "tennisball.fill")
-                        .font(.system(size: 29, weight: .medium))
-                        .foregroundStyle(Theme.lime)
-                }
+            // The samara from `Sycamore Logo v2.dc.html`, replacing the tennis ball. A ball
+            // said "tennis"; the camp runs swim and soccer too, and a seed that travels and
+            // takes root says what the product is for rather than which sport it started in.
+            // `.ringed` is the design's 3d. Of the three it is the one that still reads at
+            // 40pt on a home screen — 3e's second seed disappears at that size and 3f's
+            // strokes thin out. Swap the variant here to try the others.
+            SycamoreAppMark(variant: .ringed, size: 56)
                 .padding(.bottom, Spacing.hero)
 
             Text("Sycamore")
