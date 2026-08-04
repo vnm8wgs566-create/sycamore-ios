@@ -21,7 +21,6 @@ struct SycamoreApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(store: store)
-                .preferredColorScheme(.light)
                 // Text scales with the reader's setting, but only to the first accessibility
                 // step. The design is transcribed from CSS at fixed point sizes — a 34×32
                 // stepper, a 42pt tab pill, stat tiles sized to their numerals — and past

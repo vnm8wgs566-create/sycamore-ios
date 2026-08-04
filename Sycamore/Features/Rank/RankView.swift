@@ -173,6 +173,16 @@ struct RankView: View {
                 playerRow(entry.row)
             }
         }
+
+        // A venue with nobody in it drew its heading and its ink rule and then stopped, which
+        // left the screen looking truncated rather than empty.
+        if section.rows.isEmpty {
+            Text("Nobody in this venue yet.")
+                .typeStyle(.body, color: Theme.inkFaint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Spacing.bar)
+                .padding(.vertical, Spacing.large)
+        }
     }
 
     private func playerRow(_ row: PlayerRow) -> some View {

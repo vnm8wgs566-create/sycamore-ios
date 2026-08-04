@@ -99,7 +99,7 @@ struct FloatingTabBar: View {
         Capsule(style: .continuous)
             .strokeBorder(
                 LinearGradient(
-                    colors: [Color.white.opacity(0.95), Color.white.opacity(0)],
+                    colors: [Theme.tabBarLip, Theme.tabBarLip.opacity(0)],
                     startPoint: .top,
                     endPoint: .center
                 ),

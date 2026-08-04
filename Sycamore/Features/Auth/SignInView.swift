@@ -31,7 +31,7 @@ struct SignInView: View {
     private var mark: some View {
         VStack(alignment: .leading, spacing: 0) {
             RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous)
-                .fill(Theme.ink)
+                .fill(Theme.markTile)
                 .frame(width: 56, height: 56)
                 .overlay {
                     // The design's glyph is Phosphor's `tennis-ball` — a ball, not a player.

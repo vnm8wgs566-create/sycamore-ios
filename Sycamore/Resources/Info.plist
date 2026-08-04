@@ -41,9 +41,9 @@
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 
-	<!-- The palette is light-only; there is no dark variant of these tokens. -->
-	<key>UIUserInterfaceStyle</key>
-	<string>Light</string>
+	<!-- No UIUserInterfaceStyle key: the app follows the reader's choice. Every token in
+	     Theme.swift now resolves per scheme, so forcing Light here would override a palette
+	     that already knows what to do in the dark. -->
 
 	<!-- The one system resource the app touches: the profile avatar's photo well. -->
 	<key>NSPhotoLibraryUsageDescription</key>

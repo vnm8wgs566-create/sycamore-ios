@@ -412,7 +412,11 @@ private extension ButtonTone {
 
     var foreground: Color {
         switch self {
-        case .dark, .accent: Theme.surface
+        // `.dark` fills with `ink`, which inverts, so `surface` inverts with it and the pair
+        // stays legible. `.accent` fills with a blue that does *not* invert, so its label has
+        // to be pinned or it turns dark-on-blue in the dark scheme.
+        case .dark: Theme.surface
+        case .accent: Theme.onAccent
         case .outline: Theme.inkSecondary
         case .danger: Theme.danger
         }
