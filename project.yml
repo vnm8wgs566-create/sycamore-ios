@@ -55,6 +55,9 @@ targets:
         ENABLE_PREVIEWS: YES
         SWIFT_EMIT_LOC_STRINGS: NO
         CODE_SIGN_STYLE: Automatic
+        # Required to build for a physical device — automatic signing still needs to know
+        # which team to request a provisioning profile from. Simulator builds don't.
+        DEVELOPMENT_TEAM: FYQ358R59X
         # No entitlements: the app makes no network calls and uses no capabilities. The
         # photo picker runs out of process, so it needs the usage string and nothing else.
         # Expressed by absence — an empty CODE_SIGN_ENTITLEMENTS is a path Xcode still tries
