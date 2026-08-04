@@ -193,7 +193,10 @@ footnote *"You get an invite code to hand to your staff."*
 44pt initials avatar, coach name, `Court 1 · 8 here`, a circular phone button, and a
 collapse caret. Expanded cards list players as numbered rows (rank, `Serene C`,
 `13 · F · returning`, drag handle). **Away** players are greyed with an `Away` badge.
-**Swipe left** on a player reveals a black `Mark away` action (130pt). A collapsed card can
+**Swipe right** on a player reveals a black `Mark away` action (130pt) from the *leading*
+edge — in the source the strip is the first child of the full-bleed container and the row
+carries `transform:translateX(130px)`, so the content moves right and the panel appears on
+the left, keeping the kid's name visible while the action is showing. A collapsed card can
 carry an inline blue banner: `1 over — move one kid down`.
 
 **6. Rank.** One list, 1–100, best at the top. Header: title + black **Even out** pill, and

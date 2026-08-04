@@ -302,6 +302,9 @@ private struct PlayerSwipeRow: View {
 
     /// Live finger travel, added to the resting offset. Zeroed when the drag settles.
     @State private var dragTranslation: CGFloat = 0
+    /// True for exactly as long as the reorder gesture is live. Resets on cancellation,
+    /// which `onEnded` does not — see `reorderGesture`.
+    @GestureState private var isReordering = false
     /// Decided on the first change of a drag and held for its duration, so a swipe that
     /// starts sideways is not handed back to the scroll view halfway through.
     @State private var isHorizontalDrag: Bool?
@@ -310,10 +313,16 @@ private struct PlayerSwipeRow: View {
     private static let actionWidth: CGFloat = 130
 
     private var isOpen: Bool { openRowID == row.id }
-    private var restingOffset: CGFloat { isOpen ? -Self.actionWidth : 0 }
+
+    /// The design reveals this from the LEADING edge: the action strip is the first child of
+    /// the full-bleed container and the row carries `translateX(130px)`, so content moves
+    /// right and the black panel appears on the left. That direction is the right one on a
+    /// 402pt row — pushing content left instead would slide the rank and the kid's name off
+    /// the leading edge, and a blank row is a bad thing to confirm "mark away" against.
+    private var restingOffset: CGFloat { isOpen ? Self.actionWidth : 0 }
 
     private var offset: CGFloat {
-        min(0, max(-Self.actionWidth, restingOffset + dragTranslation))
+        max(0, min(Self.actionWidth, restingOffset + dragTranslation))
     }
 
     var body: some View {
@@ -324,7 +333,12 @@ private struct PlayerSwipeRow: View {
             // button behind it. `simultaneousGesture` lets the enclosing ScrollView keep
             // its vertical pan; the axis lock below is what stops the two fighting.
             .simultaneousGesture(swipe)
-            .background(alignment: .trailing) { markAwayAction }
+            .background(alignment: .leading) { markAwayAction }
+            // The safety net for a cancelled lift. `endReorder` is idempotent, so this
+            // costs nothing when the gesture ended normally and `onEnded` already ran.
+            .onChange(of: isReordering) { _, active in
+                if !active { onReorderEnded() }
+            }
             .clipped()
             // Last, so it hides the revealed action strip too — the row goes invisible under
             // its lifted copy, and a black 130pt strip showing through would be worse than
@@ -449,6 +463,11 @@ private struct PlayerSwipeRow: View {
     private var reorderGesture: some Gesture {
         LongPressGesture(minimumDuration: 0.2)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+            // `onEnded` does NOT fire when a sequenced gesture is cancelled rather than
+            // completed — which is what a horizontal flick off the handle produces. Without
+            // this, the lift state was never torn down and the row stayed lifted forever.
+            // `@GestureState` is the one thing SwiftUI guarantees to reset either way.
+            .updating($isReordering) { _, state, _ in state = true }
             .onChanged { value in
                 switch value {
                 case .first(true):
@@ -483,7 +502,7 @@ private struct PlayerSwipeRow: View {
                 let projected = restingOffset
                     + value.translation.width
                     + value.predictedEndTranslation.width * 0.2
-                let shouldOpen = projected < -Self.actionWidth / 2
+                let shouldOpen = projected > Self.actionWidth / 2
 
                 withAnimation(.snappy(duration: 0.24)) {
                     if shouldOpen {

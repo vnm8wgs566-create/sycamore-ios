@@ -26,6 +26,10 @@ struct RankView: View {
     /// Row rectangles in `listSpace`, the raw material for every drop calculation.
     @State private var rowFrames: [Player.ID: CGRect] = [:]
     @State private var drag: RankDrag?
+    /// True for exactly as long as a lift is live. A sequenced gesture that is *cancelled*
+    /// never calls `onEnded`, so this is what guarantees the lifted row is torn down —
+    /// without it a flick off the handle leaves a row stuck in its lifted state.
+    @GestureState private var isDragging = false
 
     /// The list content's own coordinate space. Frames measured here are independent of
     /// the scroll offset, so a drop slot computed at lift time stays valid.
@@ -94,6 +98,14 @@ struct RankView: View {
             }
         }
         .scrollDisabled(drag != nil)
+        // Safety net for a cancelled lift, which never reaches `onEnded`. Committing here
+        // would double-commit, so this only tears the lift down; a real drop still goes
+        // through `onEnded`.
+        .onChange(of: isDragging) { _, active in
+            guard !active, let stranded = drag else { return }
+            drag = nil
+            if stranded.refoldOnEnd { expandedVenueIDs.remove(stranded.sourceVenueID) }
+        }
     }
 
     /// Emoji, venue name, the block's slice of the ladder, then the ink rule.
@@ -298,6 +310,7 @@ struct RankView: View {
         // The long press is what lets the drag win against the enclosing scroll view.
         LongPressGesture(minimumDuration: 0.2)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.listSpace)))
+            .updating($isDragging) { _, state, _ in state = true }
             .onChanged { value in
                 switch value {
                 case .first(true):
