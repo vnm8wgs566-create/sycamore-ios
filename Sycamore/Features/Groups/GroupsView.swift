@@ -35,6 +35,13 @@ struct GroupsView: View {
                                 .padding(.horizontal, Spacing.gutter)
                                 .padding(.bottom, 10)
                         }
+
+                        // A venue with no courts yet used to render its header and then
+                        // nothing, which reads as a section that failed to load rather than
+                        // one waiting for its first kid.
+                        if section.cards.isEmpty {
+                            emptyVenueNote
+                        }
                     }
 
                     if sections.isEmpty {
@@ -53,6 +60,17 @@ struct GroupsView: View {
 
     /// Not in the design — every frame there is drawn unfiltered — but the filters and the
     /// search field can all be narrowed to nothing, and a blank grey page is not an answer.
+    /// Quiet by design — a full `ContentUnavailableView` per venue would shout over the
+    /// venues that do have courts, which is the opposite of what an empty one deserves.
+    private var emptyVenueNote: some View {
+        Text("No courts here yet. Partition the camp in Setup to fill it.")
+            .typeStyle(.body, color: Theme.inkFaint)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, Spacing.hero)
+            .padding(.vertical, Spacing.section)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 10) {
             Text("Nobody here")

@@ -325,17 +325,21 @@ extension AppStore {
     var canResend: Bool { resendSeconds <= 0 }
 
     /// `Resend in 0:42`, then `Resend code` once the window closes.
+    ///
+    /// `Duration`'s format style rather than `String(format:)`: the C-style version hard-coded
+    /// a colon and Western digits, which is not what every locale writes a duration with.
     var resendLabel: String {
         guard resendSeconds > 0 else { return "Resend code" }
-        return String(format: "Resend in %d:%02d", resendSeconds / 60, resendSeconds % 60)
+        let remaining = Duration.seconds(resendSeconds)
+        return "Resend in \(remaining.formatted(.time(pattern: .minuteSecond)))"
     }
 
-    /// Whether screen 1's "Email me a code" is live. Mirrors the rule
-    /// `requestSignInCode` enforces — trimmed the same way, same two characters — so the
-    /// button is never enabled for an address the repository is certain to reject.
+    /// Whether screen 1's "Email me a code" is live. Shares `EmailAddress` with the rule
+    /// `requestSignInCode` enforces, so the button cannot be enabled for an address the
+    /// repository is certain to reject — the two used to state the rule separately and were
+    /// only equal by coincidence.
     var canSubmitEmail: Bool {
-        let value = emailInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.contains("@") && value.contains(".")
+        EmailAddress.isValid(emailInput)
     }
 
     // MARK: Graph lookups

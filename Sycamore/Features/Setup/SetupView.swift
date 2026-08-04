@@ -84,7 +84,7 @@ struct SetupView: View {
         Circle()
             .fill(Theme.surface)
             .frame(width: 34, height: 34)
-            .overlay(Circle().strokeBorder(Theme.strokeAlt, lineWidth: BorderWidth.hairline))
+            .overlay { Circle().strokeBorder(Theme.strokeAlt, lineWidth: BorderWidth.hairline) }
             .overlay {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 17, weight: .medium))
@@ -135,7 +135,7 @@ struct SetupView: View {
                 RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
                     .fill(Theme.color(for: venue.tint))
                     .frame(width: 44, height: 44)
-                    .overlay(Text(venue.icon).font(.system(size: 21)))
+                    .overlay { Text(venue.icon).font(.system(size: 21)) }
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 7) {

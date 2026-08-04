@@ -20,8 +20,39 @@ enum SampleData {
         case account = 1, membership, camp, venue, group, player, staff, history
     }
 
+    /// `00000000-0000-0000-KKKK-IIIIIIIIIIII`, with the kind and the index spelled out
+    /// as their own decimal digits — `id(.player, 74)` ends `…-000000000074` — so a
+    /// fixture stays recognisable in a debugger or a diff. The bytes are laid out here
+    /// rather than parsed back out of a formatted string, which makes the identifier
+    /// impossible to fail to construct; the values are the ones every earlier build
+    /// produced.
     private static func id(_ kind: Kind, _ index: Int) -> UUID {
-        UUID(uuidString: String(format: "00000000-0000-0000-%04d-%012d", kind.rawValue, index))!
+        let kindDigits = digitsAsNibbles(kind.rawValue)
+        let indexDigits = digitsAsNibbles(index)
+        func byte(_ packed: UInt64, _ position: UInt64) -> UInt8 {
+            UInt8(truncatingIfNeeded: packed >> (position * 8))
+        }
+        return UUID(uuid: (
+            0, 0, 0, 0, 0, 0, 0, 0,
+            byte(kindDigits, 1), byte(kindDigits, 0),
+            byte(indexDigits, 5), byte(indexDigits, 4), byte(indexDigits, 3),
+            byte(indexDigits, 2), byte(indexDigits, 1), byte(indexDigits, 0)
+        ))
+    }
+
+    /// The decimal digits of `value`, one per hex nibble: 74 becomes `0x74`. Digits
+    /// beyond the sixteenth are dropped rather than overflowing — no fixture is
+    /// anywhere near a quadrillion rows, and a total function keeps `id` total.
+    private static func digitsAsNibbles(_ value: Int) -> UInt64 {
+        var packed: UInt64 = 0
+        var remaining = value.magnitude
+        var nibble: UInt64 = 0
+        while remaining > 0, nibble < 16 {
+            packed |= UInt64(remaining % 10) << (nibble * 4)
+            remaining /= 10
+            nibble += 1
+        }
+        return packed
     }
 
     // MARK: - Account

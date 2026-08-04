@@ -146,7 +146,7 @@ private struct SheetField: View {
     }
 
     private var field: some View {
-        let base = TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Theme.inkFaint))
+        let base = TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(Theme.inkFaint))
             .textFieldStyle(.plain)
             .typeStyle(style, color: color)
             .autocorrectionDisabled()
@@ -181,7 +181,7 @@ private struct IconTile: View {
                             lineWidth: BorderWidth.hairline
                         )
                 )
-                .overlay(Text(icon).font(.system(size: 23)))
+                .overlay { Text(icon).font(.system(size: 23)) }
                 .contentShape(RoundedRectangle(cornerRadius: Radius.input, style: .continuous))
         }
         .buttonStyle(.plain)
