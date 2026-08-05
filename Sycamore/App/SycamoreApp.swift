@@ -21,7 +21,25 @@ struct SycamoreApp: App {
     /// Cleared once the opening beat has played. Scene-scoped, so it happens on a cold launch
     /// and not every time the app returns from the background.
     @State private var isOpening = true
+    /// The entrance's opacity, animated declaratively by `.animation(_:value:)` below.
+    ///
+    /// Two earlier attempts at this fade did not render at all, both measured off screen
+    /// captures rather than assumed:
+    ///
+    /// 1. `.transition(.opacity)` on the overlay — the splash went from fully opaque to gone
+    ///    between two frames, a 16ms cut.
+    /// 2. `withAnimation { entranceOpacity = 0 }` inside `.task` — same cut, even when the
+    ///    duration was stretched to six seconds to make any ramp unmissable. `withAnimation`
+    ///    after an `await` is not reliably picked up as a view-update transaction, so the
+    ///    value simply snapped.
+    ///
+    /// `.animation(_:value:)` is declarative: it animates the change because the value
+    /// differs, with no dependence on what context the mutation happened in.
+    @State private var entranceOpacity: Double = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Shared by the modifier and the teardown, so the wait cannot drift from the animation.
+    private var fadeDuration: Double { reduceMotion ? 0.4 : 0.6 }
 
     var body: some Scene {
         WindowGroup {
@@ -29,17 +47,21 @@ struct SycamoreApp: App {
             // The entrance sits over it and dissolves to nothing, so what you see is one layer
             // clearing to reveal the page that was always there.
             //
-            // Fading both at once — the entrance out while the page came in — is what this
-            // used to do, and it washes out in the middle: two half-transparent layers over
-            // each other, neither of them the colour they should be. Only the top layer moves
-            // now, so every frame of the transition is the page at its real weight with some
-            // amount of splash still over it.
-            RootView(store: store)
-                .overlay {
-                    if isOpening {
-                        SeedEntrance().transition(.opacity)
-                    }
+            // Fading both at once — the entrance out while the page came in — washes out in
+            // the middle: two half-transparent layers over each other, neither of them the
+            // colour they should be. Only the top layer moves, so every frame of the
+            // transition is the page at its real weight with some amount of splash over it.
+            ZStack {
+                RootView(store: store)
+
+                if isOpening {
+                    SeedEntrance()
+                        .opacity(entranceOpacity)
+                        // Once it starts leaving it must not swallow taps meant for the page.
+                        .allowsHitTesting(false)
                 }
+            }
+                .animation(.easeInOut(duration: fadeDuration), value: entranceOpacity)
                 .task {
                     // The choreography, end to end:
                     //
@@ -47,19 +69,22 @@ struct SycamoreApp: App {
                     //   0.22  the word writes in   (0.56s, done at 0.78)
                     //   0.78  — held, so the name is read rather than glimpsed —
                     //   1.25  the whole entrance — mark, word, seeds and ground — fades to
-                    //         nothing over the page (0.55s, done at 1.80)
+                    //         nothing over the page (0.6s, done at 1.85)
                     //
                     // Down from 2.8s. This is opened many times a day by someone standing on a
                     // court, and a second of that was the splash being admired rather than
-                    // read. 1.8s still lands every beat.
+                    // read. 1.85s still lands every beat.
                     //
                     // Under Reduce Motion the hold is shorter still: the seeds are gone and the
                     // word arrives without its sweep, so there is materially less to watch and
                     // holding the same beat would just be a wait.
                     try? await Task.sleep(for: .milliseconds(reduceMotion ? 900 : 1250))
-                    withAnimation(.easeInOut(duration: reduceMotion ? 0.4 : 0.55)) {
-                        isOpening = false
-                    }
+                    entranceOpacity = 0
+
+                    // Torn down only once it is already invisible. Removing it while it is
+                    // still on screen is what produced the cut the first time round.
+                    try? await Task.sleep(for: .seconds(fadeDuration + 0.15))
+                    isOpening = false
                 }
                 // Text scales with the reader's setting, but only to the first accessibility
                 // step. The design is transcribed from CSS at fixed point sizes — a 34×32
