@@ -123,31 +123,6 @@ struct ScheduleView: View {
     }
 }
 
-// MARK: - Supporting types
-
-/// The three starting points `8f` offers instead of a blank day.
-enum DayShape: String, CaseIterable, Identifiable, Sendable {
-    case halfDay, fullDay, tournament
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .halfDay: "Half day"
-        case .fullDay: "Full day"
-        case .tournament: "Tournament"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .halfDay: "5 blocks · 8:30 to 12:45"
-        case .fullDay: "8 blocks · lunch and two breaks"
-        case .tournament: "4 blocks · ranked pairs all morning"
-        }
-    }
-}
-
 // MARK: - Previews
 
 #Preview("Schedule — empty") {

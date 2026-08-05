@@ -84,24 +84,6 @@ struct InboxView: View {
     }
 }
 
-// MARK: - Supporting types
-
-/// The design's three chips. "Needs you" is first in importance but second in the row, because
-/// All is where you land.
-enum InboxFilter: String, CaseIterable, Identifiable, Sendable {
-    case all, needsYou, notes
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: "All"
-        case .needsYou: "Needs you"
-        case .notes: "Notes"
-        }
-    }
-}
-
 // MARK: - Previews
 
 #Preview("Inbox — all clear") {

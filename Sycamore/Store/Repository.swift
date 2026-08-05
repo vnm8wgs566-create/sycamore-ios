@@ -60,7 +60,9 @@ enum SycamoreError: LocalizedError, Equatable {
 
 // MARK: - Protocol
 
-protocol SycamoreRepository: Sendable {
+/// Inherits `SectionEightData` (in `SectionEightRepository.swift`) so a call site only ever
+/// sees one repository. The split is about who edits which file, not about two capabilities.
+protocol SycamoreRepository: SectionEightData {
 
     // MARK: Identity
 
@@ -144,6 +146,15 @@ actor InMemoryRepository: SycamoreRepository {
     private var camps: [Camp.ID: Camp]
     /// The last code we "sent", per email. The offline build accepts any six digits.
     private var pendingChallenges: [String: SignInChallenge] = [:]
+
+    // Section 8's three new shapes. They sit beside the camp graph rather than inside it
+    // because `Camp` predates them, and folding courts, blocks and inbox rows into it would
+    // mean every existing screen re-decoding three things it does not use. Not `private` —
+    // `SectionEightRepository.swift` implements against them from an extension, and an
+    // extension cannot reach a private stored property.
+    var sectionEightCourts: [CourtCard] = []
+    var sectionEightBlocks: [ScheduleBlock] = []
+    var sectionEightInbox: [InboxItem] = []
 
     /// Empty by default: a fresh install has no account, no memberships and no camps until
     /// someone signs in and creates or joins one.
