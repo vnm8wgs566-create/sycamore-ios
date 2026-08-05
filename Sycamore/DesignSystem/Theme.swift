@@ -155,6 +155,26 @@ enum Theme {
     /// Destructive button border.
     static let dangerBorder = Color(light: "F0D9CE", dark: "5C3025")
 
+    // MARK: Warning
+    //
+    // The design's third severity step, between "fine" and "destructive": Schedule's "Needs a
+    // coach", Camp settings' "2 short", Overview's unassigned court. Things that are somebody's
+    // problem this morning but nothing is broken and nothing is being deleted.
+    //
+    // Hoisted here rather than left in a feature because three separate screens reached for it
+    // independently — and three private ambers is how a palette stops being one.
+    //
+    // The design uses it as a pill: `FAF6EC` fill, `8A6416` label, radius 99. That pair measures
+    // 4.93:1, so it clears AA for normal text at the 11.5pt the design sets it in — which is why
+    // the label is the dark end and not `warning` itself (that would be 2.9:1).
+
+    /// The amber itself — an icon, a rule, a standalone glyph.
+    static let warning = Color(light: "B67A16", dark: "E0A845")
+    /// Label on `warningTint`. The dark end of the family.
+    static let warningDark = Color(light: "8A6416", dark: "F0C97A")
+    /// The pill fill behind `warningDark`.
+    static let warningTint = Color(light: "FAF6EC", dark: "2A2213")
+
     // MARK: Surfaces
 
     /// Cards, sheets, bars.
