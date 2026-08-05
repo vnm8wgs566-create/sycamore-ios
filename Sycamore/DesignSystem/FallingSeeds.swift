@@ -2,71 +2,28 @@
 //  FallingSeeds.swift
 //  Sycamore
 //
-//  The loading state: a handful of samaras falling and spinning, from `leaf2e` in
-//  `Sycamore Logo v2.dc.html`.
+//  Falling samaras — the app's one loading and entrance motif.
+//
+//  The seed that falls is `SycamoreSeed`, the same shape the mark is built from, not a
+//  redrawing of it. That is the point: the thing spinning down the screen while a camp loads
+//  is literally the logo coming apart into its parts, and if the mark's curves change these
+//  follow without anyone remembering.
 //
 //  A real samara does not tumble end over end — it autorotates, spinning flat about its own
 //  axis while it descends, which is why it falls slowly. That is the whole reason the shape is
-//  worth animating at all, so each seed here spins at a steady rate and drifts sideways as it
-//  goes, rather than pinwheeling.
+//  worth animating, so each seed spins at a steady rate and drifts sideways as it goes.
 //
 //  Deliberately not a `ProgressView`: this is the one moment the app's own mark can do the
-//  waiting, and a spinner would throw that away. It still reports itself to VoiceOver as busy.
+//  waiting. It still reports itself to VoiceOver as busy.
 //
 
 import SwiftUI
 
-// MARK: - Leaf
-
-/// `leaf2e` — two halves meeting on a vertical spine, with the seed head at the bottom. Drawn
-/// on the design's 200×200 canvas and scaled to its frame.
-private struct SamaraLeaf: View {
-    var body: some View {
-        GeometryReader { proxy in
-            let s = min(proxy.size.width, proxy.size.height) / 200
-
-            ZStack {
-                LeafHalf(side: .leading).fill(Theme.markGreen)
-                LeafHalf(side: .trailing).fill(Theme.markGreenLight)
-                Circle()
-                    .fill(Theme.markGreen)
-                    .frame(width: 16 * s, height: 16 * s)
-                    .offset(x: 0, y: 80 * s)
-            }
-        }
-        .aspectRatio(1, contentMode: .fit)
-    }
-}
-
-private struct LeafHalf: Shape {
-    enum Side { case leading, trailing }
-    let side: Side
-
-    func path(in rect: CGRect) -> Path {
-        let s = min(rect.width, rect.height) / 200
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            CGPoint(x: rect.minX + x * s, y: rect.minY + y * s)
-        }
-
-        var path = Path()
-        switch side {
-        case .leading:
-            path.move(to: p(94, 30))
-            path.addQuadCurve(to: p(94, 164), control: p(40, 78))
-        case .trailing:
-            path.move(to: p(106, 30))
-            path.addQuadCurve(to: p(106, 164), control: p(160, 78))
-        }
-        path.closeSubpath()
-        return path
-    }
-}
-
 // MARK: - One seed's flight
 
 /// Everything about a single seed's descent, fixed when it is created so the flock does not
-/// move in lockstep. Seeded from the index rather than `Math.random`, so a given position in
-/// the flock always falls the same way and previews are stable.
+/// move in lockstep. Derived from the index rather than a random source, so a given position
+/// in the flock always falls the same way and previews are stable.
 private struct Flight: Identifiable {
     let id: Int
     /// Fraction across the width the seed falls at.
@@ -79,14 +36,14 @@ private struct Flight: Identifiable {
     let delay: Double
     let clockwise: Bool
 
-    init(id: Int, of total: Int) {
+    init(id: Int, of total: Int, scale: CGFloat) {
         self.id = id
         // Spread across the width, then nudged so the columns are not a visible grid.
         let slot = (CGFloat(id) + 0.5) / CGFloat(total)
         let jitter = CGFloat((id &* 37) % 17) / 17 - 0.5
         column = min(max(slot + jitter * 0.12, 0.06), 0.94)
         drift = (CGFloat((id &* 53) % 11) / 11 - 0.5) * 0.28
-        size = 18 + CGFloat((id &* 29) % 10)
+        size = (22 + CGFloat((id &* 29) % 12)) * scale
         duration = 2.6 + Double((id &* 41) % 14) / 10
         delay = Double((id &* 67) % 20) / 10
         clockwise = id.isMultiple(of: 2)
@@ -97,13 +54,15 @@ private struct Flight: Identifiable {
 
 struct FallingSeeds: View {
     var count: Int = 7
+    /// Scales every seed, for the small inline uses.
+    var scale: CGFloat = 1
     var label: String = "Loading"
 
     /// Drives every seed off one clock. A `TimelineView` rather than per-seed `withAnimation`
     /// so the flock cannot drift out of phase, and so it costs one redraw per frame instead of
     /// `count` independent animations.
     var body: some View {
-        let flights = (0..<count).map { Flight(id: $0, of: count) }
+        let flights = (0..<count).map { Flight(id: $0, of: count, scale: scale) }
 
         GeometryReader { proxy in
             TimelineView(.animation) { timeline in
@@ -138,7 +97,7 @@ struct FallingSeeds: View {
         // Autorotation: a steady spin about the seed's own axis, ~2 turns per fall.
         let spin = (flight.clockwise ? 1.0 : -1.0) * t * 720
 
-        SamaraLeaf()
+        SycamoreSeed()
             .frame(width: flight.size, height: flight.size)
             .rotationEffect(.degrees(spin))
             // Fade in and out at the very ends so nothing pops at the frame edge.
@@ -147,9 +106,28 @@ struct FallingSeeds: View {
     }
 }
 
+// MARK: - A single spinning seed
+
+/// The inline loading affordance — one seed autorotating in place, for the capsule that floats
+/// over a screen while a row commits. Same seed, same spin, at the scale of a spinner.
+struct SpinningSeed: View {
+    var size: CGFloat = 16
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let now = timeline.date.timeIntervalSinceReferenceDate
+            SycamoreSeed()
+                .frame(width: size, height: size)
+                .rotationEffect(.degrees(now.truncatingRemainder(dividingBy: 1.6) / 1.6 * 360))
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Loading panel
 
-/// The full-bleed loading state — the flock behind the app's own wordmark.
+/// The full-bleed loading state — the flock behind the app's own mark.
 struct SeedLoadingView: View {
     var label: String = "Loading"
 
@@ -157,24 +135,44 @@ struct SeedLoadingView: View {
         ZStack {
             Theme.grouped
             FallingSeeds(label: label)
-            SycamoreMark(variant: .ringed)
-                .frame(width: 44, height: 44)
+            // On its tile, not bare. The `.pair` mark is itself two seeds, so a bare mark in
+            // the middle of a seed fall reads as two more seeds that happen to be sitting
+            // still — the plate is what separates the logo from the weather.
+            SycamoreAppMark(size: 64)
+                .shadow(Shadows.tabItem)
                 .accessibilityHidden(true)
         }
         .ignoresSafeArea()
     }
 }
 
-// MARK: - Previews
+// MARK: - Entrance
 
-#Preview("Falling seeds") {
-    SeedLoadingView()
-}
+/// The app's opening beat: seeds falling over the mark, which then clears to the app.
+///
+/// Held to a beat and a half. Long enough to read as intentional, short enough that somebody
+/// opening the app to mark a kid away twenty times a day never waits on it — and it is skipped
+/// entirely when Reduce Motion is on.
+struct SeedEntrance: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasLanded = false
 
-#Preview("Falling seeds — dense") {
-    ZStack {
-        Theme.surface
-        FallingSeeds(count: 14)
+    var body: some View {
+        ZStack {
+            Theme.grouped
+            if !reduceMotion {
+                FallingSeeds(count: 9, label: "Opening Sycamore")
+            }
+            // Tiled for the same reason as `SeedLoadingView` — a bare pair mark is lost among
+            // the seeds falling past it.
+            SycamoreAppMark(size: 72)
+                .shadow(Shadows.tabItem)
+                .scaleEffect(hasLanded ? 1 : 0.92)
+                .opacity(hasLanded ? 1 : 0)
+        }
+        .ignoresSafeArea()
+        .task {
+            withAnimation(.smooth(duration: 0.5)) { hasLanded = true }
+        }
     }
-    .ignoresSafeArea()
 }

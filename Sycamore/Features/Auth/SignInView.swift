@@ -33,10 +33,9 @@ struct SignInView: View {
             // The samara from `Sycamore Logo v2.dc.html`, replacing the tennis ball. A ball
             // said "tennis"; the camp runs swim and soccer too, and a seed that travels and
             // takes root says what the product is for rather than which sport it started in.
-            // `.ringed` is the design's 3d. Of the three it is the one that still reads at
-            // 40pt on a home screen — 3e's second seed disappears at that size and 3f's
-            // strokes thin out. Swap the variant here to try the others.
-            SycamoreAppMark(variant: .ringed, size: 56)
+            // The design's 3e — two seeds, the large one and a smaller turned one, the way a
+            // sycamore drops them in pairs. Takes the mark's default variant.
+            SycamoreAppMark(size: 56)
                 .padding(.bottom, Spacing.hero)
 
             Text("Sycamore")

@@ -19,7 +19,7 @@ import SwiftUI
 
 /// The wing. Two stacked sweeps — the outer is the full wing, the inner sits on top of it a
 /// shade lighter so the halves read apart even at 24pt.
-private struct SeedWing: Shape {
+struct SeedWing: Shape {
     enum Half { case outer, inner }
     let half: Half
 
@@ -48,7 +48,7 @@ private struct SeedWing: Shape {
 }
 
 /// The seed head, at the wing's root.
-private struct SeedHead: Shape {
+struct SeedHead: Shape {
     func path(in rect: CGRect) -> Path {
         let s = min(rect.width, rect.height) / 200
         let centre = CGPoint(x: rect.minX + 72 * s, y: rect.minY + 146 * s)
@@ -81,6 +81,27 @@ private struct SeedOutline: Shape {
     }
 }
 
+// MARK: - The seed
+
+/// `seed2a` — the shape the whole identity is built from.
+///
+/// Deliberately shared with `FallingSeeds` rather than redrawn there. The seeds that fall
+/// during a load are *the mark's* seed, so if the logo's curves ever change the animation
+/// follows without anyone remembering to update it.
+struct SycamoreSeed: View {
+    var primary: Color = Theme.markGreen
+    var secondary: Color = Theme.markGreenLight
+
+    var body: some View {
+        ZStack {
+            SeedWing(half: .outer).fill(primary)
+            SeedWing(half: .inner).fill(secondary)
+            SeedHead().fill(primary)
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+}
+
 // MARK: - Mark
 
 /// The mark, in the three framings the design draws.
@@ -96,7 +117,7 @@ struct SycamoreMark: View {
         case outlined
     }
 
-    var variant: Variant = .ringed
+    var variant: Variant = .pair
     /// Overrides the mark's own greens — for the rare surface that needs it monochrome.
     var tint: Color?
 
@@ -156,11 +177,7 @@ struct SycamoreMark: View {
     }
 
     private var seedBody: some View {
-        ZStack {
-            SeedWing(half: .outer).fill(primary)
-            SeedWing(half: .inner).fill(secondary)
-            SeedHead().fill(primary)
-        }
+        SycamoreSeed(primary: primary, secondary: secondary)
     }
 }
 
@@ -169,7 +186,7 @@ struct SycamoreMark: View {
 /// The mark on its tile, at the corner radius the design draws (45 on 200 — a shade tighter
 /// than a superellipse, which is what the design asks for).
 struct SycamoreAppMark: View {
-    var variant: SycamoreMark.Variant = .ringed
+    var variant: SycamoreMark.Variant = .pair
     var size: CGFloat = 56
 
     var body: some View {

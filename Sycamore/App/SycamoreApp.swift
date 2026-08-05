@@ -18,9 +18,23 @@ struct SycamoreApp: App {
     /// because `AppStore` is `@Observable`, every view that reads it re-renders on its own.
     @State private var store = AppStore()
 
+    /// Cleared once the opening beat has played. Scene-scoped, so it happens on a cold launch
+    /// and not every time the app returns from the background.
+    @State private var isOpening = true
+
     var body: some Scene {
         WindowGroup {
             RootView(store: store)
+                .opacity(isOpening ? 0 : 1)
+                .overlay {
+                    if isOpening {
+                        SeedEntrance().transition(.opacity)
+                    }
+                }
+                .task {
+                    try? await Task.sleep(for: .milliseconds(1400))
+                    withAnimation(.smooth(duration: 0.45)) { isOpening = false }
+                }
                 // Text scales with the reader's setting, but only to the first accessibility
                 // step. The design is transcribed from CSS at fixed point sizes — a 34×32
                 // stepper, a 42pt tab pill, stat tiles sized to their numerals — and past

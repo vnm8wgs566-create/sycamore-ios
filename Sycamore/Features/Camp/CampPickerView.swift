@@ -72,7 +72,13 @@ struct CampPickerView: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if store.memberships.isEmpty {
+                if store.memberships.isEmpty && store.isWorking {
+                    // Seeds rather than a bare gap while the list arrives — the same motif the
+                    // camp load uses, so waiting looks the same everywhere in the app.
+                    FallingSeeds(count: 5, scale: 0.7, label: "Loading your camps")
+                        .frame(height: 180)
+                        .padding(.bottom, Spacing.hero)
+                } else if store.memberships.isEmpty {
                     noCamps
                         .padding(.bottom, Spacing.hero)
                 } else {

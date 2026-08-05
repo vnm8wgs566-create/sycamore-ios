@@ -1063,9 +1063,9 @@ struct WorkingIndicator: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Theme.inkMuted)
+            // The mark's own seed, autorotating, rather than a system spinner — the same
+            // motion the full-screen loads use, at the scale of a capsule.
+            SpinningSeed(size: 15)
             Text(label)
                 .typeStyle(.chipMedium, color: Theme.inkSecondary)
         }
