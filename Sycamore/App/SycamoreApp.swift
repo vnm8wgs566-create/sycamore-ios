@@ -21,8 +21,6 @@ struct SycamoreApp: App {
     /// Cleared once the opening beat has played. Scene-scoped, so it happens on a cold launch
     /// and not every time the app returns from the background.
     @State private var isOpening = true
-    /// The first half of the exit — the lockup dissolving while the seed field is still up.
-    @State private var isEntranceLeaving = false
 
     var body: some Scene {
         WindowGroup {
@@ -30,27 +28,25 @@ struct SycamoreApp: App {
                 .opacity(isOpening ? 0 : 1)
                 .overlay {
                     if isOpening {
-                        SeedEntrance(isLeaving: isEntranceLeaving)
-                            .transition(.opacity)
+                        SeedEntrance().transition(.opacity)
                     }
                 }
                 .task {
                     // The choreography, end to end:
                     //
-                    //   0.00  the mark lands           (0.5s)
-                    //   0.28  the word writes in       (0.65s, done at 0.93)
+                    //   0.00  the mark lands       (0.5s)
+                    //   0.28  the word writes in   (0.65s, done at 0.93)
                     //   0.93  — held, so the name is read rather than glimpsed —
-                    //   2.15  the lockup dissolves     (0.5s)
-                    //   2.45  the seed field clears    (0.55s, done at 3.00)
+                    //   2.20  the whole screen crosses to the app (0.6s, done at 2.80)
                     //
-                    // The two exit stages overlap by 200ms on purpose. Run end to end they
-                    // read as two separate fades; overlapped, the logo hands over to the app
-                    // in one movement.
-                    try? await Task.sleep(for: .milliseconds(2150))
-                    withAnimation(.easeInOut(duration: 0.5)) { isEntranceLeaving = true }
-
-                    try? await Task.sleep(for: .milliseconds(300))
-                    withAnimation(.easeInOut(duration: 0.55)) { isOpening = false }
+                    // One fade, everything at once: mark, word, seeds and ground all leave
+                    // together as the app comes through. An earlier pass dissolved the lockup
+                    // first and the seed field after it, which drew the eye to the seam
+                    // between the two and made the transition the thing you noticed. A
+                    // splash's job is to get out of the way, and the plain crossfade does it
+                    // better than the clever one did.
+                    try? await Task.sleep(for: .milliseconds(2200))
+                    withAnimation(.easeInOut(duration: 0.6)) { isOpening = false }
                 }
                 // Text scales with the reader's setting, but only to the first accessibility
                 // step. The design is transcribed from CSS at fixed point sizes — a 34×32
