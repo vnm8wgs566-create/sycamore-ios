@@ -268,6 +268,28 @@ final class AppStore {
     /// never stacks two of them.
     var pushedScreen: PushedScreen?
 
+    // MARK: Section 8's three reads
+    //
+    // Held here rather than in each screen's `@State` so that a write on one tab is visible on
+    // another: resolving an Inbox item that reassigns a court has to change what Overview draws,
+    // and two views each owning their own copy is how those quietly disagree.
+    //
+    // Loaded lazily by the screens that need them — `camp(id:)` already pulls the whole camp
+    // graph on open, and folding three more round-trips into that would slow the one load a
+    // person actually waits on.
+
+    var courts: [CourtCard] = []
+    var scheduleBlocks: [ScheduleBlock] = []
+    var inboxItems: [InboxItem] = []
+
+    /// What `8r`'s "Needs you · 2" counts, and the badge Inbox shows on the tab bar.
+    ///
+    /// Deliberately not filtered by the chip selection: the count is about what is waiting, and
+    /// tapping "Notes" must not make the app claim nothing needs you while two things do.
+    var openInboxCount: Int {
+        inboxItems.count { $0.kind == .needsAction && !$0.resolved }
+    }
+
     // MARK: Groups filters
 
     var venueFilter: VenueFilter = .all
@@ -895,7 +917,10 @@ extension AppStore {
 
     /// Every intent funnels through here so a failure lands in one place — and so the
     /// last failure is cleared the moment something succeeds.
-    private func perform(_ work: () async throws -> Void) async {
+    /// Internal rather than private since the store grew past one file: `AppStore+SectionEight`
+    /// needs the same in-flight-and-error handling, and a second copy of it is how two halves of
+    /// one store start reporting failure differently.
+    func perform(_ work: () async throws -> Void) async {
         isWorking = true
         errorMessage = nil
         defer { isWorking = false }
