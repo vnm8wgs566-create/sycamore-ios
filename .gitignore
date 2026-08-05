@@ -1,3 +1,9 @@
+# MCP server config — holds a Supabase personal access token inline.
+# Ignored rather than checked in: the remote is public, and `git add .` would
+# publish the token. If the token ever moves to ${SUPABASE_ACCESS_TOKEN}
+# expansion, this line can go and the file can be shared.
+.mcp.json
+
 # macOS
 .DS_Store
 ._*

@@ -54,6 +54,19 @@ enum Weekday: Int, Codable, Hashable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Written out, for prose rather than a chip — Schedule's empty state says
+    /// "Friday is empty." Spelled here rather than at the call site so the two spellings of a
+    /// day can never drift apart.
+    var fullName: String {
+        switch self {
+        case .mon: "Monday"
+        case .tue: "Tuesday"
+        case .wed: "Wednesday"
+        case .thu: "Thursday"
+        case .fri: "Friday"
+        }
+    }
+
     /// The app has no clock of its own yet — the offline build is always "Wednesday",
     /// which is the day the design's screens depict. Swap this for a real calendar
     /// lookup when the backend lands.

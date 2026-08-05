@@ -44,7 +44,10 @@ struct SetupView: View {
 
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Setup")
+                    // `8t` names this screen "Camp settings", and Profile's row that opens it
+                    // says the same. It was "Setup" while it was a tab and the tab bar had to
+                    // fit the word.
+                    Text("Camp settings")
                         .typeStyle(.tabTitle, color: Theme.ink)
                     subtitle
                         .padding(.top, 5)

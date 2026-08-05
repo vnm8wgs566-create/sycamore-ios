@@ -318,6 +318,26 @@ struct ProfileView: View {
                 detail: store.switchCampDetail,
                 action: { store.switchCamp() }
             )
+            // `8t`. Section 8 spends all four tabs on the things you touch during a session, so
+            // Camp settings lost the tab it had and is reached from here instead — which is
+            // where the design puts it too ("Camp settings · Admins only").
+            SettingRow(
+                icon: "slider.horizontal.3",
+                title: "Camp settings",
+                detail: store.isAdmin ? nil : "Admins only",
+                accessory: store.isAdmin ? .chevron : .lock,
+                action: store.isAdmin ? { store.pushedScreen = .campSettings } : nil
+            )
+            // Temporary. Section 8 folds ranking into Groups — `8o` is titled "Kids in ranking
+            // order" — but Groups has not absorbed it yet, and the reorder logic behind Rank is
+            // the most intricate thing in the app. This keeps it reachable and exercised in the
+            // meantime rather than stranding it behind a deleted tab.
+            SettingRow(
+                icon: "list.number",
+                title: "Rank",
+                detail: "Moves into Groups",
+                action: { store.pushedScreen = .rank }
+            )
             // The design draws a caret here, but gives it nowhere to go, and this app has no
             // support desk to invent one for. So the row keeps its place in the card and
             // loses the caret: it says where help actually comes from, and claims nothing.

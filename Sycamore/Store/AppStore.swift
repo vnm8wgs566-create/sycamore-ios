@@ -24,38 +24,61 @@ enum AuthState: Hashable, Sendable {
 }
 
 enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case groups, rank, setup, profile
+    case overview, schedule, groups, inbox
 
     var id: String { rawValue }
 
-    /// The label inside the selected capsule. The design writes Profile as "You".
+    /// The label inside the selected capsule.
     var title: String {
         switch self {
+        case .overview: "Overview"
+        case .schedule: "Schedule"
         case .groups: "Groups"
-        case .rank: "Rank"
-        case .setup: "Setup"
-        case .profile: "You"
+        case .inbox: "Inbox"
         }
     }
 
     /// SF Symbols standing in for the design's Phosphor set.
     var symbol: String {
         switch self {
-        case .groups: "square.grid.2x2"
-        case .rank: "list.number"
-        case .setup: "slider.horizontal.3"
-        case .profile: "person"
+        case .overview: "rectangle.grid.2x2"
+        case .schedule: "calendar"
+        case .groups: "person.3"
+        case .inbox: "tray"
         }
     }
 
     var selectedSymbol: String {
         switch self {
-        case .groups: "square.grid.2x2.fill"
-        case .rank: "list.number"
-        case .setup: "slider.horizontal.3"
-        case .profile: "person.fill"
+        case .overview: "rectangle.grid.2x2.fill"
+        case .schedule: "calendar"
+        case .groups: "person.3.fill"
+        case .inbox: "tray.fill"
         }
     }
+}
+
+/// The screens section 8 pushes *over* the tabs instead of giving them a tab of their own.
+///
+/// Rank, Setup and Profile each had a tab before this. Section 8 spends all four on the things
+/// you touch during a session — Overview, Schedule, Groups, Inbox — and reaches the rest from
+/// the avatar in the header, which is also what finally gives that header control a
+/// destination. The old bell had none.
+///
+/// Presented as sheets rather than pushed inside a tab: the design draws no tab bar on any of
+/// them, and none of these screens draws a back control either — they never needed one as tabs.
+/// The sheet is what supplies the way out. See `RootView.pushedView(for:)`.
+enum PushedScreen: String, Identifiable, Hashable, Sendable, CaseIterable {
+    /// `8s` — the avatar's destination.
+    case profile
+    /// `8t` — admin only, reached from Profile.
+    case campSettings
+    /// Section 8 folds ranking into Groups (`8o` is titled "Kids in ranking order"), so this
+    /// screen has no home in the new navigation. It stays reachable so the reorder logic keeps
+    /// running and keeps being testable until Groups absorbs it.
+    case rank
+
+    var id: String { rawValue }
 }
 
 /// Everything in stage 3. All four slide up over whichever tab is showing.
@@ -237,8 +260,13 @@ final class AppStore {
 
     // MARK: Navigation
 
-    var selectedTab: Tab = .groups
+    /// Overview rather than Groups: section 8 orders the tabs by what you open the app to see,
+    /// and "every court, its coach and its kids" is the answer to that on a camp morning.
+    var selectedTab: Tab = .overview
     var activeSheet: ActiveSheet?
+    /// Profile, Camp settings, Manage camps and (for now) Rank. One at a time — the design
+    /// never stacks two of them.
+    var pushedScreen: PushedScreen?
 
     // MARK: Groups filters
 
@@ -287,6 +315,10 @@ extension AppStore {
     }
 
     var isSignedIn: Bool { account != nil }
+
+    /// The initials in every tab header's avatar. Empty rather than nil when signed out, so the
+    /// header has one less state to reason about — `ScreenHeader` hides an empty disc anyway.
+    var avatarInitials: String { account?.initials ?? "" }
 
     /// The address screen 2 prints in "We sent a code to …".
     var pendingEmail: String? {
@@ -625,7 +657,7 @@ extension AppStore {
             let loaded = try await self.repository.camp(id: membership.campID)
             self.selectedMembership = membership
             self.camp = loaded
-            self.selectedTab = .groups
+            self.selectedTab = .overview
             self.resetFilters()
         }
     }
