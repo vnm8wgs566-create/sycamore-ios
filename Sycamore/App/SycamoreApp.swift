@@ -23,30 +23,31 @@ struct SycamoreApp: App {
     @State private var isOpening = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Ties the entrance's mark to the one on the screen underneath, so the logo travels into
-    /// place instead of cross-fading with a second copy of itself.
-    @Namespace private var markNamespace
-
     var body: some Scene {
         WindowGroup {
+            // The screen underneath is at full opacity the whole time — it is not fading *in*.
+            // The entrance sits over it and dissolves to nothing, so what you see is one layer
+            // clearing to reveal the page that was always there.
+            //
+            // Fading both at once — the entrance out while the page came in — is what this
+            // used to do, and it washes out in the middle: two half-transparent layers over
+            // each other, neither of them the colour they should be. Only the top layer moves
+            // now, so every frame of the transition is the page at its real weight with some
+            // amount of splash still over it.
             RootView(store: store)
-                .opacity(isOpening ? 0 : 1)
                 .overlay {
                     if isOpening {
                         SeedEntrance().transition(.opacity)
                     }
                 }
-                // Only during the opening. Afterwards it is nil and `heroMark` is inert, so no
-                // screen carries a matched-geometry identity it has no use for.
-                .environment(\.markNamespace, isOpening ? markNamespace : nil)
                 .task {
                     // The choreography, end to end:
                     //
                     //   0.00  the mark lands       (0.42s)
                     //   0.22  the word writes in   (0.56s, done at 0.78)
                     //   0.78  — held, so the name is read rather than glimpsed —
-                    //   1.25  the lockup travels into the page as the screen crosses to it
-                    //         (0.55s, done at 1.80)
+                    //   1.25  the whole entrance — mark, word, seeds and ground — fades to
+                    //         nothing over the page (0.55s, done at 1.80)
                     //
                     // Down from 2.8s. This is opened many times a day by someone standing on a
                     // court, and a second of that was the splash being admired rather than

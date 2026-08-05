@@ -175,11 +175,9 @@ private struct EntranceLockup: View {
         HStack(spacing: 0) {
             SycamoreAppMark(size: 72)
                 .shadow(Shadows.tabItem)
-                .heroMark(HeroID.mark, isSource: true)
 
             Text("Sycamore")
                 .typeStyle(.display, color: Theme.ink)
-                .heroMark(HeroID.wordmark, isSource: true)
                 // Ideal width regardless of what the collapsing frame proposes, so the
                 // measurement below is the word's real width and not the clipped one.
                 .fixedSize()
