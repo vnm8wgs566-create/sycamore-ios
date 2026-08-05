@@ -148,14 +148,56 @@ struct SeedLoadingView: View {
 
 // MARK: - Entrance
 
-/// The app's opening beat: seeds falling over the mark, which then clears to the app.
+/// The lockup: the mark, and the wordmark sliding out from behind it to the right.
 ///
-/// Held to a beat and a half. Long enough to read as intentional, short enough that somebody
-/// opening the app to mark a kid away twenty times a day never waits on it — and it is skipped
-/// entirely when Reduce Motion is on.
+/// The whole thing is centred, and that is what produces the movement. The word starts at zero
+/// width — clipped to nothing behind the mark — and grows to its natural width. Because the
+/// row is centred, the mark is pushed left by exactly half the word's width as it emerges, so
+/// the two settle as a balanced lockup without either being positioned by hand.
+///
+/// The word is one `Text`, never one per letter: splitting it would let each letter animate
+/// alone but would throw away kerning and the design's `-.042em` tracking, and "Sycamore" with
+/// the pairs pulled apart is a different wordmark. Clipping leaves the type exactly as
+/// `.display` sets it — the same style the sign-in screen uses — and only uncovers it.
+private struct EntranceLockup: View {
+    var isRevealed: Bool
+    var reduceMotion: Bool
+
+    /// The word's natural width, measured once from its own layout. The reveal animates to
+    /// this rather than to `nil`, which cannot be animated.
+    @State private var wordWidth: CGFloat = 0
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SycamoreAppMark(size: 72)
+                .shadow(Shadows.tabItem)
+
+            Text("Sycamore")
+                .typeStyle(.display, color: Theme.ink)
+                // Ideal width regardless of what the collapsing frame proposes, so the
+                // measurement below is the word's real width and not the clipped one.
+                .fixedSize()
+                .padding(.leading, Spacing.large)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { wordWidth = $0 }
+                .frame(width: isRevealed ? wordWidth : 0, alignment: .leading)
+                // Leading alignment plus the clip is what makes it read as sliding out from
+                // behind the mark rather than fading up in place.
+                .clipped()
+                .opacity(isRevealed ? 1 : 0)
+        }
+    }
+}
+
+/// The app's opening beat: seeds falling, the mark landing, the word writing itself in, then
+/// the whole thing clearing to the app.
+///
+/// Held to about two seconds. Long enough to read as intentional, short enough that somebody
+/// opening the app to mark a kid away twenty times a day never waits on it. The seeds and the
+/// sweep are both skipped when Reduce Motion is on; the mark and the word still arrive.
 struct SeedEntrance: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasLanded = false
+    @State private var wordRevealed = false
 
     var body: some View {
         ZStack {
@@ -163,16 +205,24 @@ struct SeedEntrance: View {
             if !reduceMotion {
                 FallingSeeds(count: 9, label: "Opening Sycamore")
             }
+
             // Tiled for the same reason as `SeedLoadingView` — a bare pair mark is lost among
             // the seeds falling past it.
-            SycamoreAppMark(size: 72)
-                .shadow(Shadows.tabItem)
+            EntranceLockup(isRevealed: wordRevealed, reduceMotion: reduceMotion)
                 .scaleEffect(hasLanded ? 1 : 0.92)
                 .opacity(hasLanded ? 1 : 0)
+                // The mark and word are one announcement, not two; VoiceOver should not read
+                // the splash as separate elements while the app is still opening.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Sycamore")
         }
         .ignoresSafeArea()
         .task {
             withAnimation(.smooth(duration: 0.5)) { hasLanded = true }
+            // The word follows the mark rather than arriving with it — the mark lands, then
+            // the name is written under it.
+            try? await Task.sleep(for: .milliseconds(280))
+            withAnimation(.smooth(duration: 0.65)) { wordRevealed = true }
         }
     }
 }

@@ -32,7 +32,9 @@ struct SycamoreApp: App {
                     }
                 }
                 .task {
-                    try? await Task.sleep(for: .milliseconds(1400))
+                    // The mark lands by 0.5s and the word finishes writing at about 0.95s;
+                    // the rest is a beat of hold so the name is read rather than glimpsed.
+                    try? await Task.sleep(for: .milliseconds(1900))
                     withAnimation(.smooth(duration: 0.45)) { isOpening = false }
                 }
                 // Text scales with the reader's setting, but only to the first accessibility
