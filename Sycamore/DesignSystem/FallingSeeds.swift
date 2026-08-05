@@ -199,6 +199,11 @@ private struct EntranceLockup: View {
 /// opening the app to mark a kid away twenty times a day never waits on it. The seeds and the
 /// sweep are both skipped when Reduce Motion is on; the mark and the word still arrive.
 struct SeedEntrance: View {
+    /// Raised by the scene once the hold is over, and the first half of the exit: the lockup
+    /// dissolves on its own before the seed field does. Fading both at once reads as the
+    /// screen being switched off; letting the logo go first reads as it handing over.
+    var isLeaving: Bool = false
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasLanded = false
     @State private var wordRevealed = false
@@ -213,8 +218,11 @@ struct SeedEntrance: View {
             // Tiled for the same reason as `SeedLoadingView` — a bare pair mark is lost among
             // the seeds falling past it.
             EntranceLockup(isRevealed: wordRevealed, reduceMotion: reduceMotion)
-                .scaleEffect(hasLanded ? 1 : 0.92)
-                .opacity(hasLanded ? 1 : 0)
+                // Drifts very slightly toward the viewer as it goes, so the fade has a
+                // direction rather than being a flat dissolve. Held to 3% — any more and it
+                // reads as a zoom.
+                .scaleEffect(hasLanded ? (isLeaving ? 1.03 : 1) : 0.92)
+                .opacity(hasLanded && !isLeaving ? 1 : 0)
                 // The mark and word are one announcement, not two; VoiceOver should not read
                 // the splash as separate elements while the app is still opening.
                 .accessibilityElement(children: .ignore)
@@ -224,7 +232,7 @@ struct SeedEntrance: View {
         .task {
             withAnimation(.smooth(duration: 0.5)) { hasLanded = true }
             // The word follows the mark rather than arriving with it — the mark lands, then
-            // the name is written under it.
+            // the name is written beside it.
             try? await Task.sleep(for: .milliseconds(280))
             withAnimation(.smooth(duration: 0.65)) { wordRevealed = true }
         }
