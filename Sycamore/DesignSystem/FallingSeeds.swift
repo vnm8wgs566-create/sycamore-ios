@@ -44,8 +44,13 @@ private struct Flight: Identifiable {
         column = min(max(slot + jitter * 0.12, 0.06), 0.94)
         drift = (CGFloat((id &* 53) % 11) / 11 - 0.5) * 0.28
         size = (22 + CGFloat((id &* 29) % 12)) * scale
-        duration = 2.6 + Double((id &* 41) % 14) / 10
-        delay = Double((id &* 67) % 20) / 10
+        // A slow descent. A samara autorotates precisely so it *can* fall slowly — it is the
+        // seed taking its time to travel that the shape is for — and at three seconds a screen
+        // the flock read as drifting debris rather than something coming down under its own
+        // geometry. The spread is wide on purpose: seeds falling at visibly different rates
+        // are what stop the group looking like a single sheet moving.
+        duration = 4.4 + Double((id &* 41) % 22) / 10
+        delay = Double((id &* 67) % 34) / 10
         clockwise = id.isMultiple(of: 2)
     }
 }
@@ -127,7 +132,12 @@ struct SpinningSeed: View {
 
 // MARK: - Loading panel
 
-/// The full-bleed loading state — the flock behind the app's own mark.
+/// The full-bleed loading state — just the flock.
+///
+/// No mark and no wordmark here, unlike `SeedEntrance`. Opening the app is a moment worth
+/// naming; waiting for a camp to load, several times a session, is not. The logo parked in the
+/// middle of every load turns the identity into a progress indicator, which is the fastest way
+/// to make people stop seeing it.
 struct SeedLoadingView: View {
     var label: String = "Loading"
 
@@ -135,12 +145,6 @@ struct SeedLoadingView: View {
         ZStack {
             Theme.grouped
             FallingSeeds(label: label)
-            // On its tile, not bare. The `.pair` mark is itself two seeds, so a bare mark in
-            // the middle of a seed fall reads as two more seeds that happen to be sitting
-            // still — the plate is what separates the logo from the weather.
-            SycamoreAppMark(size: 64)
-                .shadow(Shadows.tabItem)
-                .accessibilityHidden(true)
         }
         .ignoresSafeArea()
     }
