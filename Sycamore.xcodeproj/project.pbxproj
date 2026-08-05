@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXFileReference section */
@@ -11,25 +11,18 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		5C0A0000000000000000000A /* Exceptions for "Sycamore" folder in "Sycamore" target */ = {
+		5C0A0000000000000000000A /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Resources/Info.plist,
 				Resources/Fonts/README.md,
+				Resources/Info.plist,
 			);
 			target = 5C0A00000000000000000005 /* Sycamore */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		5C0A00000000000000000009 /* Sycamore */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				5C0A0000000000000000000A /* Exceptions for "Sycamore" folder in "Sycamore" target */,
-			);
-			path = Sycamore;
-			sourceTree = "<group>";
-		};
+		5C0A00000000000000000009 /* Sycamore */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (5C0A0000000000000000000A /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Sycamore; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -109,7 +102,6 @@
 			);
 			mainGroup = 5C0A00000000000000000002;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = 5C0A00000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -196,6 +188,7 @@
 		5C0A0000000000000000000F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FYQ358R59X;
@@ -219,6 +212,7 @@
 		5C0A00000000000000000010 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FYQ358R59X;

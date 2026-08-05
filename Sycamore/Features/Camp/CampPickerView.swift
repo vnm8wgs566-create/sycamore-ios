@@ -49,6 +49,12 @@ struct CampPickerView: View {
             StatusBarMock()
 
             VStack(alignment: .leading, spacing: 0) {
+                // The one brand beat between signing in and the camp loading. Small enough to
+                // sit under the title rather than competing with it.
+                SycamoreMark()
+                    .frame(width: 30, height: 30)
+                    .padding(.bottom, Spacing.medium)
+
                 Text("Which camp?")
                     .typeStyle(.title2, color: Theme.ink)
 
@@ -72,13 +78,10 @@ struct CampPickerView: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if store.memberships.isEmpty && store.isWorking {
-                    // Seeds rather than a bare gap while the list arrives — the same motif the
-                    // camp load uses, so waiting looks the same everywhere in the app.
-                    FallingSeeds(count: 5, scale: 0.7, label: "Loading your camps")
-                        .frame(height: 180)
-                        .padding(.bottom, Spacing.hero)
-                } else if store.memberships.isEmpty {
+                // No inline loading state here: `RootView` lays the full-screen seed fall over
+                // this whole view while `isWorking`, so a second one underneath it would only
+                // ever be drawn behind the first.
+                if store.memberships.isEmpty {
                     noCamps
                         .padding(.bottom, Spacing.hero)
                 } else {
@@ -112,11 +115,18 @@ struct CampPickerView: View {
     /// camp yet. Without it the header rendered with nothing under it, which read as a screen
     /// that had failed to load rather than one waiting for a first camp.
     private var noCamps: some View {
-        ContentUnavailableView(
-            "No camps yet",
-            systemImage: "tent",
-            description: Text("Join with a code below, or create your own.")
-        )
+        // The mark rather than SF Symbols' tent: this is the first empty screen a new person
+        // sees, and a seed that has not taken root yet says more here than a campsite glyph.
+        ContentUnavailableView {
+            Label {
+                Text("No camps yet")
+            } icon: {
+                SycamoreMark()
+                    .frame(width: 44, height: 44)
+            }
+        } description: {
+            Text("Join with a code below, or create your own.")
+        }
         .frame(maxWidth: .infinity)
     }
 
