@@ -175,9 +175,11 @@ private struct EntranceLockup: View {
         HStack(spacing: 0) {
             SycamoreAppMark(size: 72)
                 .shadow(Shadows.tabItem)
+                .heroMark(HeroID.mark, isSource: true)
 
             Text("Sycamore")
                 .typeStyle(.display, color: Theme.ink)
+                .heroMark(HeroID.wordmark, isSource: true)
                 // Ideal width regardless of what the collapsing frame proposes, so the
                 // measurement below is the word's real width and not the clipped one.
                 .fixedSize()
@@ -222,11 +224,11 @@ struct SeedEntrance: View {
         }
         .ignoresSafeArea()
         .task {
-            withAnimation(.smooth(duration: 0.5)) { hasLanded = true }
+            withAnimation(.smooth(duration: 0.42)) { hasLanded = true }
             // The word follows the mark rather than arriving with it — the mark lands, then
             // the name is written beside it.
-            try? await Task.sleep(for: .milliseconds(280))
-            withAnimation(.smooth(duration: 0.65)) { wordRevealed = true }
+            try? await Task.sleep(for: .milliseconds(220))
+            withAnimation(.smooth(duration: 0.56)) { wordRevealed = true }
         }
     }
 }

@@ -21,6 +21,11 @@ struct SycamoreApp: App {
     /// Cleared once the opening beat has played. Scene-scoped, so it happens on a cold launch
     /// and not every time the app returns from the background.
     @State private var isOpening = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Ties the entrance's mark to the one on the screen underneath, so the logo travels into
+    /// place instead of cross-fading with a second copy of itself.
+    @Namespace private var markNamespace
 
     var body: some Scene {
         WindowGroup {
@@ -31,22 +36,29 @@ struct SycamoreApp: App {
                         SeedEntrance().transition(.opacity)
                     }
                 }
+                // Only during the opening. Afterwards it is nil and `heroMark` is inert, so no
+                // screen carries a matched-geometry identity it has no use for.
+                .environment(\.markNamespace, isOpening ? markNamespace : nil)
                 .task {
                     // The choreography, end to end:
                     //
-                    //   0.00  the mark lands       (0.5s)
-                    //   0.28  the word writes in   (0.65s, done at 0.93)
-                    //   0.93  — held, so the name is read rather than glimpsed —
-                    //   2.20  the whole screen crosses to the app (0.6s, done at 2.80)
+                    //   0.00  the mark lands       (0.42s)
+                    //   0.22  the word writes in   (0.56s, done at 0.78)
+                    //   0.78  — held, so the name is read rather than glimpsed —
+                    //   1.25  the lockup travels into the page as the screen crosses to it
+                    //         (0.55s, done at 1.80)
                     //
-                    // One fade, everything at once: mark, word, seeds and ground all leave
-                    // together as the app comes through. An earlier pass dissolved the lockup
-                    // first and the seed field after it, which drew the eye to the seam
-                    // between the two and made the transition the thing you noticed. A
-                    // splash's job is to get out of the way, and the plain crossfade does it
-                    // better than the clever one did.
-                    try? await Task.sleep(for: .milliseconds(2200))
-                    withAnimation(.easeInOut(duration: 0.6)) { isOpening = false }
+                    // Down from 2.8s. This is opened many times a day by someone standing on a
+                    // court, and a second of that was the splash being admired rather than
+                    // read. 1.8s still lands every beat.
+                    //
+                    // Under Reduce Motion the hold is shorter still: the seeds are gone and the
+                    // word arrives without its sweep, so there is materially less to watch and
+                    // holding the same beat would just be a wait.
+                    try? await Task.sleep(for: .milliseconds(reduceMotion ? 900 : 1250))
+                    withAnimation(.easeInOut(duration: reduceMotion ? 0.4 : 0.55)) {
+                        isOpening = false
+                    }
                 }
                 // Text scales with the reader's setting, but only to the first accessibility
                 // step. The design is transcribed from CSS at fixed point sizes — a 34×32

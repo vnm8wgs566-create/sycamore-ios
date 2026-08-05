@@ -35,11 +35,18 @@ struct SignInView: View {
             // takes root says what the product is for rather than which sport it started in.
             // The design's 3e — two seeds, the large one and a smaller turned one, the way a
             // sycamore drops them in pairs. Takes the mark's default variant.
+            // Both carry the opening transition's geometry. The entrance owns it while the app
+            // is still opening; these take it as the entrance leaves, so the lockup travels
+            // from the middle of the screen into its place on the page — the horizontal lockup
+            // unfolding into the stacked one — rather than one pair fading out while another
+            // fades in. Outside the opening the namespace is nil and both are inert.
             SycamoreAppMark(size: 56)
+                .heroMark(HeroID.mark, isSource: false)
                 .padding(.bottom, Spacing.hero)
 
             Text("Sycamore")
                 .typeStyle(.display, color: Theme.ink)
+                .heroMark(HeroID.wordmark, isSource: false)
 
             Text("Camp management for people standing on a court, not sitting at a desk.")
                 .typeStyle(.body, color: Theme.inkTertiary)

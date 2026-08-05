@@ -181,6 +181,58 @@ struct SycamoreMark: View {
     }
 }
 
+// MARK: - Hero transition
+
+extension EnvironmentValues {
+    /// Ties the mark on the entrance to the mark on the screen behind it, so the logo travels
+    /// into place instead of one copy fading out while a second fades in.
+    ///
+    /// Carried in the environment rather than passed down: the two marks sit in different view
+    /// trees — one in the scene's overlay, one several levels inside `RootView` — and threading
+    /// a `Namespace.ID` through every view between them would put a transition detail in the
+    /// signature of screens that have nothing to do with it.
+    ///
+    /// `nil` everywhere except during the opening, which is what lets `heroMark` no-op the rest
+    /// of the time.
+    @Entry var markNamespace: Namespace.ID?
+}
+
+/// Applies `matchedGeometryEffect` only when a namespace is in the environment. A modifier
+/// rather than a plain `View` method because the namespace has to be read with `@Environment`,
+/// which only works as a property on a view type.
+private struct HeroMark: ViewModifier {
+    let id: String
+    let isSource: Bool
+    @Environment(\.markNamespace) private var namespace
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let namespace {
+            content.matchedGeometryEffect(id: id, in: namespace, isSource: isSource)
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    /// Marks this view as part of the app mark for the opening transition.
+    ///
+    /// `isSource` decides which copy owns the geometry: the entrance owns it while the app is
+    /// opening, and the screen underneath takes it as the entrance leaves. Both are on screen
+    /// through the handover, which is what gives SwiftUI two frames to interpolate between.
+    func heroMark(_ id: String, isSource: Bool) -> some View {
+        modifier(HeroMark(id: id, isSource: isSource))
+    }
+}
+
+/// The two pieces that travel. Named rather than spelled at each call site so the entrance and
+/// the sign-in screen cannot drift apart on a typo.
+enum HeroID {
+    static let mark = "app.mark"
+    static let wordmark = "app.wordmark"
+}
+
 // MARK: - App icon
 
 /// The mark on its tile, at the corner radius the design draws (45 on 200 — a shade tighter
