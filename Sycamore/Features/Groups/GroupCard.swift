@@ -70,9 +70,10 @@ struct GroupCard: View {
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous)
 
         return Card(
+            radius: GroupsMetrics.cardRadius,
             borderColor: isTarget ? Theme.accent : Theme.hairline,
             borderWidth: isTarget ? BorderWidth.input : BorderWidth.hairline,
             isDivided: false
@@ -82,7 +83,7 @@ struct GroupCard: View {
 
                 if !visibleRows.isEmpty {
                     Hairline(color: Theme.hairlineSoft)
-                        .padding(.horizontal, Spacing.medium)
+                        .padding(.horizontal, GroupsMetrics.cardPadding)
 
                     VStack(spacing: 0) {
                         ForEach(visibleRows) { row in
@@ -98,6 +99,10 @@ struct GroupCard: View {
                             moreRow
                         }
                     }
+                    // `padding-top:6px` under the rule, exactly as drawn. The foot is short of
+                    // the card's own 14 because every row is already 44pt of touch target
+                    // around 27pt of drawn row — the slack below the last one is most of it.
+                    .padding(.top, Spacing.tight)
                     .padding(.bottom, Spacing.tight)
                 }
             }
@@ -116,42 +121,64 @@ struct GroupCard: View {
 
     // MARK: Header
 
+    /// A real `Button` rather than a tap gesture: it is a control with two jobs — fold the card,
+    /// or aim a kid at it — and being one means it presses, and reaches Voice Control and the
+    /// keyboard, for free. The rows below it cannot do the same; see `GroupPlayerRow`.
     private var header: some View {
+        Button(action: headerTapped) {
+            headerContent
+        }
+        .buttonStyle(.plain)
+        .disabled(!isHeaderActive)
+        .accessibilityHint(headerHint)
+    }
+
+    /// Only when there is something for it to do. A card small enough to draw whole has nothing
+    /// to fold, and a chevron-less header that still presses is a control that lies.
+    private var isHeaderActive: Bool { move != nil || isFoldable }
+
+    private func headerTapped() {
+        // Aiming wins while a kid is in the air: folding a card away underneath a move would
+        // take its drop slots with it.
+        if move != nil {
+            onAim()
+        } else if isFoldable {
+            onToggle()
+        }
+    }
+
+    private var headerContent: some View {
         HStack(spacing: Spacing.medium) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: GroupsMetrics.titleGap) {
                 Text(title)
-                    .typeStyle(.venueHeading, color: Theme.ink)
+                    .typeStyle(GroupsType.groupTitle, color: Theme.ink)
                     .lineLimit(1)
 
                 Text(subtitle)
-                    .typeStyle(.metaStrong, color: isTarget ? Theme.accent : Theme.inkMuted)
+                    .typeStyle(GroupsType.rowMeta, color: isTarget ? Theme.accent : Theme.inkMuted)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if isTarget {
                 Image(systemName: "arrow.down.square.fill")
-                    .font(.system(size: 18, weight: .regular))
+                    .font(.system(size: GroupsMetrics.targetGlyph, weight: .regular))
                     .foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
             } else if move == nil, isFoldable {
-                DisclosureChevron(systemName: isExpanded ? "chevron.up" : "chevron.right", size: 16)
+                DisclosureChevron(
+                    systemName: isExpanded ? "chevron.up" : "chevron.right",
+                    size: GroupsMetrics.caretGlyph
+                )
+                .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, Spacing.medium)
-        .padding(.vertical, Spacing.medium)
+        .padding(.horizontal, GroupsMetrics.cardPadding)
+        .padding(.top, GroupsMetrics.cardPadding)
+        // `margin-top:10px` to the rule below, or the card's own 14 when there is no rule.
+        .padding(.bottom, visibleRows.isEmpty ? GroupsMetrics.cardPadding : GroupsMetrics.rowsGap)
         .frame(minHeight: HitTarget.minimum)
         .contentShape(.rect)
-        .onTapGesture {
-            // Aiming wins while a kid is in the air: folding a card away underneath a move
-            // would take its drop slots with it.
-            if move != nil {
-                onAim()
-            } else if isFoldable {
-                onToggle()
-            }
-        }
-        .accessibilityAddTraits(move != nil || isFoldable ? .isButton : [])
-        .accessibilityHint(headerHint)
     }
 
     private var headerHint: String {
@@ -189,11 +216,11 @@ struct GroupCard: View {
     private func gap(for row: PlayerRow) -> some View {
         RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous)
             .strokeBorder(
-                Theme.stroke,
+                GroupsPalette.gapRule,
                 style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: GroupsMetrics.dash)
             )
             .frame(height: GroupsMetrics.gapHeight)
-            .padding(.horizontal, Spacing.medium)
+            .padding(.horizontal, GroupsMetrics.cardPadding)
             // Decoration over a live row: the handle underneath is still being held.
             .allowsHitTesting(false)
             .accessibilityElement()
@@ -203,13 +230,14 @@ struct GroupCard: View {
     /// `+3 more` — the folded rows, and the way into them.
     private var moreRow: some View {
         Button(action: onToggle) {
-            HStack(spacing: Spacing.row) {
-                Color.clear.frame(width: GroupsMetrics.numeralWidth)
-                Text("+\(hiddenCount) more")
-                    .typeStyle(.rowSubtitle, color: Theme.inkFaint)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Spacing.medium)
+            GroupsRow(
+                rank: nil,
+                name: "+\(hiddenCount) more",
+                nameStyle: GroupsType.moreRow,
+                nameColor: Theme.inkFaint
+            )
+            .padding(.leading, GroupsMetrics.cardPadding)
+            .padding(.trailing, HitTarget.minimum)
             .frame(minHeight: HitTarget.minimum)
             .contentShape(.rect)
         }
@@ -245,26 +273,26 @@ private struct GroupPlayerRow: View {
     @GestureState private var isHolding = false
 
     var body: some View {
-        HStack(spacing: Spacing.row) {
-            Text("\(row.player.overallRank)")
-                .typeStyle(.rankNumeral, color: Theme.inkGhost)
-                .frame(width: GroupsMetrics.numeralWidth, alignment: .trailing)
-
-            Text(row.player.displayName)
-                .typeStyle(.bodyStrong, color: row.isAway ? Theme.inkFaint : Theme.ink)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+        GroupsRow(
+            rank: row.player.overallRank,
+            name: row.player.displayName,
+            nameColor: row.isAway ? Theme.inkFaint : Theme.inkWarm
+        ) {
             marks
         }
-        .padding(.leading, Spacing.medium)
+        .padding(.leading, GroupsMetrics.cardPadding)
         // The handle's own 44pt hit region, reserved in the flow and then filled by the overlay
         // below — so a finger reaching for the handle can never open the kid instead.
         .padding(.trailing, HitTarget.minimum)
-        // The design draws a 30pt row. Eight of them in a column is eight adjacent taps, so the
+        // The design draws a 27pt row. Eight of them in a column is eight adjacent taps, so the
         // drawn type stays where it is and the row grows to the minimum around it.
         .frame(minHeight: HitTarget.minimum)
         .contentShape(.rect)
+        // A tap gesture rather than a `Button`, which the card header above is. The handle sits
+        // *over* this row and owns a long-press-then-drag; inside a button's label that gesture
+        // loses every ambiguity contest with the button's own, and the lift stops working. The
+        // trait below is what keeps VoiceOver told, and the two rotor actions are the real
+        // non-pointer route in either case.
         .onTapGesture { if !isAiming { onOpen() } }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -279,34 +307,45 @@ private struct GroupPlayerRow: View {
         }
     }
 
-    /// Gender first, then whatever else is true today. The design draws all three at 13pt before
+    /// Gender first, then whatever else is true today. The design draws all three at 13 before
     /// the handle; a kid with nothing unusual about them shows only the first.
+    ///
+    /// Gender is a letter rather than a glyph. The design draws Phosphor's Venus and Mars marks,
+    /// which SF Symbols has no equivalent of at all — the app's own `figure.stand.dress` stood
+    /// in for them, and it both collapsed `.x` onto the male figure and disagreed with every
+    /// other screen, `8a`'s roster row included. `M` / `F` / `X` is what the rest of the app
+    /// writes, down to the meta line under a name, and it is the only spelling that can say `X`.
     private var marks: some View {
-        HStack(spacing: Spacing.tight) {
-            Image(systemName: row.player.gender == .f ? "figure.stand.dress" : "figure.stand")
-                .foregroundStyle(Theme.inkGhost)
-                .accessibilityLabel(row.player.gender.symbol)
+        HStack(spacing: GroupsMetrics.markGap) {
+            Text(row.player.gender.symbol)
+                .typeStyle(.metaSmall, color: Theme.glyph)
+                .accessibilityLabel(row.player.gender.spoken)
 
             if row.isAway {
                 Image(systemName: "person.badge.minus")
+                    .font(.system(size: GroupsMetrics.markGlyph, weight: .regular))
                     .foregroundStyle(Theme.inkFaint)
                     .accessibilityLabel("Away")
             }
 
             if let leavesAt = row.leavesAt {
-                Image(systemName: "timer")
+                // `ph-fill ph-clock-countdown` — a filled clock, which is why this is
+                // `clock.fill` and not the `timer` ring it used to be. `8a`'s roster row draws
+                // the same mark, and the two disagreeing was the whole of the confusion.
+                Image(systemName: "clock.fill")
+                    .font(.system(size: GroupsMetrics.markGlyph, weight: .regular))
                     .foregroundStyle(GroupsPalette.pickup)
                     .accessibilityLabel("Leaves at \(leavesAt.formatted)")
             }
         }
-        .font(.system(size: 13, weight: .regular))
+        // `margin-right:2px` — the marks stop just short of the handle.
+        .padding(.trailing, Spacing.hairGap)
     }
 
     private var handle: some View {
         Image(systemName: "line.3.horizontal")
-            .font(.system(size: 19, weight: .regular))
-            .foregroundStyle(Theme.chevron)
-            .frame(width: 22, height: 38)
+            .font(.system(size: GroupsMetrics.handleGlyph, weight: .regular))
+            .foregroundStyle(Theme.glyphFaint)
             // Drawn size unchanged; the outer frame only carries the touch.
             .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
             .contentShape(.rect)
@@ -336,6 +375,23 @@ private struct GroupPlayerRow: View {
     }
 }
 
+// MARK: - Spoken gender
+
+/// File-scoped rather than hoisted: several features draw this letter and any of them could
+/// want the word, but the first one to need it does not get to name it for everybody.
+private extension Gender {
+    /// What VoiceOver says where the screen draws a letter. `Gender.symbol` is `M` / `F` / `X`,
+    /// which reads aloud as an initial dropped into the middle of a name — and `8q` already
+    /// gives the words: "Boy · 13 years".
+    var spoken: String {
+        switch self {
+        case .m: "Boy"
+        case .f: "Girl"
+        case .x: "Gender not recorded"
+        }
+    }
+}
+
 // MARK: - Previews
 
 /// Hoisted to file scope on purpose. A `View` type declared *inside* a `#Preview` closure that
@@ -349,7 +405,7 @@ private struct GroupCardPreviewHarness: View {
         let cards = store.groupsSections.first?.cards.prefix(3).map { $0 } ?? []
 
         return ScrollView {
-            VStack(spacing: Spacing.small) {
+            VStack(spacing: GroupsMetrics.cardGap) {
                 ForEach(cards) { card in
                     let isExpanded = expanded.contains(card.id)
                     let visible = GroupsRules.visibleCount(
@@ -383,7 +439,7 @@ private struct GroupCardPreviewHarness: View {
             .padding(.horizontal, Spacing.gutter)
             .padding(.vertical, Spacing.large)
         }
-        .background(Theme.grouped)
+        .background(Theme.surfaceWarm)
     }
 }
 

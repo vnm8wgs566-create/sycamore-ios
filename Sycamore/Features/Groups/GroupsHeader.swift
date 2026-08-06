@@ -49,10 +49,16 @@ struct GroupsHeader: View {
 
     // MARK: Ordinary state
 
+    /// Everything below the title is inset by `Spacing.bar`, not by the design's 22.
+    ///
+    /// The design sets the whole white block — title included — at 22, but the title belongs to
+    /// `ScreenHeader`, which draws all four tabs at 16. Moving only the half of the block this
+    /// file owns would leave the chips hanging 6pt outside the heading above them, which is a
+    /// worse wrong than being 6pt narrow. It is one change to `ScreenHeader`; see the PR.
     private var controls: some View {
         VStack(spacing: 0) {
             venueChips
-                .padding(.bottom, Spacing.medium)
+                .padding(.bottom, Spacing.gutterWide)
 
             SearchField(text: $store.searchText, placeholder: "Find a player")
                 .padding(.horizontal, Spacing.bar)
@@ -78,7 +84,7 @@ struct GroupsHeader: View {
                 ForEach(store.camp?.orderedVenues ?? []) { venue in
                     let isSelected = venue.id == selectedVenueID
 
-                    Chip(venue.name, isSelected: isSelected, selectedTone: .dark, metrics: .venue) {
+                    Chip(venue.name, isSelected: isSelected, selectedTone: .dark, metrics: .groupsVenue) {
                         store.venueFilter = .venue(venue.id)
                     }
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
@@ -90,13 +96,14 @@ struct GroupsHeader: View {
     }
 
     private var hint: some View {
-        HStack(spacing: Spacing.tight) {
+        HStack(spacing: GroupsMetrics.hintGap) {
             Image(systemName: "hand.draw")
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: GroupsMetrics.hintGlyph, weight: .regular))
                 .foregroundStyle(Theme.inkFaint)
+                .accessibilityHidden(true)
 
             Text("Hold the handle to move a kid between groups")
-                .typeStyle(.footnote, color: Theme.inkMuted)
+                .typeStyle(GroupsType.hint, color: Theme.inkMuted)
 
             Spacer(minLength: 0)
         }
@@ -107,13 +114,14 @@ struct GroupsHeader: View {
     // MARK: Moving
 
     private func movingLine(_ name: String) -> some View {
-        HStack(spacing: Spacing.tight) {
+        HStack(spacing: GroupsMetrics.hintGap) {
             Image(systemName: "hand.draw.fill")
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: GroupsMetrics.hintGlyph, weight: .regular))
                 .foregroundStyle(Theme.accent)
+                .accessibilityHidden(true)
 
             Text("Moving \(name)")
-                .typeStyle(.chipMedium, color: Theme.accent)
+                .typeStyle(.metaStrong, color: Theme.accent)
 
             Spacer(minLength: 0)
         }
@@ -131,7 +139,7 @@ struct GroupsHeader: View {
         GroupsHeader(store: .preview, selectedVenueID: SampleData.sycamore.id)
         Spacer(minLength: 0)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
     .showsMockStatusBar()
     .frame(width: 402, height: 420)
 }
@@ -141,7 +149,7 @@ struct GroupsHeader: View {
         GroupsHeader(store: .preview, movingName: "Austin Z")
         Spacer(minLength: 0)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
     .frame(width: 402, height: 300)
 }
 
@@ -150,6 +158,6 @@ struct GroupsHeader: View {
         GroupsHeader(store: .preview, isLocked: true, count: "5 kids added · Sycamore")
         Spacer(minLength: 0)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
     .frame(width: 402, height: 300)
 }
