@@ -1,3 +1,7 @@
+# Agent worktrees. Transient checkouts of this same repo — committing them would nest the
+# repository inside itself.
+.claude/worktrees/
+
 # MCP server config — holds a Supabase personal access token inline.
 # Ignored rather than checked in: the remote is public, and `git add .` would
 # publish the token. If the token ever moves to ${SUPABASE_ACCESS_TOKEN}
