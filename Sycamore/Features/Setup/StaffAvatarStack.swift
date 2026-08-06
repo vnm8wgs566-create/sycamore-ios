@@ -21,11 +21,16 @@ struct StaffAvatarStack: View {
                 InitialsAvatar(
                     member.initials,
                     size: size,
-                    tone: member.role.isAdmin ? .dark : .neutral
+                    tone: member.role.isAdmin ? .dark : .neutral,
+                    // `initials(forAvatarSize:)` reads 12 at this diameter, because its smallest
+                    // band was written for the 36pt discs in a list. These are 26pt and overlap,
+                    // so the design sets them smaller and lighter than a disc standing alone.
+                    font: .stackInitials
                 )
                 .overlay { Circle().strokeBorder(Theme.surface, lineWidth: BorderWidth.focus) }
             }
         }
+        .padding(.leading, Spacing.hairGap)
         // Three initials read aloud say nothing the row's own "14 staff" does not.
         .accessibilityHidden(true)
     }
