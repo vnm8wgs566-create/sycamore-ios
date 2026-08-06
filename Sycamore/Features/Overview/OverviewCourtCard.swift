@@ -33,10 +33,12 @@ struct OverviewCourtCard: View {
     /// Kept in step with `CourtRosterRow`'s own scaled column so "+3 more" stays lined up
     /// with the names above it at every type size.
     @ScaledMetric(relativeTo: .callout) private var rankWidth = OverviewTheme.rankWidth
+    /// 16 sits in the headline band, the one the 17pt title beside it rides.
+    @ScaledMetric(relativeTo: .headline) private var caretSize = OverviewTheme.caretGlyph
 
     var body: some View {
         Card(
-            radius: Radius.card,
+            radius: OverviewTheme.cardRadius,
             borderColor: isMine ? Theme.accentBorder : Theme.hairline,
             borderWidth: isMine ? BorderWidth.input : BorderWidth.hairline,
             isDivided: false
@@ -44,7 +46,7 @@ struct OverviewCourtCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 if isMine {
                     Text("Your court")
-                        .typeStyle(.sectionHeader, color: Theme.accent)
+                        .typeStyle(OverviewTheme.overline, color: Theme.accent)
                         .padding(.bottom, OverviewTheme.overlineGap)
                 }
 
@@ -53,7 +55,7 @@ struct OverviewCourtCard: View {
                 if let note {
                     rule
                     Text(note)
-                        .typeStyle(.bodySmall, color: Theme.inkSecondary)
+                        .typeStyle(OverviewTheme.cardNote, color: Theme.inkWarm)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -77,15 +79,18 @@ struct OverviewCourtCard: View {
 
     private var header: some View {
         HStack(spacing: OverviewTheme.headerGap) {
+            // Neither line is clipped: the design's cells wrap rather than ellipse, and an
+            // activity name is what tells the courts apart.
             VStack(alignment: .leading, spacing: OverviewTheme.titleGap) {
                 Text(card.overviewTitle)
-                    .typeStyle(.venueHeading, color: card.isClosed ? OverviewTheme.warningInk : Theme.ink)
-                    .lineLimit(1)
+                    .typeStyle(OverviewTheme.cardTitle, color: card.isClosed ? Theme.warningDark : Theme.ink)
                 Text(card.overviewSubtitle)
-                    .typeStyle(.sheetSubtitle, color: card.isClosed ? OverviewTheme.warning : Theme.inkMuted)
-                    .lineLimit(1)
+                    .typeStyle(OverviewTheme.cardSubtitle, color: card.isClosed ? Theme.warning : Theme.inkMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Read as one phrase — "Drills. Court 1 – 8 players." — rather than as two
+            // elements a reader has to swipe between to learn which court they landed on.
+            .accessibilityElement(children: .combine)
 
             // A closed court shows no coach. The line above already names whoever is on it,
             // and a court out of play is not being run by anybody.
@@ -102,7 +107,8 @@ struct OverviewCourtCard: View {
             // that never claimed to, and it lies to VoiceOver besides. Your own court has no
             // caret in the design — you are already standing on it.
             if !isMine {
-                DisclosureChevron(size: OverviewTheme.caretGlyph)
+                DisclosureChevron(size: caretSize)
+                    .accessibilityHidden(true)
             }
         }
     }
@@ -110,7 +116,7 @@ struct OverviewCourtCard: View {
     // MARK: Roster
 
     private var rosterList: some View {
-        VStack(spacing: Spacing.hairGap) {
+        VStack(spacing: OverviewTheme.rosterRowGap) {
             ForEach(roster.rows) { row in
                 CourtRosterRow(row: row)
             }
@@ -127,10 +133,12 @@ struct OverviewCourtCard: View {
             Color.clear
                 .frame(width: rankWidth, height: 0)
             Text("+\(roster.overflow) more")
-                .typeStyle(.bodySmall, color: Theme.inkFaint)
+                .typeStyle(OverviewTheme.rosterName, color: Theme.inkFaint)
             Spacer(minLength: 0)
         }
         .padding(.vertical, OverviewTheme.rosterRowPadding)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(roster.overflow) more on this court")
     }
 
     private var rule: some View {
@@ -155,7 +163,7 @@ struct OverviewCourtCard: View {
         }
         .padding(Spacing.gutter)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }
 
 #Preview("Your court") {
@@ -168,5 +176,5 @@ struct OverviewCourtCard: View {
     )
     .padding(Spacing.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }

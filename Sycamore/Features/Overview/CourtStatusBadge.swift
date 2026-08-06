@@ -21,6 +21,10 @@ struct CourtStatusBadge: View {
     /// the one court that is shut.
     var isProminent: Bool = false
 
+    /// 14 sits in the body band of the type table, so the glyph grows at the same rate as the
+    /// `Closed` beside it.
+    @ScaledMetric(relativeTo: .body) private var glyphSize = OverviewTheme.badgeGlyph
+
     @ViewBuilder
     var body: some View {
         switch status {
@@ -33,7 +37,7 @@ struct CourtStatusBadge: View {
 
     private var openPill: some View {
         Text(status.badge)
-            .typeStyle(.chipMedium, color: Theme.onAccent)
+            .typeStyle(OverviewTheme.statusPill, color: Theme.onAccent)
             .padding(.horizontal, OverviewTheme.statusPillHorizontal)
             .padding(.vertical, OverviewTheme.statusPillVertical)
             .background(Theme.accent, in: Capsule(style: .continuous))
@@ -43,14 +47,14 @@ struct CourtStatusBadge: View {
     private var closedBadge: some View {
         HStack(spacing: OverviewTheme.badgeGap) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: OverviewTheme.badgeGlyph, weight: .regular))
-                .foregroundStyle(OverviewTheme.warning)
+                .font(.system(size: glyphSize, weight: .regular))
+                .foregroundStyle(Theme.warning)
             Text(status.badge)
-                .typeStyle(.chipSoft, color: OverviewTheme.warningInk)
+                .typeStyle(.chipSoft, color: Theme.warningDark)
         }
         .padding(.horizontal, OverviewTheme.badgeHorizontal)
         .padding(.vertical, OverviewTheme.badgeVertical)
-        .background(OverviewTheme.warningTint, in: Capsule(style: .continuous))
+        .background(Theme.warningTint, in: Capsule(style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("This court is closed")
     }

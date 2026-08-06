@@ -21,36 +21,50 @@ struct CoachPill: View {
     private var label: String { name ?? "Needs a coach" }
     private var initials: String { name.map { Initials.make(from: $0) } ?? "—" }
 
+    /// The disc grows with the reader's type size, or the initials inside it outgrow the circle
+    /// and spill over the edge. `.footnote` is the ramp the 12pt initials ride.
+    @ScaledMetric(relativeTo: .footnote) private var avatarSize = OverviewTheme.coachAvatar
+
     var body: some View {
         if let action {
             Button(action: action) {
                 // The capsule keeps the 38pt the design draws; only the frame that takes the
-                // tap grows to the 44pt minimum.
+                // tap grows to the 44pt minimum. `minWidth` too, so a one-letter name cannot
+                // shrink the target below it.
                 pill
-                    .frame(minHeight: HitTarget.minimum)
+                    .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(name.map { "Coach \($0)" } ?? label)
             .accessibilityHint("Opens their staff card")
         } else {
+            // The disc says nothing a reader can use and the name is already in the label, so
+            // the pill is one element with one line rather than a disc and a word.
             pill
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(name.map { "Coach \($0)" } ?? label)
         }
     }
 
     private var pill: some View {
         HStack(spacing: Spacing.small) {
-            InitialsAvatar(initials, size: OverviewTheme.coachAvatar)
+            // The type is pinned to the disc's *drawn* size rather than to the grown one, so
+            // `initials(forAvatarSize:)` cannot cross one of its weight buckets as the disc
+            // scales and hand a coach bolder initials than the design draws.
+            InitialsAvatar(
+                initials,
+                size: avatarSize,
+                font: .initials(forAvatarSize: OverviewTheme.coachAvatar)
+            )
             Text(label)
-                .typeStyle(.chipSoft, color: name == nil ? Theme.inkFaint : Theme.inkSecondary)
+                .typeStyle(.chipSoft, color: name == nil ? Theme.inkFaint : Theme.inkWarm)
                 .lineLimit(1)
         }
         .padding(.leading, OverviewTheme.coachPillInset)
         .padding(.trailing, OverviewTheme.coachPillTrailing)
         .padding(.vertical, OverviewTheme.coachPillInset)
-        .background(Theme.fill, in: Capsule(style: .continuous))
+        .background(OverviewTheme.coachPillFill, in: Capsule(style: .continuous))
     }
 }
 
