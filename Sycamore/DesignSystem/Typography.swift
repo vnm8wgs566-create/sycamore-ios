@@ -199,6 +199,30 @@ struct TypeStyle: Sendable, Equatable {
 
 // MARK: - The type table
 //
+// KNOWN, MEASURED, AND NOT YET FIXED: this table is a step or two too heavy for section 8.
+//
+// It was transcribed from the earlier design, and section 8 sets the same roles lighter
+// throughout. Counted across section 8's own declarations:
+//
+//     17px    600, 22 of 22          here: extraBold / bold
+//     16px    600,  9 of  9          here: extraBold / bold
+//     15px    600, 11 of 11          here: extraBold ×3, bold ×2
+//     14px    600, 50 of 71
+//     13.5px  400, 38 of 44          here: medium
+//     13px    400, 61 of 79
+//     10.5px  600, 57 of 57          here: bold
+//
+// Four separate exactness passes reported this independently — "the nearest row of the table
+// rather than the design's own shorthand", "section 8 sets its type a half-step lighter than
+// stage 1", "recurs about a dozen times". Each compensated locally, in its own folder, which is
+// the wrong altitude: a dozen private overrides of a shared table is how the table stops being
+// shared.
+//
+// Deliberately not changed here yet. Seven exactness pull requests are open against these
+// styles, and correcting the table underneath them would both conflict with all seven and
+// double-correct the screens that already compensated. It is one focused pass once they land,
+// where the local overrides come out in the same commit that fixes the table.
+//
 // Everything in SPEC.md section 1 "Type", in the order it appears there.
 
 extension TypeStyle {
