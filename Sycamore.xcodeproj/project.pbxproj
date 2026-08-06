@@ -16,6 +16,7 @@
 			membershipExceptions = (
 				Resources/Fonts/README.md,
 				Resources/Info.plist,
+				Resources/Sycamore.entitlements,
 			);
 			target = 5C0A00000000000000000005 /* Sycamore */;
 		};
@@ -189,6 +190,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sycamore/Resources/Sycamore.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FYQ358R59X;
@@ -213,6 +215,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sycamore/Resources/Sycamore.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FYQ358R59X;

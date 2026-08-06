@@ -42,6 +42,9 @@ targets:
           # Instructions for dropping the Manrope faces in — documentation, not a resource.
           # Without this the synchronised group ships it inside the .app.
           - "Resources/Fonts/README.md"
+          # Consumed via CODE_SIGN_ENTITLEMENTS. Entitlements are signed into the binary, so a
+          # copy sitting in the bundle would be a plain-text claim nobody reads.
+          - "Resources/Sycamore.entitlements"
 
     settings:
       base:
@@ -61,7 +64,9 @@ targets:
         # Required to build for a physical device — automatic signing still needs to know
         # which team to request a provisioning profile from. Simulator builds don't.
         DEVELOPMENT_TEAM: FYQ358R59X
-        # No entitlements: the app makes no network calls and uses no capabilities. The
-        # photo picker runs out of process, so it needs the usage string and nothing else.
-        # Expressed by absence — an empty CODE_SIGN_ENTITLEMENTS is a path Xcode still tries
-        # to resolve, and the checked-in pbxproj correctly sets no such key.
+        # One capability: Sign in with Apple. Without the entitlement the sheet never opens,
+        # and since this project has no custom SMTP it is the only way a new person gets in
+        # that does not depend on Supabase's shared mail server delivering.
+        # Kept out of `sources` above — see the exclude — and set on both configurations in
+        # the checked-in pbxproj, which is the file Xcode actually reads.
+        CODE_SIGN_ENTITLEMENTS: Sycamore/Resources/Sycamore.entitlements

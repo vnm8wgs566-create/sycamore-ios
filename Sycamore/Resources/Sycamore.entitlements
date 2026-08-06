@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  The one capability the app claims. Screen 1's "Continue with Apple" is the only route in
+	  that does not depend on mail being delivered, and without this key the sheet never opens:
+	  ASAuthorizationController answers .unknown before it draws anything.
+
+	  "Default" means this app's own App ID is the audience — a native iOS client, so no Services
+	  ID and no client secret. `org.sycamore.app` goes in the Supabase dashboard as the Apple
+	  provider's Client ID and that is the whole server side of it.
+	-->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>
