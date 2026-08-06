@@ -16,34 +16,38 @@ struct InboxNeedsActionRow: View {
     let item: InboxItem
     let onResolve: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        CardRow(verticalPadding: Spacing.medium) {
+        CardRow(verticalPadding: InboxMetrics.rowPaddingV) {
             InboxIconTile(for: item)
 
             VStack(alignment: .leading, spacing: InboxMetrics.titleGap) {
                 Text(item.title)
-                    .typeStyle(.rowLabel, color: Theme.ink)
+                    .typeStyle(InboxType.rowTitle, color: Theme.ink)
 
                 if let detail {
                     Text(detail)
-                        .typeStyle(.rowSubtitle, color: Theme.inkMuted)
+                        .typeStyle(InboxType.rowDetail, color: Theme.inkMuted)
                         // `white-space:nowrap;text-overflow:ellipsis` — a long note must not
-                        // push the button off the row.
-                        .lineLimit(1)
+                        // push the button off the row. Lifted at the accessibility sizes,
+                        // where one line is four words and truncating is the same as deleting.
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
                         .truncationMode(.tail)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
 
             if let actionLabel = item.actionLabel {
                 InboxActionButton(actionLabel, action: onResolve)
-                    // Two rows, two buttons, both a single verb. Naming what is being reviewed
-                    // is the difference between a usable rotor and a coin toss.
-                    .accessibilityLabel("\(actionLabel): \(item.title)")
             }
         }
-        .accessibilityElement(children: .contain)
+        // One element, one action. Left as three, VoiceOver read a title, then a detail, then a
+        // button called "Review" — and with two of these rows on screen the rotor offered two
+        // buttons called "Review" and no way to tell which was which. Combining folds the
+        // subject into the same element as the verb, so the row announces "Austin Zheng →
+        // Court 2, Nass asked · 8 min ago, Review" and activating it does the right one.
+        .accessibilityElement(children: .combine)
     }
 
     /// The grey second line.
@@ -72,7 +76,7 @@ struct InboxNeedsActionRow: View {
     let venueID = UUID()
 
     return VStack {
-        Card {
+        Card(radius: InboxMetrics.cardRadius) {
             InboxNeedsActionRow(
                 item: InboxItem(
                     venueID: venueID,
@@ -99,5 +103,5 @@ struct InboxNeedsActionRow: View {
         }
         .padding(Spacing.gutter)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }
