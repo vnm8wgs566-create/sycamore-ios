@@ -49,9 +49,15 @@ you must change all three: the file, the plist entry, and `TypeWeight.faceName`.
 
 ## There is no 800
 
-Instrument Sans stops at 700. `TypeWeight.extraBold` (800) is a leftover from Manrope and
-resolves to the 700 face; the design document uses no 800 anywhere. See the note on `TypeWeight`
-for why the case is kept rather than deleted.
+The axis ends at 700, so the 800 the app inherited from Manrope never had a face of its own here.
+It resolved to the 700 one and drew every heading it touched a step heavier than the design asks
+for. That case is gone, and `TypeWeight`'s four cases are now exactly the four instances listed
+above — one per face the file actually carries.
+
+The design's own ceiling is lower still: app content stops at 600, a step below the heaviest face
+here. 700 is reached only where section 8 left nothing to measure against — the two uppercase
+micro-labels sit at sizes the design never draws, and it sets no monospace at all — plus one run
+of sign-in copy. The note on `TypeWeight` has the count behind that ceiling.
 
 ## How the fallback works
 
