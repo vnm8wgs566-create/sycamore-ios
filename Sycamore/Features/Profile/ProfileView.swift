@@ -435,12 +435,11 @@ struct ProfileView: View {
 
     // MARK: Footer
 
-    /// `signOut()` clears `activeSheet` but not `pushedScreen` — it was written before this
-    /// screen was one. Without this the store would still be holding `.profile` when the next
-    /// person signs in, and their first camp would open with a stranger's Profile over it.
+    /// `store.signOut()` clears `pushedScreen` along with `activeSheet`, so Profile does not have
+    /// to put itself away. What the store cannot reach is `isManagingCamps` — a `@State` sheet it
+    /// has never seen — which would otherwise be left standing over the sign-in form.
     private func closeBeforeSigningOut() {
         isManagingCamps = false
-        store.pushedScreen = nil
     }
 
     private func signOut() {

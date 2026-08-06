@@ -10,10 +10,11 @@
 //  books plus one card to add another. The confirm bar went with it: each pick-up is committed
 //  by its own "Add pick-up", and the bar at the foot is just the way out.
 //
-//  Reached two ways, which is why `onClose` is a parameter: from the player sheet, where
-//  `MainTabView` owns the presentation through `store.activeSheet`, and from `8m`, which
-//  presents its own copy because a screen that is itself presented cannot ask the root to
-//  present over it.
+//  Reached two ways — from `8m` and from `8q` — and presented by whichever one opened it rather
+//  than by `MainTabView`. Both of those are themselves presented screens, and a presented screen
+//  cannot ask the root underneath it to present over it, so each holds its own `PickupTarget` and
+//  puts this sheet up from there. That is why `onClose` is a parameter: the state holding the
+//  sheet open belongs to the caller, so the caller is the only one who can put it down.
 //
 
 import SwiftUI
@@ -22,8 +23,9 @@ struct EarlyPickupSheet: View {
 
     @Bindable var store: AppStore
     let playerID: Player.ID
-    /// How the sheet gets out of the way. Nil clears `store.activeSheet`, which is how
-    /// `MainTabView` presents it.
+    /// How the sheet gets out of the way: it clears the `PickupTarget` the caller is holding.
+    /// Both callers pass one. Optional for the previews below, which draw the sheet inline and
+    /// have nothing to put down.
     var onClose: (() -> Void)?
 
     /// Who collects, and the note under a pick-up. Neither has a column: `Attendance` carries a
@@ -309,12 +311,11 @@ struct EarlyPickupSheet: View {
         Task { await store.clearEarlyPickup(playerID: playerID, day: day) }
     }
 
+    /// No `store.dismissSheet()` fallback: with `8n` off `ActiveSheet` there is nothing of this
+    /// sheet's in that slot, so clearing it could only ever close a venue or staff sheet that
+    /// happened to be open underneath.
     private func close() {
-        if let onClose {
-            onClose()
-        } else {
-            store.dismissSheet()
-        }
+        onClose?()
     }
 }
 

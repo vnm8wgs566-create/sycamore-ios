@@ -125,18 +125,19 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     }
 }
 
-/// Everything in stage 3. All three slide up over whichever tab is showing.
+/// What is left of stage 3 that the root still presents. Both slide up over whichever tab is
+/// showing.
 ///
-/// `8q` used to be the fourth. It is a pushed screen in the design — serif title, back caret,
-/// pinned bar — and it now arrives that way through `PushedScreen.player`.
+/// `8n` and `8q` were the other two, and each left for its own reason. `8q` is a pushed screen in
+/// the design — serif title, back caret, pinned bar — and it now arrives that way through
+/// `PushedScreen.player`. `8n` is reached only from `8m` or `8q`, and a presented screen cannot
+/// ask the root underneath it to present over it, so both of those present their own copy.
 enum ActiveSheet: Identifiable, Hashable, Sendable {
-    case earlyPickup(Player.ID)
     case venue(Venue.ID)
     case staff(StaffMember.ID)
 
     var id: String {
         switch self {
-        case .earlyPickup(let id): "pickup-\(id.uuidString)"
         case .venue(let id): "venue-\(id.uuidString)"
         case .staff(let id): "staff-\(id.uuidString)"
         }
@@ -145,7 +146,6 @@ enum ActiveSheet: Identifiable, Hashable, Sendable {
     /// The detent fractions transcribed from the design's sheet heights over 700pt.
     var detentFraction: Double {
         switch self {
-        case .earlyPickup: 0.67
         case .venue: 0.87
         case .staff: 0.73
         }
@@ -348,6 +348,9 @@ final class AppStore {
 
     // MARK: Early pick-up draft (screen 10)
 
+    /// What the "New pick-up" card on `8n` is currently offering. Nothing primes these before the
+    /// sheet opens: `8n` seeds itself, loading a day's saved time as that day is picked, and the
+    /// pick-ups already on the books are read from `camp` rather than from here.
     var pickupDay: Weekday = .today
     var pickupTime: TimeOfDay = TimeOfDay(14, 30)
 
@@ -831,18 +834,6 @@ extension AppStore {
     /// Screen 5's swipe action and the player sheet's first row.
     func toggleAway(_ playerID: Player.ID) async {
         await setAway(playerID, !isAway(playerID))
-    }
-
-    /// Opens screen 10 with the kid's saved pick-up already selected.
-    func beginEarlyPickup(for playerID: Player.ID) {
-        pickupDay = camp?.attendance.first { $0.playerID == playerID && $0.leavesAt != nil }?.day ?? today
-        pickupTime = camp?.leavesAt(playerID, on: pickupDay) ?? TimeOfDay(14, 30)
-        activeSheet = .earlyPickup(playerID)
-    }
-
-    func confirmEarlyPickup(for playerID: Player.ID) async {
-        await setEarlyPickup(playerID: playerID, day: pickupDay, at: pickupTime)
-        activeSheet = nil
     }
 
     func setEarlyPickup(playerID: Player.ID, day: Weekday, at time: TimeOfDay?) async {

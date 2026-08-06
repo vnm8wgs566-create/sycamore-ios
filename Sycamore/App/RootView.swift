@@ -164,8 +164,6 @@ struct MainTabView: View {
     @ViewBuilder
     private func sheetView(for sheet: ActiveSheet) -> some View {
         switch sheet {
-        case .earlyPickup(let playerID):
-            EarlyPickupSheet(store: store, playerID: playerID)
         case .venue(let venueID):
             VenueSheet(store: store, venueID: venueID)
         case .staff(let staffID):

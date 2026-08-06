@@ -105,10 +105,10 @@ enum OnTheDayTokens {
 
     /// How much of the frame `8n` opens over.
     ///
-    /// `ActiveSheet.earlyPickup` still declares 0.67, which was right when this sheet asked two
-    /// questions. The design now draws it as a full screen — a week of pick-ups, then a card to
-    /// add another — and at 0.67 the "New pick-up" card opens below the fold, which is the one
-    /// thing on the sheet somebody came to use.
+    /// 0.67 was right when this sheet asked two questions, and is what `ActiveSheet` declared for
+    /// it while the root still presented it. The design now draws it as a full screen — a week of
+    /// pick-ups, then a card to add another — and at 0.67 the "New pick-up" card opens below the
+    /// fold, which is the one thing on the sheet somebody came to use.
     static let pickupDetent: Double = 0.88
 
     // MARK: Shadow

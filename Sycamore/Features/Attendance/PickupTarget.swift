@@ -4,10 +4,10 @@
 //
 //  The kid `8n` is being opened for, from a screen that presents `8n` itself.
 //
-//  `MainTabView` presents `EarlyPickupSheet` through `store.activeSheet`, and that is the right
-//  route from a tab. It is the wrong one from `8m` or `8q`: both of those are presented screens,
-//  and a presented screen cannot ask the root — which is underneath it — to present over it. So
-//  each carries its own `.sheet(item:)` and this is what it binds.
+//  `8m` and `8q` are the only two ways into `8n`, and both of them are presented screens. A
+//  presented screen cannot ask the root — which is underneath it — to present over it, so each
+//  carries its own `.sheet(item:)` and this is what it binds. Nothing routes `8n` through
+//  `store.activeSheet` any more; there is no third caller left that could.
 //
 //  A wrapper rather than the id itself because `Player.ID` is a `UUID`, and `.sheet(item:)` wants
 //  something `Identifiable`.
