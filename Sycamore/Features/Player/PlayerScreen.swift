@@ -1,54 +1,70 @@
 //
-//  PlayerSheet.swift
+//  PlayerScreen.swift
 //  Sycamore
 //
 //  `8q` — a kid. Where they sit, what is already booked for them, and the history of how they
 //  got there.
 //
-//  Drawn to `8q`'s content, not its chrome. The design has this as a pushed screen with a serif
-//  title, a back caret and a pinned bar; the app presents it as a sheet, which is how every other
-//  secondary screen here arrives and is the presentation `store.activeSheet` and `SheetChrome`
-//  are built around. See the PR body — the disagreement is presentation only.
+//  A pushed screen, as the design draws it: white header block running up under the status bar,
+//  back caret, serif title, and one bar pinned to the bottom edge. It was a detent sheet on
+//  `ActiveSheet.player` until `PushedScreen` learned to carry a payload — a sheet inset the
+//  header behind rounded corners, and put a grabber and a swipe-down over a screen that already
+//  draws its own way out.
 //
 //  Two of `8q`'s blocks have nothing to draw from. There is no match model, so `RESULTS` and the
 //  `Record 6–2` stat cell have no source; and a pick-up carries a day and a time but no collector,
 //  so the "Mum" / "Dad" column is not there. Both are noted rather than faked.
 //
+//  The pinned bar reads "Move up a court" where the design reads "Move to another group". An
+//  arbitrary move is `8p`'s — it needs the whole ladder on screen to aim at, which this screen
+//  does not have. One court up is the only move that can be made from here, and it is a real
+//  write (`AppStore.moveUpACourt`), so the bar says exactly what it does.
+//
 
 import SwiftUI
 
-struct PlayerSheet: View {
+struct PlayerScreen: View {
     let store: AppStore
     let playerID: Player.ID
 
+    /// `8n`, presented from here rather than through `store.activeSheet`.
+    ///
+    /// This screen is itself presented, and the root that owns `activeSheet` is underneath it —
+    /// asking it to present `8n` would open the sheet behind this one. `8m` reaches `8n` the same
+    /// way and for the same reason; see `PickupTarget`.
+    @State private var pickupTarget: PickupTarget?
+
     var body: some View {
-        SheetChrome(
-            title: player?.displayName ?? "",
-            subtitle: store.camp?.placementLine(for: playerID),
-            detentFraction: ActiveSheet.player(playerID).detentFraction,
-            onClose: { store.dismissSheet() }
-        ) {
-            genderAndAge
-
-            statCard
-                .padding(.bottom, Spacing.large)
-
-            leavingEarly
-
-            actionRows
-
-            // The design only ever draws this section populated. A kid nobody has moved or
-            // ranked yet has no events, and a bare "History" header over an empty sheet
-            // reads as something that failed to load — so say what it means instead.
-            AttendanceOverline(title: "History", inset: 0)
-                .padding(.top, Spacing.large)
-            if store.history(for: playerID).isEmpty {
-                Text("Nothing yet — moves and rankings show up here.")
-                    .typeStyle(.meta, color: Theme.inkFaint)
-                    .padding(.top, 2)
-            } else {
-                timeline
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                StatusBarMock()
+                PlayerHeader(
+                    placement: store.camp?.placementLine(for: playerID) ?? "",
+                    name: player?.displayName ?? "",
+                    whoTheyAre: whoTheyAre,
+                    onBack: { store.pushedScreen = nil }
+                )
             }
+            // The white carries up under the status bar, as the design draws it — otherwise the
+            // page colour shows above the header block on a device with a notch.
+            .background(Theme.surface.ignoresSafeArea(edges: .top))
+
+            Hairline(color: Theme.hairline)
+
+            ScrollView {
+                content
+                    .padding(.horizontal, Spacing.gutter)
+                    .padding(.top, OnTheDayTokens.headerTop)
+                    .padding(.bottom, OnTheDayTokens.contentBottomInset)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // `#F8F9F8`, not `grouped`'s `#F6F7F9` — section 8's page is a shade warmer.
+        .background(Theme.surfaceWarm)
+        .overlay(alignment: .bottom) { moveBar }
+        .sheet(item: $pickupTarget) { target in
+            EarlyPickupSheet(store: store, playerID: target.id) { pickupTarget = nil }
         }
     }
 
@@ -61,16 +77,9 @@ struct PlayerSheet: View {
     /// The design sets a gender glyph beside it (`ph-gender-male` at `#A2A6AE`). SF Symbols has
     /// no gender set, and the nearest candidates encode the distinction as a dress, so the line
     /// stands on its own words instead. See the PR body.
-    /// Each block carries its own trailing gap rather than taking one from the caller: a block
-    /// that has nothing to draw resolves to `EmptyView`, and padding hung on the outside of that
-    /// leaves a hole where the block would have been.
-    @ViewBuilder
-    private var genderAndAge: some View {
-        if let player {
-            Text("\(genderNoun(player.gender)) · \(player.age) years")
-                .typeStyle(.onTheDayLede, color: Theme.inkMuted)
-                .padding(.bottom, OnTheDayTokens.contentGap)
-        }
+    private var whoTheyAre: String? {
+        guard let player else { return nil }
+        return "\(genderNoun(player.gender)) · \(player.age) years"
     }
 
     /// `.x` gets a noun of its own rather than a default — a camp that recorded "x" did so
@@ -83,10 +92,29 @@ struct PlayerSheet: View {
         }
     }
 
+    // MARK: - Content
+
+    /// The design's `gap:9px` column. Each block carries its own trailing gap rather than taking
+    /// one from a `VStack`: a block that has nothing to draw resolves to `EmptyView`, and spacing
+    /// applied between children leaves a hole where the block would have been.
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            statCard
+                .padding(.bottom, OnTheDayTokens.contentGap)
+
+            leavingEarly
+
+            actionRows
+                .padding(.bottom, OnTheDayTokens.contentGap)
+
+            history
+        }
+    }
+
     // MARK: - Stats
 
     /// One card of three cells, not three cards. `8q` draws a single `16`-radius plate with
-    /// `padding:14` and `gap:12`, where this sheet had three separate `grouped` tiles.
+    /// `padding:14` and `gap:12`, where this screen had three separate `grouped` tiles.
     ///
     /// The design's third cell is `RECORD 6–2`. There is no match model, so the cell carries the
     /// court rank instead — real data in the shape the design asks for, rather than a dash.
@@ -124,20 +152,23 @@ struct PlayerSheet: View {
         let pickups = weekPickups
 
         if !pickups.isEmpty {
+            // The first overline on the screen, which the design leads with 2pt rather than the
+            // 6 it puts between sections. `8q` spends that opening on RESULTS; with no match
+            // model to draw it from, "Leaving early" inherits the position and its padding.
             AttendanceOverline(
                 title: "Leaving early",
                 count: pickups.count,
                 actionTitle: "Add",
-                action: { store.beginEarlyPickup(for: playerID) },
-                inset: 0
+                action: { pickupTarget = PickupTarget(id: playerID) }
             )
+            .padding(.top, OnTheDayTokens.overlineLead)
 
             Card(radius: OnTheDayTokens.card) {
                 ForEach(pickups) { record in
                     pickupRow(record)
                 }
             }
-            .padding(.bottom, Spacing.large)
+            .padding(.bottom, OnTheDayTokens.contentGap)
         }
     }
 
@@ -167,6 +198,9 @@ struct PlayerSheet: View {
 
     // MARK: - Actions
 
+    /// The two writes the design has no room for. `8q` spends its content on results and
+    /// pick-ups and its one action on the bar; these are the app's, and they are the only way to
+    /// mark a kid away or book a pick-up from the kid's own screen.
     private var actionRows: some View {
         VStack(spacing: Spacing.small) {
             ActionRow(
@@ -182,15 +216,7 @@ struct PlayerSheet: View {
                 title: "Set early pick-up",
                 detail: pickupDetail
             ) {
-                store.beginEarlyPickup(for: playerID)
-            }
-
-            ActionRow(
-                icon: "arrow.up",
-                title: "Move up a court",
-                detail: "Sends \(approverName) a request"
-            ) {
-                Task { await store.moveUpACourt(playerID) }
+                pickupTarget = PickupTarget(id: playerID)
             }
         }
     }
@@ -203,23 +229,57 @@ struct PlayerSheet: View {
         return "Leaves \(store.today.shortName) at \(time.formatted)"
     }
 
-    /// The design names the coach who has to approve the move. That is the kid's current coach —
-    /// Austin Z sits on Nass's court, which is why the design reads "Sends Nass a request".
-    private var approverName: String {
-        guard let groupID = player?.groupID, let coach = store.coach(forGroup: groupID) else {
-            return "an admin"
-        }
-        return coach.name
-    }
-
     // MARK: - History
 
-    private var timeline: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(store.history(for: playerID)) { event in
-                TimelineEntry(event: event)
+    @ViewBuilder
+    private var history: some View {
+        // Resolved once and read twice — the filter behind it walks the camp's whole event log,
+        // and asking whether it is empty and then asking for it again did that on every pass.
+        let events = store.history(for: playerID)
+
+        // The design only ever draws this section populated. A kid nobody has moved or ranked yet
+        // has no events, and a bare "History" header over an empty screen reads as something that
+        // failed to load — so say what it means instead.
+        AttendanceOverline(title: "History")
+            .padding(.top, OnTheDayTokens.overlineBreak)
+
+        if events.isEmpty {
+            Text("Nothing yet — moves and rankings show up here.")
+                .typeStyle(.meta, color: Theme.inkFaint)
+                .padding(.horizontal, OnTheDayTokens.overlineInset)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(events) { event in
+                    TimelineEntry(event: event)
+                }
             }
         }
+    }
+
+    // MARK: - The bar
+
+    /// `8q`'s pinned bar. The design writes it "Move to another group"; see the file header for
+    /// why it says what it says.
+    private var moveBar: some View {
+        PlayerMoveBar(isEnabled: canMoveUp, action: moveUp)
+            .padding(.horizontal, Spacing.gutter)
+            .padding(.bottom, OnTheDayTokens.barInset)
+    }
+
+    /// Whether there is a court above this one at all. `moveUpACourt` returns silently when there
+    /// is not, and a bar that answers a tap with nothing is worse than one that says it is spent —
+    /// the kid at the top of the top court is a real state, not a failure.
+    private var canMoveUp: Bool {
+        guard let camp = store.camp,
+              let player,
+              let venueID = player.venueID,
+              let current = player.groupID
+        else { return false }
+        return camp.groups(in: venueID).firstIndex { $0.id == current }.map { $0 > 0 } ?? false
+    }
+
+    private func moveUp() {
+        Task { await store.moveUpACourt(playerID) }
     }
 }
 
@@ -245,7 +305,7 @@ private struct StatCell: View {
 
 // MARK: - Action row
 
-/// A bordered white row at radius 14 — the sheet's equivalent of a card row, but standing alone
+/// A bordered white row at radius 14 — this screen's equivalent of a card row, but standing alone
 /// with 8pt between each one rather than divided inside a card.
 private struct ActionRow: View {
     let icon: String
@@ -319,22 +379,29 @@ private struct TimelineEntry: View {
 
 // MARK: - Previews
 
-#Preview("Player sheet") {
-    ZStack(alignment: .bottom) {
-        Theme.scrim.ignoresSafeArea()
-        PlayerSheet(store: .preview, playerID: SampleData.austinZ.id)
-            .frame(height: 562)
-    }
-    .frame(height: 700)
-    .background(Theme.canvas)
+#Preview("A kid") {
+    PlayerScreen(store: .preview, playerID: SampleData.austinZ.id)
+        .showsMockStatusBar()
 }
 
-#Preview("Player sheet — away") {
-    ZStack(alignment: .bottom) {
-        Theme.scrim.ignoresSafeArea()
-        PlayerSheet(store: .preview, playerID: SampleData.liamJ.id)
-            .frame(height: 562)
-    }
-    .frame(height: 700)
-    .background(Theme.canvas)
+#Preview("A kid — away") {
+    PlayerScreen(store: .preview, playerID: SampleData.liamJ.id)
+        .showsMockStatusBar()
+}
+
+/// Every colour here is a `Theme` token, so the dark scheme is a check rather than a second
+/// design — but this screen carries the palette's warmest values and those are the ones a derived
+/// dark column is most likely to get wrong.
+#Preview("A kid — dark") {
+    PlayerScreen(store: .preview, playerID: SampleData.austinZ.id)
+        .showsMockStatusBar()
+        .preferredColorScheme(.dark)
+}
+
+/// The app caps Dynamic Type at `.accessibility1`; the stat card's three cells and the pinned bar
+/// are what break first if a frame is fixed rather than floored.
+#Preview("A kid — accessibility1") {
+    PlayerScreen(store: .preview, playerID: SampleData.austinZ.id)
+        .showsMockStatusBar()
+        .dynamicTypeSize(.accessibility1)
 }

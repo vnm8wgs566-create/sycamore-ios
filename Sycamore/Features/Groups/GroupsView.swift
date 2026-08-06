@@ -125,7 +125,7 @@ struct GroupsView: View {
             visibleRows: entry.visibleRows,
             move: move,
             onToggle: { toggle(entry.id) },
-            onOpenPlayer: { store.present(.player($0.id)) },
+            onOpenPlayer: { store.pushedScreen = .player($0.id) },
             onAim: { aim(at: entry.id) },
             onMoveBegan: { beginMove($0, in: entry) },
             onMoveChanged: updateMove(to:),

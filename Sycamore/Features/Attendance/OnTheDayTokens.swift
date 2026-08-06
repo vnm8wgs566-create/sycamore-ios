@@ -48,6 +48,14 @@ enum OnTheDayTokens {
     /// Its inset from the bottom edge.
     static let barInset: CGFloat = 20
 
+    /// The gap between the glyph and the label inside `8q`'s outlined bar — `gap:9px`.
+    static let barGap: CGFloat = 9
+
+    /// How far back a control drops when there is nothing for it to do. `8q`'s bar is the case:
+    /// it is the screen's one action and hiding it would leave an unexplained 88pt of air under
+    /// the list, so it stays drawn and stands down instead.
+    static let inactiveOpacity: Double = 0.45
+
     /// The attendance progress track.
     static let progressHeight: CGFloat = 4
 
@@ -116,6 +124,12 @@ enum OnTheDayTokens {
     /// Cast in black rather than built from `Theme.ink` for the reason `Shadows` gives: `ink`
     /// inverts with the scheme, and a shadow only ever darkens what is under it.
     static let barShadow = ShadowToken(color: .black.opacity(0.22), radius: 15, y: 12)
+
+    /// `0 10px 26px rgba(11,11,12,.08)` — the same bar on `8q`, where it is white rather than
+    /// near-black and so is lifted by about a third as much. Blur halved for SwiftUI, and the
+    /// alpha carried up the same fraction as `barShadow`'s, which a dark surface needs to show
+    /// any lift at all.
+    static let barShadowLight = ShadowToken(color: .black.opacity(0.09), radius: 13, y: 10)
 }
 
 // MARK: - Type

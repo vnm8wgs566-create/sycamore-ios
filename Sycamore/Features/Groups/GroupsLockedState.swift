@@ -172,7 +172,7 @@ struct GroupsLockedState: View {
 
     private func playerRow(_ player: Player) -> some View {
         Button {
-            store.present(.player(player.id))
+            store.pushedScreen = .player(player.id)
         } label: {
             CardRow(verticalPadding: Spacing.row) {
                 InitialsAvatar(

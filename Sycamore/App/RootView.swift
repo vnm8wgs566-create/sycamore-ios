@@ -99,13 +99,9 @@ struct MainTabView: View {
                 .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
                 .storeWorkingIndicator(store.isWorking)
         }
-        .sheet(item: $store.pushedScreen) { screen in
-            // Same reasoning as the sheet above — a cover hides the banner underneath it.
-            pushedView(for: screen)
-                .environment(store)
-                .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
-                .storeWorkingIndicator(store.isWorking)
-        }
+        // One slot, two presentations — see `Binding.presenting(fullScreen:)`.
+        .sheet(item: $store.pushedScreen.presenting(fullScreen: false), content: pushedView)
+        .pushedScreenCover(item: $store.pushedScreen.presenting(fullScreen: true), content: pushedView)
     }
 
     // MARK: The selected tab
@@ -126,26 +122,39 @@ struct MainTabView: View {
 
     // MARK: Pushed screens
 
-    /// `8s`, `8t`, `8u` — and Rank until Groups absorbs it.
+    /// `8m`, `8q`, `8s`, `8t` — and Rank until Groups absorbs it.
     ///
-    /// Sheets, for two reasons. A `NavigationStack` push is wrong: this app's tab bar is an
-    /// overlay in this view rather than a `TabView`'s own chrome, so a push slides underneath
-    /// it and leaves the pill floating over Profile.
+    /// A `NavigationStack` push is wrong for all of them: this app's tab bar is an overlay in this
+    /// view rather than a `TabView`'s own chrome, so a push slides underneath it and leaves the
+    /// pill floating over Profile.
     ///
-    /// A `fullScreenCover` is worse. All four of these were tabs, and a tab needs no way out of
-    /// itself — not one of them draws a back control, so as a cover each is a screen you cannot
-    /// leave. A sheet is swipe-dismissible for free, draws no tab bar either, and is already
-    /// how this app presents every other secondary screen.
+    /// Which modal each gets is `PushedScreen.isFullScreen`'s call, and it turns on one thing —
+    /// whether the screen draws its own way out. Profile, Camp settings and Rank were tabs and a
+    /// tab needs no way out of itself, so as covers they would be screens you cannot leave; the
+    /// sheet is what supplies their dismissal. `8m` and `8q` draw a ✕ and a back caret, so they
+    /// take the whole frame the design gives them.
+    ///
+    /// The store and the two overlays are carried in here rather than at each presentation site:
+    /// a modal covers the pair `MainTabView` floats, so it needs its own copy of both.
     @ViewBuilder
     private func pushedView(for screen: PushedScreen) -> some View {
-        switch screen {
-        case .profile:
-            ProfileView(store: store)
-        case .campSettings:
-            SetupView(store: store)
-        case .rank:
-            RankView(store: store)
+        SwiftUI.Group {
+            switch screen {
+            case .profile:
+                ProfileView(store: store)
+            case .campSettings:
+                SetupView(store: store)
+            case .rank:
+                RankView(store: store)
+            case .attendance(let groupIDs, let block):
+                AttendanceView(groupIDs: groupIDs, block: block) { store.pushedScreen = nil }
+            case .player(let playerID):
+                PlayerScreen(store: store, playerID: playerID)
+            }
         }
+        .environment(store)
+        .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
+        .storeWorkingIndicator(store.isWorking)
     }
 
     // MARK: Sheets
@@ -155,8 +164,6 @@ struct MainTabView: View {
     @ViewBuilder
     private func sheetView(for sheet: ActiveSheet) -> some View {
         switch sheet {
-        case .player(let playerID):
-            PlayerSheet(store: store, playerID: playerID)
         case .earlyPickup(let playerID):
             EarlyPickupSheet(store: store, playerID: playerID)
         case .venue(let venueID):
@@ -164,6 +171,53 @@ struct MainTabView: View {
         case .staff(let staffID):
             StaffSheet(store: store, staffID: staffID)
         }
+    }
+}
+
+// MARK: - Presenting `8m` and `8q`
+
+private extension Binding where Value == PushedScreen? {
+    /// One half of `store.pushedScreen`, for one of the two modifiers that present it.
+    ///
+    /// `8m` and `8q` want the whole frame and the other three want a sheet, but there is a single
+    /// slot to drive both from — and `.sheet(item:)` and `.fullScreenCover(item:)` each insist on
+    /// an optional of their own. Handing both the same one presents two screens for one value.
+    ///
+    /// So each takes a filtered view of the slot: it reads only the screens it is responsible for,
+    /// and on dismissal it empties the slot only when what is in there is still its own. Written as
+    /// a `Binding` transform rather than a pair of mirrored `@State` properties, which would be two
+    /// more places for "which screen is up" to be wrong.
+    func presenting(fullScreen: Bool) -> Binding<PushedScreen?> {
+        Binding<PushedScreen?>(
+            get: {
+                guard let screen = wrappedValue, screen.isFullScreen == fullScreen else {
+                    return nil
+                }
+                return screen
+            },
+            set: { screen in
+                if screen != nil || wrappedValue?.isFullScreen == fullScreen {
+                    wrappedValue = screen
+                }
+            }
+        )
+    }
+}
+
+private extension View {
+    /// A cover on iOS, a sheet everywhere else. `fullScreenCover` is iOS-only, and everything
+    /// under `Sycamore/` has to typecheck for macOS as well — see `ScheduleView`, which presents
+    /// `8l` the same way and for the same reason.
+    @ViewBuilder
+    func pushedScreenCover<Content: View>(
+        item: Binding<PushedScreen?>,
+        @ViewBuilder content: @escaping (PushedScreen) -> Content
+    ) -> some View {
+        #if os(iOS)
+        fullScreenCover(item: item, content: content)
+        #else
+        sheet(item: item, content: content)
+        #endif
     }
 }
 
@@ -206,6 +260,19 @@ struct MainTabView: View {
 #Preview("Pushed — Camp settings") {
     let store = AppStore.preview
     store.pushedScreen = .campSettings
+
+    return MainTabView(store: store)
+        .environment(store)
+        .showsMockStatusBar()
+        .frame(width: 402, height: 874)
+}
+
+/// The other half of the split: a screen that takes the whole frame rather than a sheet. Worth a
+/// preview of its own — the two are driven by one optional and a filter between them, so "the
+/// right one presented" is the thing that can break.
+#Preview("Pushed — A kid") {
+    let store = AppStore.preview
+    store.pushedScreen = .player(SampleData.austinZ.id)
 
     return MainTabView(store: store)
         .environment(store)
