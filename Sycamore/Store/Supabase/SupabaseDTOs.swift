@@ -68,12 +68,14 @@ struct GroupRecord: Decodable, Sendable {
     var name: String
     var courtLabel: String?
     var rankOrder: Int
+    var activity: String?
 }
 
 struct PlayerRecord: Decodable, Sendable {
     var id: UUID
     var firstName: String
     var lastInitial: String?
+    var lastName: String?
     var age: Int?
     var gender: String?
     var isReturning: Bool
@@ -135,6 +137,7 @@ struct InboxItemRecord: Decodable, Sendable {
     var actorId: UUID?
     var playerId: UUID?
     var groupId: UUID?
+    var scheduleBlockId: UUID?
     var resolved: Bool
     var createdAt: Date
 }
@@ -244,7 +247,8 @@ extension Group {
             label: record.courtLabel ?? record.name,
             rankOrder: record.rankOrder,
             coachID: nil,
-            capacity: capacity
+            capacity: capacity,
+            activity: record.activity
         )
     }
 }
@@ -253,14 +257,17 @@ extension Player {
     /// `overallRank` and `courtRank` are the caller's business — they come from the ladder, not
     /// from a column, and only the caller has seen the whole camp's ratings.
     ///
-    /// A null age is a kid whose form was never finished. The model has no way to say "unknown",
-    /// so it reads as zero rather than as an invented number that looks entered.
+    /// A null age is a kid whose form was never finished, and it now stays null the whole way up:
+    /// `Player.age` is optional, so the zero this used to substitute is gone. That zero was not
+    /// merely a wrong reading — written back it failed the column's own 4…19 CHECK, so importing a
+    /// kid with no age could not round-trip at all.
     init(_ record: PlayerRecord, overallRank: Int, courtRank: Int) {
         self.init(
             id: record.id,
             firstName: record.firstName,
             lastInitial: record.lastInitial ?? "",
-            age: record.age ?? 0,
+            lastName: record.lastName,
+            age: record.age,
             gender: PostgresEnum.gender(record.gender),
             isReturning: record.isReturning,
             venueID: record.siteId,
@@ -316,9 +323,10 @@ extension ScheduleBlock {
             title: record.title,
             detail: record.detail,
             status: ScheduleBlockStatus(rawValue: record.status) ?? .planned,
-            // No column holds these. The card shows a count and a first line, and inventing a
-            // `schedule_block_notes` table is a schema decision, not a client one — so a block
-            // read back from Postgres has none rather than losing some silently.
+            // Still empty here, but no longer for want of a column: `inbox_items.schedule_block_id`
+            // now names the block a note belongs to. Filling this means a second read of a second
+            // relation, which is the repository's call to make and not something a row-to-value
+            // initialiser can do — so a block arrives with none rather than with some.
             notes: []
         )
     }
@@ -336,6 +344,7 @@ extension InboxItem {
             actorID: record.actorId,
             playerID: record.playerId,
             groupID: record.groupId,
+            scheduleBlockID: record.scheduleBlockId,
             resolved: record.resolved,
             createdAt: record.createdAt
         )

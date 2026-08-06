@@ -34,8 +34,12 @@ struct CourtCard: Identifiable, Hashable, Sendable {
     /// "Nass". Nil reads as unassigned, which the design draws as "Needs a coach".
     var coachName: String?
     var playersHere: Int
-    /// "Drills", "Match play", "Skills rotation" — the block running on this court right now,
-    /// resolved from the schedule rather than stored per court.
+    /// "Drills", "Match play", "Skills rotation", "Net down" — what is happening on *this* court.
+    ///
+    /// `groups.activity` when the court has one, and the running block's title when it has not.
+    /// Both, in that order, because `8i` draws a header reading "Skills rotation · until 10:30"
+    /// over four cards of which only one agrees with it: an activity that could only come from the
+    /// schedule can title exactly one of those cards correctly.
     var activity: String?
     var status: CourtStatus
 
@@ -138,6 +142,11 @@ struct InboxItem: Identifiable, Hashable, Sendable {
     var actorID: StaffMember.ID?
     var playerID: Player.ID?
     var groupID: Group.ID?
+    /// The block this row is about, which is what makes `8k`'s "1 note · shade tent is up" and
+    /// "2 notes" counts rather than guesses. A group alone could not say it: a court runs every
+    /// block of the day, so a note tied only to the court belongs to all five at once. Nil for
+    /// the rows that really are about the camp rather than a moment in it.
+    var scheduleBlockID: ScheduleBlock.ID?
     var resolved: Bool = false
     var createdAt: Date = .now
 }
