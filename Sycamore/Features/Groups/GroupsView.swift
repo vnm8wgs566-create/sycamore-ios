@@ -567,47 +567,21 @@ struct GroupsView: View {
         // landing in a group this venue does not have is still not something to write.
         guard let camp = store.camp, card(landing.groupID) != nil else { return }
 
-        var assignments = store.rankAssignments()
-        guard let target = assignments.firstIndex(where: { $0.venueID == landing.venueID }) else { return }
-        for index in assignments.indices {
-            assignments[index].playerIDs.removeAll { $0 == row.id }
-        }
-
-        // The landing already names the kid the insertion bar sat above, so there is no index to
-        // translate. That is the point of anchoring on an id: a row number only means something
-        // beside the list it was counted against, and this screen's list is filtered by the
-        // search field, folded to three rows, and about to have the mover taken out of it.
-        //
-        // Taking the mover out of every assignment first (above) is what keeps the arithmetic to
-        // one step: every row below them has already shifted up, so the anchor's index in the
-        // ladder *is* the insertion point.
-        let ladder = assignments[target].playerIDs
-        let roster = camp.players(inGroup: landing.groupID).filter { $0.id != row.id }
-
-        // A nil anchor means the back of the group, which is whoever there holds its highest
-        // rank — and landing behind them is one past their place in the ladder.
-        let isBackOfGroup = landing.anchor == nil
-        let anchor = landing.anchor ?? roster.max { $0.overallRank < $1.overallRank }?.id
-
-        let insertion = anchor
-            .flatMap { ladder.firstIndex(of: $0) }
-            .map { isBackOfGroup ? $0 + 1 : $0 }
-            // An empty group has no place of its own in the ladder yet, and the back of the
-            // venue is the only answer that does not invent one.
-            ?? ladder.count
-        assignments[target].playerIDs.insert(row.id, at: insertion)
-
-        // The group's own order, read back off the ladder that was just built — the two cannot
-        // disagree if only one of them is authored.
-        var members = Set(roster.map(\.id))
-        members.insert(row.id)
-        let courtOrder = assignments[target].playerIDs.filter { members.contains($0) }
+        // The arithmetic itself is in `GroupsLandingPlan`, which is where it can be tested — it
+        // needs neither the store, the environment nor the main actor, and this is the one piece
+        // of section 8 that can put a kid on the wrong court with nothing on screen looking wrong.
+        guard let plan = GroupsLandingPlan(
+            moving: row.id,
+            to: landing,
+            ladder: store.rankAssignments(),
+            roster: camp.players(inGroup: landing.groupID)
+        ) else { return }
 
         Task {
-            await store.commitRankOrder(assignments)
+            await store.commitRankOrder(plan.assignments)
             // `reorder` carries group *and* venue membership, so this is also what moves the kid
             // between cards; `commitRankOrder` only reassigns a group when the venue changed.
-            await store.reorder(group: landing.groupID, playerIDs: courtOrder)
+            await store.reorder(group: landing.groupID, playerIDs: plan.courtOrder)
         }
     }
 }
