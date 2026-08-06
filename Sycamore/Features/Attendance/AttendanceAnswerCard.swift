@@ -41,6 +41,8 @@ struct AttendanceAnswerCard: View {
 
     // MARK: Name
 
+    /// The one name in the unit the design leaves at full `ink`: a card still asking a question
+    /// carries the screen's inherited near-black, and only drops to `inkWarm` once answered.
     private var name: some View {
         HStack(spacing: Spacing.row) {
             Text("\(entry.rank)")
@@ -49,11 +51,11 @@ struct AttendanceAnswerCard: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.name)
-                    .typeStyle(.bodyStrong, color: Theme.ink)
+                    .typeStyle(.onTheDayName, color: Theme.ink)
                     .lineLimit(1)
                 if let courtLabel = entry.courtLabel {
                     Text(courtLabel)
-                        .typeStyle(.rowSubtitle, color: Theme.inkMuted)
+                        .typeStyle(.onTheDaySubtitle, color: Theme.inkMuted)
                         .lineLimit(1)
                 }
             }
@@ -87,7 +89,7 @@ struct AttendanceAnswerCard: View {
                 Image(systemName: systemImage)
                     .font(.system(size: 16, weight: .semibold))
                 Text(title)
-                    .typeStyle(.buttonCompact)
+                    .typeStyle(.onTheDayAnswer)
             }
             .foregroundStyle(isPrimary ? Theme.onAccent : Theme.inkSecondary)
             .padding(.horizontal, Spacing.small)
@@ -96,31 +98,38 @@ struct AttendanceAnswerCard: View {
             // design's 42pt and a hard frame would clip the one word that matters.
             .frame(minHeight: OnTheDayTokens.answerHeight)
             .background(isPrimary ? Theme.accent : Theme.surface, in: shape)
-            .overlay {
-                if !isPrimary {
-                    shape.strokeBorder(Theme.stroke, lineWidth: BorderWidth.hairline)
-                }
-            }
+            // A clear stroke rather than a branch: `Here` and `Away` are the same view with
+            // different colours, and an `if` here would give them separate identities and
+            // rebuild both every time the roll animates.
+            .overlay { shape.strokeBorder(isPrimary ? .clear : Theme.stroke, lineWidth: BorderWidth.hairline) }
             .frame(minHeight: HitTarget.minimum)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        // Two rows both offering "Here" and "Away", so each names its subject. Without this a
+        // swipe down the list reads "here, away, here, away" with nothing to anchor it.
         .accessibilityLabel("Mark \(entry.name) \(title.lowercased())")
     }
 
     // MARK: Leaving early
 
+    /// Always the invitation, never the booking. The design reserves the accent for the way out
+    /// to `8n` and writes what is already booked in amber on the *marked* row — reading a
+    /// pick-up back in green here made a status out of what is a link. VoiceOver still gets it,
+    /// as the control's value.
     private var leavingEarly: some View {
         Button(action: onLeavingEarly) {
             HStack(spacing: 7) {
                 Image(systemName: "clock")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(Theme.accent)
-                Text(entry.pickupLine ?? "Leaving early")
+                    .accessibilityHidden(true)
+                Text("Leaving early")
                     .typeStyle(.metaStrong, color: Theme.accent)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 DisclosureChevron(size: 14)
+                    .accessibilityHidden(true)
             }
             // No padding of its own: the 44pt hit frame already supplies the design's air above
             // and below, and adding both would double it.
@@ -136,7 +145,7 @@ struct AttendanceAnswerCard: View {
 // MARK: - Previews
 
 #Preview("Answer card") {
-    VStack(spacing: Spacing.small) {
+    VStack(spacing: OnTheDayTokens.contentGap) {
         AttendanceAnswerCard(
             entry: AttendanceEntry(
                 id: SampleData.austinZ.id,
@@ -163,5 +172,5 @@ struct AttendanceAnswerCard: View {
     }
     .padding(Spacing.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }

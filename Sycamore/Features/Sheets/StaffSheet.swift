@@ -87,6 +87,8 @@ struct StaffSheet: View {
                 .padding(13)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.accentTint, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+                // The plate is the target, not the two runs of text drawn on it.
+                .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .disabled(phoneURL == nil)

@@ -26,10 +26,13 @@ struct AttendanceMarkedRow: View {
                     .frame(width: OnTheDayTokens.rankColumn, alignment: .trailing)
 
                 VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                    // `.bodyAlt` is the design's 14pt copy style; its 1.5 line height belongs to
-                    // paragraphs and only pads a one-line row, so it is dropped here.
+                    // `#3F4A44`, not `ink` and not `inkSecondary`. An answered name steps down
+                    // from the near-black of the card above, and the step the design takes is
+                    // warm rather than merely lighter — the brand's green showing through the
+                    // type. Rendering it in a neutral grey is the colder reading of the same
+                    // value, and it is the single most repeated text on the screen.
                     Text(entry.name)
-                        .typeStyle(.bodyAlt.weight(.regular).lineHeight(nil), color: Theme.inkSecondary)
+                        .typeStyle(.onTheDayRowName, color: Theme.inkWarm)
                         .lineLimit(1)
 
                     if let pickupLine = entry.pickupLine {
@@ -37,7 +40,7 @@ struct AttendanceMarkedRow: View {
                             Image(systemName: "clock")
                                 .font(.system(size: 12, weight: .regular))
                             Text(pickupLine)
-                                .typeStyle(.rowSubtitleSmall)
+                                .typeStyle(.onTheDayFootnote)
                                 .lineLimit(1)
                         }
                         .foregroundStyle(OnTheDayTokens.warning)
@@ -49,14 +52,20 @@ struct AttendanceMarkedRow: View {
                 answer
             }
             .padding(.horizontal, OnTheDayTokens.cardInset)
-            .padding(.vertical, Spacing.small)
+            .padding(.vertical, OnTheDayTokens.rowInset)
             .frame(minHeight: HitTarget.minimum)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(entry.name)
-        .accessibilityValue(entry.isAway ? "Away" : "Here")
+        // The pick-up rides in the value rather than the label, so VoiceOver reads the kid, then
+        // their answer, then the catch — which is the order the row is drawn in.
+        .accessibilityValue(
+            [entry.isAway ? "Away" : "Here", entry.pickupLine]
+                .compactMap { $0 }
+                .joined(separator: ". ")
+        )
         .accessibilityHint(entry.isAway ? "Marks them here instead" : "Marks them away instead")
     }
 
@@ -71,7 +80,7 @@ struct AttendanceMarkedRow: View {
                 .frame(width: OnTheDayTokens.markDiameter, height: OnTheDayTokens.markDiameter)
                 .overlay {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.onAccent)
                 }
         }
@@ -106,5 +115,5 @@ struct AttendanceMarkedRow: View {
     }
     .padding(Spacing.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }

@@ -139,10 +139,10 @@ private struct SheetField: View {
             .padding(.vertical, verticalPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
-            .overlay(
+            .overlay {
                 RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                     .strokeBorder(Theme.strokeAlt, lineWidth: BorderWidth.input)
-            )
+            }
     }
 
     private var field: some View {
@@ -174,13 +174,13 @@ private struct IconTile: View {
             RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
                 .fill(isSelected ? Theme.accentTint : Theme.surface)
                 .frame(width: 52, height: 52)
-                .overlay(
+                .overlay {
                     RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
                         .strokeBorder(
                             isSelected ? Theme.accent : Theme.strokeAlt,
                             lineWidth: BorderWidth.hairline
                         )
-                )
+                }
                 .overlay { Text(icon).font(.system(size: 23)) }
                 .contentShape(RoundedRectangle(cornerRadius: Radius.input, style: .continuous))
         }
