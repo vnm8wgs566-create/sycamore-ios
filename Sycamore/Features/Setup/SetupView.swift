@@ -24,6 +24,20 @@ struct SetupView: View {
 
     /// The design gives "Invite" no destination, so it hands over the code and says so.
     @State private var inviteCopied = false
+
+    /// Expanding the staff list is decoration — the rows are all still reachable — so it is the
+    /// first thing to go when the reader has asked for less movement.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The design's `padding:14px 22px 18px`, less the 4pt the back disc's 44pt hit frame hangs
+    /// above its 36pt circle.
+    private let headerTop: CGFloat = 10
+    private let headerBottom: CGFloat = 18
+
+    /// The 40pt plate on a venue row. Grows with the reader's type so it keeps its proportion to
+    /// the two lines of copy beside it.
+    @ScaledMetric(relativeTo: .body) private var venueTileSize: CGFloat = 40
+
     /// `8t` collapses the whole staff list into one summary row with a caret. There is no staff
     /// screen to send that caret to and no `PushedScreen` case to reach one, so the row opens
     /// the list in place — which is also what keeps the staff sheet reachable.
@@ -47,7 +61,11 @@ struct SetupView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        // `#F8F9F8` — the same warm page as `8s`, which this arrives on top of.
+        .background(Theme.surfaceWarm)
+        // The copy has no visible confirmation beyond the word "Copied" swapping in, which a
+        // reader looking at the code rather than the header will miss.
+        .sensoryFeedback(.success, trigger: inviteCopied) { _, copied in copied }
     }
 
     // MARK: - Header
@@ -70,18 +88,17 @@ struct SetupView: View {
                 }
 
                 Text("Camp settings")
-                    .typeStyle(.tabTitle, color: Theme.ink)
-                    .padding(.top, Spacing.medium)
+                    .typeStyle(.screenTitle, color: Theme.ink)
+                    // `margin-top:15px`, less the same 4pt of hit-frame overhang.
+                    .padding(.top, Spacing.row)
 
                 Text(subtitle)
-                    .typeStyle(.sheetSubtitle, color: Theme.inkMuted)
+                    .typeStyle(.headerDetail, color: Theme.inkMuted)
                     .padding(.top, Spacing.tight)
             }
             .padding(.horizontal, Spacing.header)
-            // The back disc carries its own 44pt hit frame, which is 4pt taller than the disc;
-            // this is the rest of the design's 14pt above it.
-            .padding(.top, Spacing.small)
-            .padding(.bottom, Spacing.large)
+            .padding(.top, headerTop)
+            .padding(.bottom, headerBottom)
         }
         .background(Theme.surface)
         .overlay(alignment: .bottom) { Hairline(color: Theme.hairline) }
@@ -93,19 +110,15 @@ struct SetupView: View {
         return "\(camp.name) · \(camp.summaryLine)"
     }
 
-    /// The shield pill in the corner. `Badge` carries no glyph, and the shield is what makes
-    /// this read as a permission rather than a job title, so it is drawn from the same tokens.
+    /// The shield pill in the corner — the same capsule as `8s`'s role pill, with the glyph that
+    /// makes it read as a permission rather than a job title.
     private var adminBadge: some View {
-        HStack(spacing: Spacing.tight) {
-            Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 13, weight: .regular))
-            Text("Admin")
-                .typeStyle(.badge.tracking(em: 0.09))
-        }
-        .foregroundStyle(Theme.accentDark)
-        .padding(.horizontal, Spacing.row)
-        .padding(.vertical, Spacing.tight)
-        .background(Theme.accentTint, in: Capsule(style: .continuous))
+        AccentPill(
+            "Admin",
+            systemImage: "checkmark.shield.fill",
+            horizontalPadding: Spacing.row,
+            verticalPadding: Spacing.tight
+        )
     }
 
     // MARK: - Not an admin
@@ -128,17 +141,17 @@ struct SetupView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 venuesSection(camp)
-                    .padding(.bottom, Spacing.large)
+                    .padding(.bottom, Spacing.cardStack)
 
                 staffSection(camp)
-                    .padding(.bottom, Spacing.large)
+                    .padding(.bottom, Spacing.cardStack)
 
                 seasonSection(camp)
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.large)
             // No `tabBarClearance`: this is a sheet, and it draws no tab bar.
-            .padding(.bottom, Spacing.hero)
+            .padding(.bottom, Spacing.sheetFoot)
         }
     }
 
@@ -152,7 +165,7 @@ struct SetupView: View {
                 Task { await store.addVenue() }
             }
 
-            Card {
+            Card(radius: Radius.settingsCard) {
                 ForEach(camp.orderedVenues) { venue in
                     venueRow(venue, in: camp)
                 }
@@ -181,28 +194,35 @@ struct SetupView: View {
                 store.present(.venue(venue.id))
             } label: {
                 HStack(spacing: Spacing.row) {
+                    // The venue's own tint, with the design's generic pin on it. `8t` lists
+                    // several venues at once, so the plate is what tells them apart.
                     RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                         .fill(Theme.color(for: venue.tint))
-                        .frame(width: 40, height: 40)
-                        .overlay { Text(venue.icon).font(.system(size: 19)) }
+                        .frame(width: venueTileSize, height: venueTileSize)
+                        .overlay {
+                            Image(systemName: "mappin")
+                                .font(.system(size: 17, weight: .regular))
+                                .foregroundStyle(Theme.inkSecondary)
+                        }
+                        .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                        HStack(spacing: 7) {
+                        HStack(spacing: Spacing.nameBadge) {
                             Text(venue.name)
-                                .typeStyle(.bodyStrong, color: Theme.ink)
+                                .typeStyle(.cardTitleSm, color: Theme.ink)
                                 .lineLimit(1)
-                            // Only when it needs someone: `8t` badges the short venue and leaves
+                            // Only when it needs someone: `8t` flags the short venue and leaves
                             // the healthy one clean.
-                            if let status = camp.staffingStatus(for: venue.id), status.needsAttention {
-                                // The stepper on the right is 126pt of the row, so this line is
-                                // narrow. The badge holds its width and the name gives way —
-                                // a truncated "2 coaches shor…" would say nothing.
-                                Badge(status.badgeText, tone: .accent)
+                            if let flag = camp.staffingStatus(for: venue.id)?.flagText {
+                                // The stepper on the right is most of this row, so the line is
+                                // narrow. The flag holds its width and the name gives way —
+                                // a truncated "2 shor…" would say nothing.
+                                StaffingFlag(flag)
                                     .fixedSize()
                             }
                         }
                         Text(headcount(for: venue, in: camp))
-                            .typeStyle(.meta, color: Theme.inkMuted)
+                            .typeStyle(.detailSm, color: Theme.inkMuted)
                             .lineLimit(1)
                     }
 
@@ -213,11 +233,17 @@ struct SetupView: View {
             .buttonStyle(.plain)
 
             VenueCourtStepper(venue: venue) { courts in
-                var updated = venue
-                updated.groupCount = courts
-                Task { await store.updateVenue(updated) }
+                setCourts(courts, for: venue)
             }
         }
+    }
+
+    /// A court count is a write to the whole camp, so it goes back through the store rather than
+    /// being mutated in place.
+    private func setCourts(_ courts: Int, for venue: Venue) {
+        var updated = venue
+        updated.groupCount = courts
+        Task { await store.updateVenue(updated) }
     }
 
     /// `50 kids · 6 coaches`. The court count moved to the stepper, so unlike `Camp.rowSummary`
@@ -236,7 +262,7 @@ struct SetupView: View {
                 copyInviteCode(camp)
             }
 
-            Card {
+            Card(radius: Radius.settingsCard) {
                 staffSummaryRow(camp)
 
                 if isShowingStaff {
@@ -251,6 +277,11 @@ struct SetupView: View {
                     subtitle: "Anyone with it joins as a worker",
                     accessory: .code(camp.inviteCode)
                 )
+                // Spelt out, so VoiceOver reads "S Y C 4 8 2 1" rather than trying the whole
+                // thing as a word. A code is only useful character by character.
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Invite code, \(spelled(camp.inviteCode))")
+                .accessibilityHint("Anyone with it joins as a worker")
 
                 // Drawn, but inert, the same way `8f`'s "Add the first block" is: rolling a code
                 // is a write to the camp, and the repository has no camp write to make it with.
@@ -260,24 +291,29 @@ struct SetupView: View {
                     "Roll a new code",
                     accessory: .glyph("arrow.triangle.2.circlepath")
                 )
+                .accessibilityElement(children: .combine)
             }
         }
+    }
+
+    /// `SYC-4821` -> `S Y C - 4 8 2 1`. Spacing the characters is what makes a speech synthesiser
+    /// read them out rather than attempt them as a word.
+    private func spelled(_ code: String) -> String {
+        code.map(String.init).joined(separator: " ")
     }
 
     /// The three faces, the count, and what the count is made of. Tapping opens the list under
     /// it rather than pushing a screen that does not exist yet.
     private func staffSummaryRow(_ camp: Camp) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) { isShowingStaff.toggle() }
-        } label: {
+        Button(action: toggleStaffList) {
             CardRow(spacing: Spacing.row) {
                 StaffAvatarStack(members: Array(camp.staff.prefix(3)))
 
                 VStack(alignment: .leading, spacing: Spacing.hairGap) {
                     Text("\(camp.staffCount) staff")
-                        .typeStyle(.bodyStrong, color: Theme.ink)
+                        .typeStyle(.cardTitleSm, color: Theme.ink)
                     Text(staffBreakdown(camp))
-                        .typeStyle(.meta, color: Theme.inkMuted)
+                        .typeStyle(.detailSm, color: Theme.inkMuted)
                 }
 
                 Spacer(minLength: Spacing.small)
@@ -289,8 +325,18 @@ struct SetupView: View {
             .frame(minHeight: HitTarget.minimum)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(camp.staffCount) staff")
+        .accessibilityLabel("\(camp.staffCount) staff, \(staffBreakdown(camp))")
         .accessibilityHint(isShowingStaff ? "Hides the list" : "Shows the list")
+        // The caret flips to say the list is open. `AccessibilityTraits` has no expansion trait,
+        // so the state rides in the value instead — otherwise the row sounds identical either way.
+        .accessibilityValue(isShowingStaff ? "Expanded" : "Collapsed")
+    }
+
+    /// The rows arrive either way; only the sliding is optional.
+    private func toggleStaffList() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            isShowingStaff.toggle()
+        }
     }
 
     /// `2 admins · 4 unassigned`
@@ -385,18 +431,20 @@ struct SetupView: View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader("Season")
 
-            Card {
+            Card(radius: Radius.settingsCard) {
                 // Both rows are drawn and inert for the same reason as "Roll a new code":
                 // renaming a camp and archiving one are camp writes, and the repository has
                 // neither. The design closes both with a caret; neither has anywhere to send it,
                 // so neither keeps it.
                 SettingsRow("Camp name & sport", accessory: .value(camp.sport.displayName))
+                    .accessibilityElement(children: .combine)
 
                 SettingsRow(
                     "Archive this camp",
                     accessory: .plain,
                     titleColor: Theme.danger
                 )
+                .accessibilityElement(children: .combine)
             }
         }
     }

@@ -58,6 +58,25 @@ struct ProfileView: View {
     @State private var pickedPhoto: PhotosPickerItem?
     #endif
 
+    /// `height:46px` on the two footer buttons. Scaled rather than pinned: at `.accessibility1`
+    /// a 14pt label in a 46pt box is already close, and a reader who has asked for larger type
+    /// gets a taller button rather than a clipped one.
+    @ScaledMetric(relativeTo: .body) private var footerButtonHeight: CGFloat = 46
+
+    /// The design's 64pt photo well. It holds text — two initials — so it grows with the reader's
+    /// type rather than clipping them.
+    @ScaledMetric(relativeTo: .title2) private var avatarDiameter: CGFloat = 64
+
+    /// The 42pt plate on the "On today" card, which holds a glyph rather than text but sits on
+    /// the same line as two rows of copy; pinning it makes the card lopsided at large sizes.
+    @ScaledMetric(relativeTo: .body) private var todayTileSize: CGFloat = 42
+
+    /// The design's `padding:10px 22px 20px` on the white plate, less the 5pt the close disc's
+    /// 44pt hit frame already hangs above its 34pt circle. Measuring to the disc rather than to
+    /// the frame is what keeps the drawn result identical to the design.
+    private let headerTop: CGFloat = 5
+    private let headerBottom: CGFloat = 20
+
     init(store: AppStore) {
         self.store = store
         self._notificationsEnabled = State(initialValue: store.account?.notificationsEnabled ?? true)
@@ -71,7 +90,9 @@ struct ProfileView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        // `#F8F9F8`. Section 8's page is a shade warmer than `grouped`, which is the blue-grey
+        // the stage-1 screens sit on.
+        .background(Theme.surfaceWarm)
         .onChange(of: notificationsEnabled) { _, enabled in
             guard enabled != store.account?.notificationsEnabled else { return }
             Task { await store.setNotificationsEnabled(enabled) }
@@ -130,37 +151,33 @@ struct ProfileView: View {
                     avatarField
 
                     VStack(alignment: .leading, spacing: Spacing.tight) {
-                        Text(store.account?.displayName ?? "")
-                            .typeStyle(.profileName, color: Theme.ink)
+                        Text(displayName)
+                            .typeStyle(.personName, color: Theme.ink)
+                            .lineLimit(2)
 
-                        HStack(spacing: Spacing.tight) {
+                        HStack(spacing: Spacing.nameBadge) {
+                            // A capsule, not a `Badge` — the design draws this at radius 99 in
+                            // `600 10`, where `Badge` is a radius-5 chip in `700 9.5`.
                             if let role = store.role {
-                                // `+.09em` — the design tracks this badge one step wider than
-                                // the venue badges the style's default is set for.
-                                Badge(
-                                    role.displayName,
-                                    tone: .accent,
-                                    trackingEm: 0.09,
-                                    horizontalPadding: 10,
-                                    verticalPadding: 5
-                                )
+                                AccentPill(role.displayName)
                             }
                             if !campName.isEmpty {
                                 Text("at \(campName)")
-                                    .typeStyle(.rowSubtitle, color: Theme.inkMuted)
+                                    .typeStyle(.detail, color: Theme.inkMuted)
                                     .lineLimit(1)
                             }
                         }
                     }
+                    // The name and what qualifies it are one thought. Scoped to this stack rather
+                    // than to the row: combining the row would swallow the photo picker beside it.
+                    .accessibilityElement(children: .combine)
 
                     Spacer(minLength: 0)
                 }
             }
             .padding(.horizontal, Spacing.header)
-            // The close disc carries its own 44pt hit frame, which is 5pt taller than the disc;
-            // this is the rest of the design's 14pt above it.
-            .padding(.top, Spacing.small)
-            .padding(.bottom, Spacing.large)
+            .padding(.top, headerTop)
+            .padding(.bottom, headerBottom)
         }
         .background(Theme.surface)
         .overlay(alignment: .bottom) { Hairline(color: Theme.hairline) }
@@ -168,6 +185,22 @@ struct ProfileView: View {
 
     private var campName: String {
         store.camp?.name ?? store.selectedMembership?.campName ?? ""
+    }
+
+    /// The account is real — you cannot reach this screen without one — but the row behind it in
+    /// `profiles` may not have been written yet, in which case `displayName` is the empty string.
+    /// An empty headline draws as a gap the size of a missing name, which reads as a rendering
+    /// fault; this says which of the two it is.
+    private var displayName: String {
+        let name = store.account?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "No name yet" : name
+    }
+
+    /// Same reasoning as `displayName`. The row is a value with no caret, so an empty one would
+    /// be a title against blank space rather than a line saying nothing is stored.
+    private var emailValue: String {
+        let email = store.account?.email.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return email.isEmpty ? "Not set" : email
     }
 
     // MARK: Photo well
@@ -180,7 +213,11 @@ struct ProfileView: View {
         // `AvatarWell` is built here, on the main actor, and captured as a value. PhotosPicker's
         // label closure is `@Sendable`, so it may not reach back into this view's main-actor
         // state — an inline `avatarWell` computed property fails to compile under Swift 6.
-        let well = AvatarWell(initials: store.account?.initials ?? "", image: storedAvatar)
+        let well = AvatarWell(
+            initials: store.account?.initials ?? "",
+            image: storedAvatar,
+            diameter: avatarDiameter
+        )
 
         #if os(iOS)
         // No `photoLibrary:` — the out-of-process picker needs no photo-library permission,
@@ -228,22 +265,22 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader("On today")
             onTodayCard
-                .padding(.bottom, Spacing.large)
+                .padding(.bottom, Spacing.cardStack)
 
             SectionHeader("You")
             youCard
-                .padding(.bottom, Spacing.large)
+                .padding(.bottom, Spacing.cardStack)
 
             SectionHeader("Camps")
             campsCard
-                .padding(.bottom, Spacing.large)
+                .padding(.bottom, Spacing.cardStack)
 
             footer
         }
         .padding(.horizontal, Spacing.gutter)
         .padding(.top, Spacing.large)
         // No `tabBarClearance`: this is a sheet, and it draws no tab bar.
-        .padding(.bottom, Spacing.hero)
+        .padding(.bottom, Spacing.sheetFoot)
     }
 
     // MARK: On today
@@ -251,29 +288,42 @@ struct ProfileView: View {
     /// Where you are standing, and nothing you can do about it from here — the design closes
     /// this card with no caret, so it is a statement rather than a control.
     private var onTodayCard: some View {
-        Card(borderColor: Theme.accentBorder, isDivided: false) {
+        Card(radius: Radius.settingsCard, borderColor: Theme.accentBorder, isDivided: false) {
             CardRow(spacing: Spacing.medium, horizontalPadding: Spacing.gutterWide, verticalPadding: Spacing.gutterWide) {
                 if let assignment = store.todayAssignment {
+                    // A pin on a green plate, not the venue's emoji on the venue's tint. `8t`
+                    // tints its tiles per venue because it lists several and the colour tells
+                    // them apart; here there is one, and the line beside it already names it.
                     RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                        // The venue's own tint token, not a guess from its emoji.
-                        .fill(Theme.color(for: assignment.venueTint))
-                        .frame(width: 42, height: 42)
-                        .overlay { Text(assignment.venueIcon).font(.system(size: 20)) }
+                        .fill(Theme.accentSurface)
+                        .frame(width: todayTileSize, height: todayTileSize)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                                .strokeBorder(Theme.accentSurfaceBorder, lineWidth: BorderWidth.hairline)
+                        }
+                        .overlay {
+                            Image(systemName: "mappin")
+                                .font(.system(size: 17, weight: .regular))
+                                .foregroundStyle(Theme.inkSecondary)
+                        }
+                        .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
                         Text(assignment.pathLabel)
-                            .typeStyle(.bodyStrong, color: Theme.ink)
+                            .typeStyle(.cardTitle, color: Theme.ink)
                         Text(assignment.summaryLine)
-                            .typeStyle(.rowSubtitle, color: Theme.inkMuted)
+                            .typeStyle(.detail, color: Theme.inkMuted)
                     }
                 } else {
                     Text("No court today")
-                        .typeStyle(.bodyStrong, color: Theme.inkMuted)
+                        .typeStyle(.cardTitle, color: Theme.inkMuted)
                 }
 
                 Spacer(minLength: 0)
             }
         }
+        // A statement, not a control: read it as one sentence.
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: You
@@ -281,10 +331,11 @@ struct ProfileView: View {
     /// One thing you are told, one you can change, one you can switch, and one that is somebody
     /// else's to grant. The endings say which is which: a value, a caret, a switch, a lock.
     private var youCard: some View {
-        Card {
+        Card(radius: Radius.settingsCard) {
             // No caret, because there is nothing behind it. An address is the account's identity
             // and changing it is a re-verification, not an inline edit.
-            SettingsRow("Email", accessory: .value(store.account?.email ?? "—"))
+            SettingsRow("Email", accessory: .value(emailValue))
+                .accessibilityElement(children: .combine)
 
             SwiftUI.Group {
                 if isEditingPhone {
@@ -305,6 +356,8 @@ struct ProfileView: View {
                 }
             }
 
+            // Left uncombined on purpose: the switch is the only control in the row, and merging
+            // it into its own label would take away the thing VoiceOver has to flip.
             SettingsRow("Notifications", accessory: .toggle($notificationsEnabled))
 
             // A role is granted by the camp, never taken — so this row ends in a lock.
@@ -313,7 +366,17 @@ struct ProfileView: View {
                 subtitle: "Only an admin can change this",
                 accessory: .lock
             )
+            // The lock is a bare glyph and says nothing aloud, so the state is spoken instead —
+            // otherwise this reads exactly like the rows above it, which *can* be changed.
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(roleValue)
         }
+    }
+
+    /// What the locked row is worth saying: the role it is holding, and that it is holding it.
+    private var roleValue: String {
+        guard let role = store.role else { return "Locked" }
+        return "\(role.displayName), locked"
     }
 
     private func commitPhone() {
@@ -327,7 +390,7 @@ struct ProfileView: View {
     // MARK: Camps
 
     private var campsCard: some View {
-        Card {
+        Card(radius: Radius.settingsCard) {
             SettingsRow(
                 "Manage & switch camps",
                 icon: "arrow.left.arrow.right",
@@ -344,6 +407,11 @@ struct ProfileView: View {
                 accessory: store.isAdmin ? .chevron : .lock,
                 action: store.isAdmin ? { store.pushedScreen = .campSettings } : nil
             )
+            // Same as "Your role here" — but only when the row is locked. With a role that can
+            // open it the row is a `Button`, which SwiftUI already merges into one element;
+            // combining it a second time would take the activation with it.
+            .accessibilityElement(children: store.isAdmin ? .contain : .combine)
+            .accessibilityValue(store.isAdmin ? "" : "Locked")
         }
     }
 
@@ -375,25 +443,28 @@ struct ProfileView: View {
         store.pushedScreen = nil
     }
 
+    private func signOut() {
+        closeBeforeSigningOut()
+        Task { await store.signOut() }
+    }
+
     private var footer: some View {
-        HStack(spacing: Spacing.small) {
+        HStack(spacing: Spacing.buttonPair) {
             PrimaryButton(
                 "Sign out",
                 tone: .outline,
-                height: nil,
+                height: footerButtonHeight,
                 radius: Radius.row,
-                font: .buttonCompact
-            ) {
-                closeBeforeSigningOut()
-                Task { await store.signOut() }
-            }
+                font: .footerButton,
+                action: signOut
+            )
 
             PrimaryButton(
                 "Delete account",
                 tone: .danger,
-                height: nil,
+                height: footerButtonHeight,
                 radius: Radius.row,
-                font: .buttonCompact
+                font: .footerButton
             ) {
                 isConfirmingDelete = true
             }
@@ -411,8 +482,9 @@ struct ProfileView: View {
 private struct AvatarWell: View {
     let initials: String
     let image: Image?
-
-    private let diameter: CGFloat = 64
+    /// Passed in already scaled — `@ScaledMetric` has to live on the view that owns the layout,
+    /// and this one is built as a value inside `PhotosPicker`'s `@Sendable` label closure.
+    var diameter: CGFloat = 64
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -424,7 +496,7 @@ private struct AvatarWell: View {
                         .frame(width: diameter, height: diameter)
                         .clipShape(Circle())
                 } else {
-                    InitialsAvatar(initials, size: diameter)
+                    InitialsAvatar(initials, size: diameter, font: .wellInitials)
                 }
             }
 
