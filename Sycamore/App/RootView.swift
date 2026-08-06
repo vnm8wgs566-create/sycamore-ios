@@ -41,10 +41,22 @@ struct RootView: View {
             VerifyView()
 
         case .signedIn:
-            // `CampPickerView` owns its own `NavigationStack` and pushes `CreateCampView`,
-            // so it is presented bare rather than wrapped in a stack of ours.
             if store.camp == nil {
+                // `CampPickerView` owns its own `NavigationStack` and pushes `CreateCampView`,
+                // so it is presented bare rather than wrapped in a stack of ours.
+                //
+                // The seeds go *over* it, never in place of it. `CampPickerView` owns
+                // `.task { loadMemberships() }`, so swapping it out for the loading view
+                // unmounts the view whose task is doing the loading — the task is cancelled,
+                // `isWorking` never clears, and the app sits on the seed screen for ever.
+                // Overlaying keeps it mounted and the load runs to completion.
                 CampPickerView()
+                    .overlay {
+                        if store.isWorking {
+                            SeedLoadingView(label: "Loading your camp")
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: store.isWorking)
             } else {
                 MainTabView(store: store)
             }
@@ -87,6 +99,13 @@ struct MainTabView: View {
                 .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
                 .storeWorkingIndicator(store.isWorking)
         }
+        .sheet(item: $store.pushedScreen) { screen in
+            // Same reasoning as the sheet above — a cover hides the banner underneath it.
+            pushedView(for: screen)
+                .environment(store)
+                .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
+                .storeWorkingIndicator(store.isWorking)
+        }
     }
 
     // MARK: The selected tab
@@ -94,15 +113,38 @@ struct MainTabView: View {
     @ViewBuilder
     private var tab: some View {
         switch store.selectedTab {
+        case .overview:
+            OverviewView()
+        case .schedule:
+            ScheduleView()
         case .groups:
             GroupsView()
+        case .inbox:
+            InboxView()
+        }
+    }
+
+    // MARK: Pushed screens
+
+    /// `8s`, `8t`, `8u` — and Rank until Groups absorbs it.
+    ///
+    /// Sheets, for two reasons. A `NavigationStack` push is wrong: this app's tab bar is an
+    /// overlay in this view rather than a `TabView`'s own chrome, so a push slides underneath
+    /// it and leaves the pill floating over Profile.
+    ///
+    /// A `fullScreenCover` is worse. All four of these were tabs, and a tab needs no way out of
+    /// itself — not one of them draws a back control, so as a cover each is a screen you cannot
+    /// leave. A sheet is swipe-dismissible for free, draws no tab bar either, and is already
+    /// how this app presents every other secondary screen.
+    @ViewBuilder
+    private func pushedView(for screen: PushedScreen) -> some View {
+        switch screen {
+        case .profile:
+            ProfileView(store: store)
+        case .campSettings:
+            SetupView(store: store)
         case .rank:
             RankView(store: store)
-        case .setup:
-            SetupView(store: store)
-        case .profile:
-            // The design labels this tab "You"; `AppTab.title` does that translation.
-            ProfileView(store: store)
         }
     }
 
@@ -151,9 +193,19 @@ struct MainTabView: View {
         .frame(width: 402, height: 874)
 }
 
-#Preview("Tabs — Setup") {
+#Preview("Tabs — Schedule") {
     let store = AppStore.preview
-    store.selectedTab = .setup
+    store.selectedTab = .schedule
+
+    return MainTabView(store: store)
+        .environment(store)
+        .showsMockStatusBar()
+        .frame(width: 402, height: 874)
+}
+
+#Preview("Pushed — Camp settings") {
+    let store = AppStore.preview
+    store.pushedScreen = .campSettings
 
     return MainTabView(store: store)
         .environment(store)

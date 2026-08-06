@@ -3,7 +3,7 @@
 //  Sycamore
 //
 //  Every type style in the design, and the one place that decides whether we draw them in
-//  Manrope or in the system font.
+//  Instrument Sans or in the system font.
 //
 //  The design authors letter-spacing in `em`, so `TypeStyle` stores it that way and converts
 //  to points on demand — that keeps the numbers here identical to the CSS they came from.
@@ -14,8 +14,18 @@ import SwiftUI
 
 // MARK: - Weight
 
-/// Manrope ships 400–800. The raw value is the CSS weight so the styles below read like the
-/// design's `font:` shorthand.
+/// The raw value is the CSS weight so the styles below read like the design's `font:` shorthand.
+///
+/// Instrument Sans' weight axis runs 400–700, and the design asks Google Fonts for exactly
+/// `wght@400..700`. `extraBold` therefore has no face of its own and resolves to the 700 one.
+/// That is a correction rather than a compromise: 800 is left over from when this app was set
+/// in Manrope, and the design document does not use it anywhere — its weights are 400 (360
+/// uses), 500 (91), 600 (419) and 700 (38).
+///
+/// The case is kept rather than folded into `bold` so the seventeen heading styles that name it
+/// keep reading as "the heaviest weight there is", and so a family that does ship 800 would
+/// light up by editing this one file. Both the bundled-face path and the system fallback map it
+/// to bold, so the two never disagree about how heavy a heading is.
 enum TypeWeight: Int, CaseIterable, Sendable {
     case regular = 400
     case medium = 500
@@ -28,40 +38,47 @@ enum TypeWeight: Int, CaseIterable, Sendable {
         case .regular: .regular
         case .medium: .medium
         case .semibold: .semibold
-        case .bold: .bold
-        case .extraBold: .heavy
+        // Not `.heavy`: the bundled face tops out at 700, and a fallback heavier than the real
+        // font would make the missing-font state look *bolder* than the shipped one.
+        case .bold, .extraBold: .bold
         }
     }
 
-    /// PostScript name of the matching static Manrope face.
-    var manropeFaceName: String {
+    /// PostScript name of the matching Instrument Sans instance.
+    ///
+    /// The `_`-suffixed spelling is not a typo. Core Text exposes a variable font's named
+    /// instances as separate descriptors, but Instrument Sans' `fvar` table carries no
+    /// PostScript name IDs for them, so Core Text synthesises the names as
+    /// `<default PostScript name>_<subfamily>`. Verified by enumerating the file with
+    /// `CTFontManagerCreateFontDescriptorsFromURL` rather than assumed — Manrope, which *does*
+    /// carry those IDs, comes back with clean `Manrope-Bold`-style names instead, and guessing
+    /// that pattern here would have silently dropped every weight to the system font.
+    var faceName: String {
         switch self {
-        case .regular: "Manrope-Regular"
-        case .medium: "Manrope-Medium"
-        case .semibold: "Manrope-SemiBold"
-        case .bold: "Manrope-Bold"
-        case .extraBold: "Manrope-ExtraBold"
+        case .regular: "InstrumentSans-Regular"
+        case .medium: "InstrumentSans-Regular_Medium"
+        case .semibold: "InstrumentSans-Regular_SemiBold"
+        case .bold, .extraBold: "InstrumentSans-Regular_Bold"
         }
     }
 }
 
 // MARK: - Font family resolution
 
-/// The single decision point for Manrope-versus-system. Resolved once, on first use.
+/// The single decision point for Instrument Sans-versus-system. Resolved once, on first use.
 enum FontFamily {
 
-    /// Manrope faces that actually registered, keyed by CSS weight. Empty when the TTFs are not
-    /// bundled (or when only the variable font is, whose PostScript name is `Manrope-Regular`
-    /// alone) — in which case every style falls back to the system font at the same weight.
-    static let availableManropeFaces: [Int: String] = {
+    /// Faces that actually registered, keyed by CSS weight. Empty when the TTF is not bundled —
+    /// in which case every style falls back to the system font at the same weight.
+    static let availableFaces: [Int: String] = {
         var faces: [Int: String] = [:]
-        for weight in TypeWeight.allCases where faceIsRegistered(weight.manropeFaceName) {
-            faces[weight.rawValue] = weight.manropeFaceName
+        for weight in TypeWeight.allCases where faceIsRegistered(weight.faceName) {
+            faces[weight.rawValue] = weight.faceName
         }
         return faces
     }()
 
-    static var usesManrope: Bool { !availableManropeFaces.isEmpty }
+    static var usesInstrumentSans: Bool { !availableFaces.isEmpty }
 
     /// `CTFontCreateWithName` never fails — it substitutes. So ask for the face and check that
     /// what came back is actually the face we asked for.
@@ -319,11 +336,11 @@ extension TypeStyle {
 
 extension Font {
 
-    /// The design's font for a style — Manrope when it is bundled, otherwise the system face at
-    /// the matching weight.
+    /// The design's font for a style — Instrument Sans when it is bundled, otherwise the system
+    /// face at the matching weight.
     ///
     /// `size` is passed in already scaled for Dynamic Type by `TypeStyleModifier`, so every
-    /// face here is built at a literal point size. Scaling in one place keeps the Manrope and
+    /// face here is built at a literal point size. Scaling in one place keeps the bundled and
     /// system paths growing at the same rate; letting each build its own relative font made
     /// them diverge as soon as one weight failed to register.
     static func sycamore(_ style: TypeStyle, size: CGFloat? = nil) -> Font {
@@ -335,7 +352,7 @@ extension Font {
         if monospaced {
             return .system(size: size, weight: weight.fontWeight, design: .monospaced)
         }
-        if let face = FontFamily.availableManropeFaces[weight.rawValue] {
+        if let face = FontFamily.availableFaces[weight.rawValue] {
             return .custom(face, fixedSize: size)
         }
         return .system(size: size, weight: weight.fontWeight)
@@ -347,7 +364,7 @@ extension Font {
         if style.isMonospaced {
             return .system(style.textStyle, design: .monospaced).weight(style.weight.fontWeight)
         }
-        if let face = FontFamily.availableManropeFaces[style.weight.rawValue] {
+        if let face = FontFamily.availableFaces[style.weight.rawValue] {
             return .custom(face, size: style.size, relativeTo: textStyle)
         }
         return .system(textStyle).weight(style.weight.fontWeight)
@@ -435,7 +452,7 @@ extension Text {
 
     return ScrollView {
         VStack(alignment: .leading, spacing: 18) {
-            Text(FontFamily.usesManrope ? "Manrope is registered" : "System-font fallback")
+            Text(FontFamily.usesInstrumentSans ? "Instrument Sans is registered" : "System-font fallback")
                 .typeStyle(.overline, color: Theme.inkMuted)
 
             ForEach(rows, id: \.0) { name, style in

@@ -30,17 +30,12 @@ struct SignInView: View {
 
     private var mark: some View {
         VStack(alignment: .leading, spacing: 0) {
-            RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous)
-                .fill(Theme.markTile)
-                .frame(width: 56, height: 56)
-                .overlay {
-                    // The design's glyph is Phosphor's `tennis-ball` — a ball, not a player.
-                    // `figure.tennis` was the wrong call: it reads as a figure mid-swing at
-                    // 29pt and loses the mark's simplicity.
-                    Image(systemName: "tennisball.fill")
-                        .font(.system(size: 29, weight: .medium))
-                        .foregroundStyle(Theme.lime)
-                }
+            // The samara from `Sycamore Logo v2.dc.html`, replacing the tennis ball. A ball
+            // said "tennis"; the camp runs swim and soccer too, and a seed that travels and
+            // takes root says what the product is for rather than which sport it started in.
+            // The design's 3e — two seeds, the large one and a smaller turned one, the way a
+            // sycamore drops them in pairs. Takes the mark's default variant.
+            SycamoreAppMark(size: 56)
                 .padding(.bottom, Spacing.hero)
 
             Text("Sycamore")

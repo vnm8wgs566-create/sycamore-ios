@@ -54,6 +54,19 @@ enum Weekday: Int, Codable, Hashable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Written out, for prose rather than a chip — Schedule's empty state says
+    /// "Friday is empty." Spelled here rather than at the call site so the two spellings of a
+    /// day can never drift apart.
+    var fullName: String {
+        switch self {
+        case .mon: "Monday"
+        case .tue: "Tuesday"
+        case .wed: "Wednesday"
+        case .thu: "Thursday"
+        case .fri: "Friday"
+        }
+    }
+
     /// The app has no clock of its own yet — the offline build is always "Wednesday",
     /// which is the day the design's screens depict. Swap this for a real calendar
     /// lookup when the backend lands.
@@ -82,6 +95,17 @@ struct TimeOfDay: Codable, Hashable, Comparable, Identifiable, Sendable {
     }
 
     static func < (lhs: TimeOfDay, rhs: TimeOfDay) -> Bool { lhs.id < rhs.id }
+
+    /// The wall clock, as the camp's own time-of-day.
+    ///
+    /// Here rather than in whichever screen wanted it first: two things now need to know which
+    /// block is running, and a clock the model cannot read is a rule the model cannot own.
+    /// `Weekday.today` is still a stub returning Wednesday — this is not, so the two disagree
+    /// until that one is given a real calendar.
+    static func now(_ date: Date = .now, calendar: Calendar = .current) -> TimeOfDay {
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return TimeOfDay(parts.hour ?? 0, parts.minute ?? 0)
+    }
 
     /// 12:00 → 15:30 in half-hour steps, exactly the eight pills in the design.
     static let pickupOptions: [TimeOfDay] = stride(from: 12 * 60, through: 15 * 60 + 30, by: 30)

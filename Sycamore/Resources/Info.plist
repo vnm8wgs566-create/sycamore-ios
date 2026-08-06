@@ -60,7 +60,7 @@
 	-->
 	<key>UIAppFonts</key>
 	<array>
-		<string>Manrope[wght].ttf</string>
+		<string>InstrumentSans[wdth,wght].ttf</string>
 	</array>
 </dict>
 </plist>

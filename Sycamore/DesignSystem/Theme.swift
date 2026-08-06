@@ -105,20 +105,44 @@ enum Theme {
     static let chevron = Color(light: "C7CBD2", dark: "4B4F57")
 
     // MARK: Accent
+    //
+    // Green, from `Sycamore 3a System.dc.html` — `#1A7F55` is the single most-used colour in
+    // that document after the ink ramp. It replaces the blue this app shipped with.
+    //
+    // The blue was never the design's; it was a stand-in from before the samara existed, and it
+    // put two unrelated hues on every screen — a green mark beside a blue CTA. One green family
+    // means the button, the selected tab and the logo are finally the same brand.
+    //
+    // It is also a shade darker than the blue against white: white-on-`1A7F55` measures 5.0:1,
+    // where white-on-`1568F0` was 4.0:1. The old pair only cleared AA because button copy is
+    // 16.5pt bold and counts as large text; this one clears it outright.
+    //
+    // Deliberately *not* `markGreen` (`14603C`). The mark is darker and desaturated so it reads
+    // as a printed logo; an accent at that value looks muddy on a fill. Sibling hues, not one.
 
-    /// Primary blue — CTAs, selection, links.
-    static let accent = Color(light: "1568F0", dark: "4C93FF")
-    /// Pressed links, text on blue tint.
-    static let accentDark = Color(light: "0F4FC0", dark: "7FB0FF")
-    /// Blue-tinted fills, info banners.
-    static let accentTint = Color(light: "EDF3FE", dark: "16243A")
-    /// Dashed / solid blue borders.
-    static let accentBorder = Color(light: "C9DDFB", dark: "27425F")
+    /// Primary green — CTAs, selection, links.
+    static let accent = Color(light: "1A7F55", dark: "4FB585")
+    /// Pressed links, text on green tint.
+    static let accentDark = Color(light: "14684A", dark: "7FD0A8")
+    /// Green-tinted fills, info banners.
+    static let accentTint = Color(light: "EDF6F1", dark: "162A20")
+    /// Dashed / solid green borders.
+    static let accentBorder = Color(light: "C3DFCF", dark: "27503C")
     /// App-mark glyph only.
     static let lime = Color(light: "CBFF3C", dark: "CBFF3C")
-    /// The tile the app mark sits on. Fixed, unlike `ink`: a logo that flips from black to
-    /// white with the scheme is a different logo, and the lime ball is drawn to sit on dark.
-    static let markTile = Color(hex: "0B0B0C")
+
+    // MARK: App mark
+    //
+    // From `Sycamore Logo v2.dc.html`. The mark is a sycamore samara — the winged seed that
+    // spins as it falls — drawn as a filled wing over a seed head. All three fixed: a logo
+    // that changes colour with the scheme is a different logo.
+
+    /// The seed head and the wing's leading half.
+    static let markGreen = Color(hex: "14603C")
+    /// The wing's trailing half, a shade up so the two halves read apart at 24pt.
+    static let markGreenLight = Color(hex: "3F7D53")
+    /// The tile the mark sits on.
+    static let markTile = Color(hex: "F7F5EF")
     /// Label on a filled `accent` button. Fixed white rather than `surface`, which inverts to
     /// near-black in the dark and put dark text on a blue fill. Button copy is 16.5pt bold —
     /// large text — so white over either accent clears the 3:1 the guidelines ask for there.
@@ -130,6 +154,29 @@ enum Theme {
     static let danger = Color(light: "C0492A", dark: "FF7A5C")
     /// Destructive button border.
     static let dangerBorder = Color(light: "F0D9CE", dark: "5C3025")
+
+    // MARK: Warning
+    //
+    // The design's third severity step, between "fine" and "destructive": Schedule's "Needs a
+    // coach", Camp settings' "2 short", Overview's unassigned court. Things that are somebody's
+    // problem this morning but nothing is broken and nothing is being deleted.
+    //
+    // Hoisted here rather than left in a feature because three separate screens reached for it
+    // independently — and three private ambers is how a palette stops being one.
+    //
+    // The design uses it as a pill: `FAF6EC` fill, `8A6416` label, radius 99. That pair measures
+    // 4.93:1, so it clears AA for normal text at the 11.5pt the design sets it in — which is why
+    // the label is the dark end and not `warning` itself (that would be 2.9:1).
+
+    /// The amber itself — an icon, a rule, a standalone glyph.
+    static let warning = Color(light: "B67A16", dark: "E0A845")
+    /// Label on `warningTint`. The dark end of the family.
+    static let warningDark = Color(light: "8A6416", dark: "F0C97A")
+    /// The pill fill behind `warningDark`.
+    static let warningTint = Color(light: "FAF6EC", dark: "2A2213")
+    /// `#F0E3C6` — the border around a card of rows that still need a detail. Rarer than the
+    /// other three, and here rather than in a feature so the family cannot be split up again.
+    static let warningBorder = Color(light: "F0E3C6", dark: "4C3E24")
 
     // MARK: Surfaces
 
@@ -170,10 +217,13 @@ enum Theme {
     static let tabInactive = Color(light: "6E7178", dark: "9095A0")
     /// Tab-bar plate behind the blur, at 82% opacity.
     static let tabBarPlate = Color(light: "FAFAFB", dark: "2A2A2E").opacity(0.82)
-    /// Subtitle under a blue call-to-action ("You become its first admin").
-    static let accentSubtle = Color(light: "7FA3E0", dark: "6E8FC8")
-    /// Subtitle inside the blue call card ("Tap to call in an emergency").
-    static let accentMuted = Color(light: "5B7FC0", dark: "8FB0E8")
+    /// Subtitle under a filled call-to-action ("You become its first admin"). Sits *on* the
+    /// accent fill, so it moved to green with it — the old blue-grey on a green button read as
+    /// a rendering fault rather than as a quieter line.
+    static let accentSubtle = Color(light: "8FC2A5", dark: "6FA98C")
+    /// Subtitle inside the tinted call card ("Tap to call in an emergency"). Sits on
+    /// `accentTint`, so it is the dark end of the green rather than the light end.
+    static let accentMuted = Color(light: "4A8A69", dark: "8FCFAF")
     /// The 1pt lip along the top edge of the tab-bar pill — `inset 0 1px 0 rgba(255,255,255,.95)`.
     /// Carries its alpha in the hex because the two schemes need different amounts of it: a
     /// 95% white lip on a dark plate reads as a seam rather than as a catch of light.
@@ -206,9 +256,9 @@ extension Theme {
     /// out of this one function.
     ///
     /// - `moss` `#F1F5EC` — Sycamore's 🌳 tile.
-    /// - `sky` `#EDF3FE` — Westside's 🏊 tile. The same value as `accentTint`; the design
-    ///   reuses it here, and it is spelled out rather than aliased because the two roles are
-    ///   free to drift.
+    /// - `sky` `#EDF3FE` — Westside's 🏊 tile. This *was* the same value as `accentTint`, kept
+    ///   spelled out rather than aliased "because the two roles are free to drift". They have:
+    ///   the accent is green now, and sky stayed blue because it means water, not brand.
     /// - `citron` `#F7F9E9` — LATC's 🎾 tile.
     ///
     /// The venue sheet's other icons (🏆 🔥 ⭐ 🌊) reach one of these three through
