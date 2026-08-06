@@ -116,7 +116,65 @@ extension SupabaseRepository {
 
     private static var collisionRetries: Int { 6 }
 
+    /// The columns `8t`'s "Camp name & sport" row writes, and only those.
+    ///
+    /// Not the whole camp. `id` is set once at insert, `icon` and `tint` are nobody's to change
+    /// from this row, and `invite_code` has its own write — a rename that carried the code would
+    /// be able to undo a roll that happened between the read and the PATCH. See `RowValues`:
+    /// sending exactly what changed is also what keeps two admins editing different fields of
+    /// the same camp from silently overwriting each other.
+    static func campRow(name: String, sport: Sport) -> RowValues {
+        [
+            "name": .text(name),
+            // `camps.sport` has no `sport_label` column beside it, so `Sport.other(label:)` goes
+            // down as plain `other` and comes back with its label gone. `PostgresEnum` says so.
+            "sport": .text(PostgresEnum.text(sport)),
+        ]
+    }
+
     // MARK: Invite codes
+
+    /// `8t`'s "Roll a new code".
+    ///
+    /// The retry `insertCamp` runs, pointed at `update` instead of `insert`. It has to be a
+    /// retry rather than a lookup: `camps.invite_code` is UNIQUE across the whole project, and
+    /// while a signed-in user *may* select every camp row, pulling all of them to avoid a
+    /// one-in-ten-thousand clash would be a far worse trade than being told about it.
+    func rollInviteCode(campID: Camp.ID) async throws -> Camp {
+        try await serialised(campID) {
+            let current = try await camp(id: campID).inviteCode
+            var code = Self.rerolledInviteCode(current)
+            for _ in 0..<Self.collisionRetries {
+                do {
+                    try await db.update(
+                        Relation.camps,
+                        set: ["invite_code": .text(code)],
+                        where: PostgRESTQuery().eq("id", campID)
+                    )
+                    return try await camp(id: campID)
+                } catch let error as SupabaseError where error.isUniqueViolation {
+                    code = Self.rerolledInviteCode(code)
+                }
+            }
+            throw SupabaseError.rejected(
+                status: 409, message: "Couldn't find a free invite code for that camp."
+            )
+        }
+    }
+
+    /// A code with the same three letters and four different digits.
+    ///
+    /// Only the digits move, for the same reason `insertCamp` only rerolls the digits: the
+    /// letters carry the camp's name and are what makes a code recognisable read down a phone.
+    private static func rerolledInviteCode(_ code: String) -> String {
+        let accepted = acceptableInviteCode(code)
+        var digits = Int.random(in: 0...9999)
+        // One roll in ten thousand comes back with the digits it started from, and a "Roll a new
+        // code" that changed nothing would read as broken rather than as lucky. Nudging past it
+        // beats rolling again until it differs, which is a loop with no bound on it.
+        if digits == Int(accepted.suffix(4)) { digits = (digits + 1) % 10_000 }
+        return "\(accepted.prefix(3))-\(String(format: "%04d", digits))"
+    }
 
     /// `SYC-4821`, `syc4821` and `SYC 4821` are the same code — the same rule
     /// `InMemoryRepository` applies — put back into the shape the column's CHECK demands.
@@ -194,6 +252,12 @@ extension SupabaseRepository {
     /// `gender` takes `Gender.symbol`, not `rawValue`. The enum's raw values are lowercase and
     /// the column's CHECK demands `'M','F','X'` — sending the raw value fails every insert.
     ///
+    /// `last_name` and `age` are the two columns an import is allowed to leave null, and both go
+    /// as whatever the file said. This row is the only thing that survives the insert — the camp
+    /// is re-read from Postgres afterwards — so a surname the roster carried is lost here or not
+    /// at all. Null rather than `""` for a kid with no surname: the column admits null or 1…60
+    /// characters, and an empty string fails it.
+    ///
     /// `group_id` is deliberately absent. A new kid has no court until somebody puts them on one,
     /// which is what Groups' unassigned band is for; defaulting them onto court 1 would quietly
     /// outrank kids already standing there.
@@ -202,6 +266,7 @@ extension SupabaseRepository {
             "id": .uuid(player.id),
             "first_name": .text(player.firstName),
             "last_initial": .text(player.lastInitial),
+            "last_name": .text(player.lastName),
             "age": .int(player.age),
             "gender": .text(player.gender.symbol),
             "is_returning": .bool(player.isReturning),

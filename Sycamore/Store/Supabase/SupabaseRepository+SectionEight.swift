@@ -4,8 +4,14 @@
 //
 //  `SectionEightData` against Postgres: Overview's courts, Schedule's blocks, the Inbox.
 //
-//  Two of the three are a table each and read almost literally. Overview is the one with a
-//  seam in it, and it is worth saying where:
+//  Schedule is a table read almost literally. The other two have a seam in them, and both are
+//  worth saying out loud.
+//
+//  The Inbox is camp-wide, not per-venue — `8r` puts an LATC row in front of a reader standing on
+//  Sycamore — but `inbox_items` only knows its `site_id`. So it reaches its camp through `sites`,
+//  in one embedded join rather than a loop over venues. See `inboxItems(forCamp:)`.
+//
+//  Overview:
 //
 //  `today_courts` exists and is exactly this query — but `drop view … create view` in the
 //  section 8 migration reset the view's grants, so `anon` and `authenticated` currently have no
@@ -217,6 +223,48 @@ extension SupabaseRepository: SectionEightData {
 
     // MARK: - Inbox
 
+    /// The camp's Inbox, across its venues.
+    ///
+    /// `inbox_items` carries a `site_id` and nothing else about where it belongs, so the camp is
+    /// one join away — `sites!inner(camp_id)` with the filter on the embedded column, which is the
+    /// same shape `ratings`, `attendance` and the ownership check in `+Graph` already use. One
+    /// request, whatever the camp's venue count; looping this read over `camp.venues` in Swift
+    /// would be N round trips to draw one screen, and would still have to merge and re-sort them.
+    ///
+    /// No view for it. `today_courts` is the warning already in this schema — a `drop view …
+    /// create view` reset its grants and the app has been answered `42501` on it ever since — and
+    /// a view over `inbox_items` would need `security_invoker` or it would read as its owner and
+    /// hand every camp's Inbox to everyone.
+    ///
+    /// This is not a wider read than the per-venue one. `inbox_items_member` already scopes rows
+    /// to the venues of camps you hold a membership in, so a non-member gets nothing here exactly
+    /// as they do there.
+    func inboxItems(forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        let records: [InboxItemRecord] = try await db.select(
+            Relation.inboxItems,
+            .select("*,sites!inner(camp_id)")
+                .eq("sites.camp_id", campID)
+                .order("created_at", ascending: false)
+        )
+        return records.map(InboxItem.init)
+    }
+
+    func resolveInboxItem(_ itemID: InboxItem.ID, forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        let resolved: [InboxItemRecord] = try await db.update(
+            Relation.inboxItems,
+            set: ["resolved": .bool(true)],
+            where: PostgRESTQuery().eq("id", itemID),
+            returning: InboxItemRecord.self
+        )
+        guard !resolved.isEmpty else { throw SycamoreError.unknownGroup }
+        return try await inboxItems(forCamp: campID)
+    }
+
+    func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        try await db.insert(Relation.inboxItems, [Self.inboxRow(item)])
+        return try await inboxItems(forCamp: campID)
+    }
+
     func inboxItems(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [InboxItem] {
         let records: [InboxItemRecord] = try await db.select(
             Relation.inboxItems,
@@ -237,7 +285,12 @@ extension SupabaseRepository: SectionEightData {
     }
 
     func addInboxItem(_ item: InboxItem, campID: Camp.ID) async throws -> [InboxItem] {
-        try await db.insert(Relation.inboxItems, [RowValues([
+        try await db.insert(Relation.inboxItems, [Self.inboxRow(item)])
+        return try await inboxItems(forVenue: item.venueID, campID: campID)
+    }
+
+    private static func inboxRow(_ item: InboxItem) -> RowValues {
+        [
             "id": .uuid(item.id),
             "site_id": .uuid(item.venueID),
             "kind": .text(item.kind.rawValue),
@@ -250,7 +303,6 @@ extension SupabaseRepository: SectionEightData {
             "player_id": .uuid(item.playerID),
             "group_id": .uuid(item.groupID),
             "resolved": .bool(item.resolved),
-        ])])
-        return try await inboxItems(forVenue: item.venueID, campID: campID)
+        ]
     }
 }

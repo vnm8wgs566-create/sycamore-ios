@@ -46,103 +46,52 @@ struct AttendanceView: View {
     @State private var pickupTarget: PickupTarget?
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Built once per pass and handed down. It walks the camp, sorts and maps, and reading it
+        // as a computed property from five places did that five times for every tap on a screen
+        // whose whole job is being tapped.
+        let entries = roster
+
+        return VStack(spacing: 0) {
             VStack(spacing: 0) {
                 StatusBarMock()
-                header(roster)
+                AttendanceHeader(
+                    sessionLine: sessionLine,
+                    markedCount: entries.count { marked.contains($0.id) },
+                    total: entries.count,
+                    onClose: close
+                )
             }
-            .background(Theme.surface)
+            // The white carries up under the status bar, as the design draws it — otherwise the
+            // page colour shows above the header block on a device with a notch.
+            .background(Theme.surface.ignoresSafeArea(edges: .top))
 
             Hairline(color: Theme.hairline)
 
             ScrollView {
-                roll(roster)
+                roll(entries)
                     .padding(.horizontal, Spacing.gutter)
-                    .padding(.top, Spacing.gutterWide)
-                    .padding(.bottom, Spacing.tabBarClearance)
+                    .padding(.top, OnTheDayTokens.headerTop)
+                    .padding(.bottom, OnTheDayTokens.contentBottomInset)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
-        .overlay(alignment: .bottom) { finishBar(roster) }
-        .onAppear { seed(roster) }
+        // `#F8F9F8`, not `grouped`'s `#F6F7F9`. Section 8's page is a shade warmer than stage
+        // 1's, which is the same half-step towards green the ink ramp takes.
+        .background(Theme.surfaceWarm)
+        .overlay(alignment: .bottom) { finishBar(entries) }
+        .onAppear { seed(entries) }
         // One light tap per answer, and a softer one for an undo, so the two are told apart
         // without looking. The count moves on both.
         .sensoryFeedback(trigger: undoStack.count) { previous, current in
             current > previous ? .impact(weight: .light) : .impact(flexibility: .soft, intensity: 0.6)
         }
         // And the one that matters: the last kid on the list.
-        .sensoryFeedback(trigger: isComplete(roster)) { previous, current in
+        .sensoryFeedback(trigger: isComplete(entries)) { previous, current in
             current && !previous ? .success : nil
         }
         .sheet(item: $pickupTarget) { target in
             EarlyPickupSheet(store: store, playerID: target.id) { pickupTarget = nil }
         }
-    }
-
-    // MARK: - Header
-
-    private func header(_ roster: [AttendanceEntry]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Spacing.tight) {
-                closeButton
-                Text(sessionLine)
-                    .typeStyle(.sheetSubtitle, color: Theme.inkMuted)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            // The glyph is centred in a 44pt frame, so 8pt here puts it on the design's 22pt
-            // gutter without the hit region eating into the title below.
-            .padding(.horizontal, Spacing.small)
-
-            Text("Attendance")
-                .typeStyle(.tabTitle, color: Theme.ink)
-                .padding(.horizontal, Spacing.header)
-                .padding(.top, Spacing.gutterWide)
-
-            progress(roster)
-                .padding(.horizontal, Spacing.header)
-                .padding(.top, Spacing.gutterWide)
-        }
-        .padding(.bottom, Spacing.large)
-    }
-
-    private var closeButton: some View {
-        Button(action: close) {
-            Image(systemName: "xmark")
-                .font(.system(size: 19, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
-                .frame(width: HitTarget.minimum, height: HitTarget.minimum)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Close attendance")
-    }
-
-    /// The design's 4pt track. The fill is scaled rather than measured: at 4pt tall the capsule's
-    /// 2pt ends distort by well under a point, and that keeps the bar free of geometry readers.
-    private func progress(_ roster: [AttendanceEntry]) -> some View {
-        let done = roster.count { marked.contains($0.id) }
-        let fraction = roster.isEmpty ? 0 : Double(done) / Double(roster.count)
-
-        return HStack(spacing: Spacing.row) {
-            Capsule(style: .continuous)
-                .fill(Theme.hairline)
-                .frame(height: OnTheDayTokens.progressHeight)
-                .overlay(alignment: .leading) {
-                    Capsule(style: .continuous)
-                        .fill(Theme.accent)
-                        .scaleEffect(x: fraction, y: 1, anchor: .leading)
-                }
-                .animation(.snappy(duration: 0.25), value: fraction)
-
-            Text("\(done) of \(roster.count)")
-                .typeStyle(.metaSmall, color: Theme.inkSecondary)
-                .monospacedDigit()
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Marked")
-        .accessibilityValue("\(done) of \(roster.count)")
     }
 
     // MARK: - The roll
@@ -158,8 +107,9 @@ struct AttendanceView: View {
             VStack(alignment: .leading, spacing: 0) {
                 if !unmarked.isEmpty {
                     AttendanceOverline(title: "Still to mark", count: unmarked.count)
+                        .padding(.top, OnTheDayTokens.overlineLead)
 
-                    VStack(spacing: Spacing.small) {
+                    VStack(spacing: OnTheDayTokens.contentGap) {
                         ForEach(unmarked) { entry in
                             AttendanceAnswerCard(
                                 entry: entry,
@@ -169,7 +119,9 @@ struct AttendanceView: View {
                             )
                         }
                     }
-                    .padding(.bottom, Spacing.large)
+                    // The column's `gap:9px` plus the `padding-top:6px` the second overline
+                    // carries — the design's one place with more air than the rest.
+                    .padding(.bottom, OnTheDayTokens.contentGap + OnTheDayTokens.overlineBreak)
                 }
 
                 if !answered.isEmpty {
@@ -179,6 +131,9 @@ struct AttendanceView: View {
                         actionTitle: undoStack.isEmpty ? nil : "Undo last",
                         action: undoLast
                     )
+                    // Once everyone is answered this is the first thing on the screen, and it
+                    // takes the opening overline's 2pt rather than the 6 that separates sections.
+                    .padding(.top, unmarked.isEmpty ? OnTheDayTokens.overlineLead : 0)
 
                     Card(radius: OnTheDayTokens.card) {
                         ForEach(answered) { entry in
@@ -201,16 +156,18 @@ struct AttendanceView: View {
 
     /// A session with nobody in it is a real state — a block can name a court the ladder has not
     /// filled yet — so it says so rather than showing an empty list under a full progress bar.
+    ///
+    /// `ContentUnavailableView` rather than a hand-built pair of labels: it is the platform's own
+    /// empty state, so it centres itself, scales with Dynamic Type and reads to VoiceOver as one
+    /// announcement instead of two stray strings.
     private var emptyCourt: some View {
-        VStack(alignment: .leading, spacing: Spacing.small) {
-            Text("Nobody to mark yet.")
-                .typeStyle(.title2, color: Theme.ink)
+        ContentUnavailableView {
+            Label("Nobody to mark yet", systemImage: "figure.tennis")
+        } description: {
             Text("Kids appear here as soon as the ladder puts them on \(groupIDs.count > 1 ? "these courts" : "this court").")
-                .typeStyle(.body, color: Theme.inkTertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, Spacing.large)
+        .frame(maxWidth: .infinity)
+        .padding(.top, Spacing.section)
     }
 
     // MARK: - Finish
@@ -226,10 +183,10 @@ struct AttendanceView: View {
             tone: .dark,
             height: OnTheDayTokens.barHeight,
             radius: Radius.button,
-            font: .button,
+            font: .onTheDayBar,
             action: close
         )
-        .shadow(Shadows.tabBar)
+        .shadow(OnTheDayTokens.barShadow)
         .padding(.horizontal, Spacing.gutter)
         .padding(.bottom, OnTheDayTokens.barInset)
     }
@@ -323,11 +280,6 @@ private struct AttendanceMark: Hashable, Sendable {
     let wasMarked: Bool
 }
 
-/// `Player.ID` is a `UUID`, and `.sheet(item:)` wants something `Identifiable`.
-private struct PickupTarget: Identifiable, Hashable {
-    let id: Player.ID
-}
-
 // MARK: - Previews
 
 /// The design's own state: a session part-way through, two kids left.
@@ -376,4 +328,23 @@ private func partlyMarkedStore() -> AppStore {
     ) {}
     .environment(partlyMarkedStore())
     .showsMockStatusBar()
+}
+
+/// Every colour here is a `Theme` token, so the dark scheme is a check rather than a second
+/// design — but this screen carries the palette's warmest values (`surfaceWarm`, `inkWarm`) and
+/// those are the ones a derived dark column is most likely to get wrong.
+#Preview("Attendance — dark") {
+    AttendanceView(groupIDs: [SampleData.nassCourt.id])
+        .environment(partlyMarkedStore())
+        .showsMockStatusBar()
+        .preferredColorScheme(.dark)
+}
+
+/// The app caps Dynamic Type at `.accessibility1`; the two answers and the pinned bar are what
+/// break first if a frame is fixed rather than floored.
+#Preview("Attendance — accessibility1") {
+    AttendanceView(groupIDs: [SampleData.nassCourt.id])
+        .environment(partlyMarkedStore())
+        .showsMockStatusBar()
+        .dynamicTypeSize(.accessibility1)
 }

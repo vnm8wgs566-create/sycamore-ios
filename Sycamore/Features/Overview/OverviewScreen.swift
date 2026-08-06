@@ -32,7 +32,7 @@ struct OverviewScreen: View {
             VStack(spacing: 0) {
                 StatusBarMock()
 
-                ScreenHeader(title: "Overview", count: nowLine, initials: store.avatarInitials) {
+                ScreenHeader(title: "Overview", subtitle: nowLine, initials: store.avatarInitials) {
                     store.pushedScreen = .profile
                 }
             }
@@ -69,7 +69,9 @@ struct OverviewScreen: View {
             .scrollIndicators(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        // `surfaceWarm`, not `grouped`. Section 8 draws every screen on `#F8F9F8`, a shade
+        // warmer than the `#F6F7F9` this app has been grouping on since before the redesign.
+        .background(Theme.surfaceWarm)
     }
 
     // MARK: Which court is whose
@@ -116,10 +118,11 @@ struct OverviewScreen: View {
 
     private var otherCourtsHeading: some View {
         Text("Other courts")
-            .typeStyle(.sectionHeader, color: Theme.inkMuted)
+            .typeStyle(OverviewTheme.overline, color: Theme.inkMuted)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, Spacing.tight)
             .padding(.horizontal, OverviewTheme.overlineInset)
+            .accessibilityAddTraits(.isHeader)
     }
 
     /// A closed court lists nobody — there is nobody on it.
@@ -146,17 +149,16 @@ struct OverviewScreen: View {
 
     /// Not in the design — every frame there is drawn on a camp in full swing. A venue with no
     /// courts is a real state all the same, and the answer to it is the screen that fixes it.
+    ///
+    /// The system's own empty state rather than a hand-set one, as everywhere else in the app:
+    /// it is already announced as such to VoiceOver, and it is the one thing on this screen with
+    /// no design to be exact to.
     private var emptyState: some View {
-        VStack(spacing: Spacing.small) {
-            Text("No courts yet")
-                .typeStyle(.rowTitle, color: Theme.ink)
-
+        ContentUnavailableView {
+            Label("No courts yet", systemImage: "square.split.2x2")
+        } description: {
             Text("Shape the venue into courts in camp settings and they show up here.")
-                .typeStyle(.body, color: Theme.inkTertiary)
-                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, Spacing.hero)
         .padding(.top, Spacing.section)
     }
 }
@@ -187,4 +189,30 @@ struct OverviewScreen: View {
 #Preview("Overview — no courts") {
     OverviewScreen(store: OverviewFixtures.adminStore, courts: [])
         .showsMockStatusBar()
+}
+
+/// The two states the design does not draw but the app has to survive: the reader's largest
+/// type size, and the dark scheme. Every fixed height on these screens is a `minHeight` or a
+/// `@ScaledMetric` so that the first one only ever makes the cards taller.
+#Preview("8j — accessibility1") {
+    OverviewScreen(
+        store: OverviewFixtures.coachStore,
+        courts: OverviewFixtures.courts,
+        pinnedNote: OverviewFixtures.pinnedNote,
+        blockNote: OverviewFixtures.blockNote,
+        nowLine: OverviewFixtures.nowLine
+    )
+    .showsMockStatusBar()
+    .environment(\.dynamicTypeSize, .accessibility1)
+}
+
+#Preview("8i — dark") {
+    OverviewScreen(
+        store: OverviewFixtures.adminStore,
+        courts: OverviewFixtures.courts,
+        pinnedNote: OverviewFixtures.pinnedNote,
+        nowLine: OverviewFixtures.nowLine
+    )
+    .showsMockStatusBar()
+    .preferredColorScheme(.dark)
 }

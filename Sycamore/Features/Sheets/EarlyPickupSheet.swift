@@ -10,10 +10,11 @@
 //  books plus one card to add another. The confirm bar went with it: each pick-up is committed
 //  by its own "Add pick-up", and the bar at the foot is just the way out.
 //
-//  Reached two ways, which is why `onClose` is a parameter: from the player sheet, where
-//  `MainTabView` owns the presentation through `store.activeSheet`, and from `8m`, which
-//  presents its own copy because a screen that is itself presented cannot ask the root to
-//  present over it.
+//  Reached two ways — from `8m` and from `8q` — and presented by whichever one opened it rather
+//  than by `MainTabView`. Both of those are themselves presented screens, and a presented screen
+//  cannot ask the root underneath it to present over it, so each holds its own `PickupTarget` and
+//  puts this sheet up from there. That is why `onClose` is a parameter: the state holding the
+//  sheet open belongs to the caller, so the caller is the only one who can put it down.
 //
 
 import SwiftUI
@@ -22,8 +23,9 @@ struct EarlyPickupSheet: View {
 
     @Bindable var store: AppStore
     let playerID: Player.ID
-    /// How the sheet gets out of the way. Nil clears `store.activeSheet`, which is how
-    /// `MainTabView` presents it.
+    /// How the sheet gets out of the way: it clears the `PickupTarget` the caller is holding.
+    /// Both callers pass one. Optional for the previews below, which draw the sheet inline and
+    /// have nothing to put down.
     var onClose: (() -> Void)?
 
     /// Who collects, and the note under a pick-up. Neither has a column: `Attendance` carries a
@@ -41,18 +43,18 @@ struct EarlyPickupSheet: View {
             onClose: close
         ) {
             Text("Coaches see this on the day, in the block it falls in.")
-                .typeStyle(.body, color: Theme.inkTertiary)
+                .typeStyle(.onTheDayLede, color: Theme.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, Spacing.large)
+                .padding(.bottom, OnTheDayTokens.headerTop)
 
             if !weekPickups.isEmpty {
-                SheetSectionHeader("This week · \(weekPickups.count)")
-                VStack(spacing: Spacing.small) {
+                AttendanceOverline(title: "This week", count: weekPickups.count, inset: 0)
+                VStack(spacing: OnTheDayTokens.contentGap) {
                     ForEach(weekPickups) { record in
                         pickupCard(record)
                     }
                 }
-                .padding(.bottom, Spacing.large)
+                .padding(.bottom, OnTheDayTokens.contentGap)
             }
 
             newPickup
@@ -63,9 +65,12 @@ struct EarlyPickupSheet: View {
                 tone: .dark,
                 height: OnTheDayTokens.barHeight,
                 radius: Radius.button,
-                font: .button,
+                font: .onTheDayBar,
                 action: close
             )
+            // No `barShadow` here, unlike `8m`. The design pins this bar over the content and
+            // lifts it off the page; presented as a sheet it is the last thing in a scroll, and
+            // a shadow under something that is not floating reads as a rendering fault.
         }
     }
 
@@ -75,14 +80,14 @@ struct EarlyPickupSheet: View {
     private func pickupCard(_ record: Attendance) -> some View {
         let shape = RoundedRectangle(cornerRadius: OnTheDayTokens.card, style: .continuous)
 
-        return HStack(spacing: Spacing.small) {
+        return HStack(spacing: OnTheDayTokens.blockGap) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(label(for: record))
-                    .typeStyle(.bodyStrong, color: Theme.ink)
+                    .typeStyle(.onTheDayName, color: Theme.ink)
                     .lineLimit(1)
                 if let who = collectors[record.day], !who.isEmpty {
                     Text(who)
-                        .typeStyle(.rowSubtitle, color: Theme.inkMuted)
+                        .typeStyle(.onTheDaySubtitle, color: Theme.inkMuted)
                         .lineLimit(1)
                 }
             }
@@ -100,9 +105,11 @@ struct EarlyPickupSheet: View {
             .accessibilityLabel("Remove the \(record.day.fullName) pick-up")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Spacing.gutterWide)
-        // 8 rather than the design's 13: the ✕ carries a 44pt hit frame, and the two together
-        // would make a one-line card half again as tall as the design draws it.
+        .padding(.horizontal, OnTheDayTokens.cardInsetWide)
+        // 8 rather than the design's 13: the ✕ carries a 44pt hit frame, which is already taller
+        // than a one-line card's copy, and the two together would make the card half again as
+        // tall as the design draws it. The height it lands on is the design's; the padding that
+        // gets there is not.
         .padding(.vertical, Spacing.small)
         .background(Theme.surface, in: shape)
         .overlay { shape.strokeBorder(Theme.hairline, lineWidth: BorderWidth.hairline) }
@@ -120,8 +127,11 @@ struct EarlyPickupSheet: View {
         let shape = RoundedRectangle(cornerRadius: OnTheDayTokens.card, style: .continuous)
 
         return VStack(alignment: .leading, spacing: 0) {
+            // A plain label rather than `AttendanceOverline`: this one opens a card rather than a
+            // section, and the design gives it 12pt of air below where a section overline gets 9.
             Text("New pick-up")
-                .typeStyle(.sectionHeader, color: Theme.accent)
+                .typeStyle(.onTheDayOverline, color: Theme.accent)
+                .accessibilityAddTraits(.isHeader)
 
             dayChips
                 .padding(.top, Spacing.medium)
@@ -130,7 +140,7 @@ struct EarlyPickupSheet: View {
                 timeField
                 collectorField
             }
-            .padding(.top, Spacing.small)
+            .padding(.top, OnTheDayTokens.blockGap)
 
             PrimaryButton(
                 addLabel,
@@ -138,13 +148,13 @@ struct EarlyPickupSheet: View {
                 systemImage: "plus",
                 height: OnTheDayTokens.compactButtonHeight,
                 radius: Radius.tile,
-                font: .buttonSmall,
+                font: .onTheDayAdd,
                 action: addPickup
             )
-            .padding(.top, Spacing.small)
+            .padding(.top, OnTheDayTokens.blockGap)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Spacing.gutterWide)
+        .padding(OnTheDayTokens.cardInsetWide)
         .background(Theme.surface, in: shape)
         .overlay { shape.strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.hairline) }
     }
@@ -172,6 +182,8 @@ struct EarlyPickupSheet: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                // Mon–Fri abbreviated on screen, spoken in full: "Tue" is read as a word.
+                .accessibilityLabel(day.fullName)
                 .accessibilityAddTraits(store.pickupDay == day ? .isSelected : [])
             }
         }
@@ -187,7 +199,7 @@ struct EarlyPickupSheet: View {
         } label: {
             field(systemImage: "clock") {
                 Text(store.pickupTime.clockLabel)
-                    .typeStyle(.bodyAlt.lineHeight(nil), color: Theme.ink)
+                    .typeStyle(.onTheDayValue, color: Theme.ink)
             }
             .contentShape(.rect)
         }
@@ -200,8 +212,11 @@ struct EarlyPickupSheet: View {
         field(systemImage: "person") {
             ZStack(alignment: .leading) {
                 if collector.isEmpty {
+                    // A placeholder is one weight lighter than a value in this design — `400`
+                    // against the time field's `500` — so the two read apart before the colour
+                    // difference lands.
                     Text("Who collects")
-                        .typeStyle(.bodyAlt.lineHeight(nil), color: Theme.inkFaint)
+                        .typeStyle(.onTheDayPlaceholder, color: Theme.inkFaint)
                 }
                 collectorInput
             }
@@ -215,7 +230,7 @@ struct EarlyPickupSheet: View {
     private var collectorInput: some View {
         let base = TextField("", text: $collector)
             .textFieldStyle(.plain)
-            .typeStyle(.bodyAlt.lineHeight(nil), color: Theme.ink)
+            .typeStyle(.onTheDayValue, color: Theme.ink)
             .focused($isCollectorFocused)
             .accessibilityLabel("Who collects")
 
@@ -236,6 +251,7 @@ struct EarlyPickupSheet: View {
             Image(systemName: systemImage)
                 .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(Theme.inkFaint)
+                .accessibilityHidden(true)
             content()
             Spacer(minLength: 0)
         }
@@ -295,12 +311,11 @@ struct EarlyPickupSheet: View {
         Task { await store.clearEarlyPickup(playerID: playerID, day: day) }
     }
 
+    /// No `store.dismissSheet()` fallback: with `8n` off `ActiveSheet` there is nothing of this
+    /// sheet's in that slot, so clearing it could only ever close a venue or staff sheet that
+    /// happened to be open underneath.
     private func close() {
-        if let onClose {
-            onClose()
-        } else {
-            store.dismissSheet()
-        }
+        onClose?()
     }
 }
 

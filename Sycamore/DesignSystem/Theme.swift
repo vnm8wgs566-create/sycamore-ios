@@ -104,6 +104,52 @@ enum Theme {
     /// Disclosure carets, drag handles.
     static let chevron = Color(light: "C7CBD2", dark: "4B4F57")
 
+    // MARK: Section 8's own greys
+    //
+    // Nine values the design uses that this palette had no name for. They were found by diffing
+    // every hex in `Sycamore 3a System.dc.html` against every hex declared here, which is the
+    // only way to know: a screen transcribed by eye reaches for the nearest existing token and
+    // the drift is invisible one screen at a time.
+
+    /// `#3F4A44` — the design's warm ink. 73 uses against `ink`'s 144.
+    ///
+    /// **Body and detail copy, not titles or names.** Measured across the document it is set at
+    /// `400 14px` (26×), `400 13.5px` (23×) and `600 12.5px` (12×) — never above 15pt. And it is
+    /// absent from about half of section 8 entirely: `8a`, `8b`, `8d`, `8f`, `8g`, `8h`, `8n`,
+    /// `8q`, `8r`, `8s` and `8t` set every line in the inherited `ink`.
+    ///
+    /// Spelled out because the first description of this token said "field labels and names",
+    /// which was generalised from three samples and was wrong. Two screens were audited against
+    /// it and correctly refused to apply it. Reach for it only where the screen's own CSS says
+    /// so — substituting it is the same class of error as substituting `ink` for it.
+    ///
+    /// A step *between* `ink` and `inkSecondary` in weight but green-tinted rather than neutral,
+    /// which is what makes it warm — the brand's green showing through the type rather than a
+    /// second grey. Where the design does use it, `ink` is not merely darker but colder.
+    static let inkWarm = Color(light: "3F4A44", dark: "C8D2CC")
+
+    /// `#B3B7BE` — a glyph on a plate. The design's icons are a step lighter than its text.
+    static let glyph = Color(light: "B3B7BE", dark: "6C7078")
+    /// `#D3D7DD` — a glyph that is present but inactive.
+    static let glyphFaint = Color(light: "D3D7DD", dark: "55585F")
+
+    /// `#F8F9F8` — a card that carries its own `rgba(0,0,0,.11)` border. Warmer than `grouped`,
+    /// which is the page behind it.
+    static let surfaceWarm = Color(light: "F8F9F8", dark: "1E1F1E")
+    /// `#FAFBFA` — a row inside `surfaceWarm`, one step up again.
+    static let surfaceRaised = Color(light: "FAFBFA", dark: "222322")
+    /// `#F0F1F3` — the 44pt tile an icon sits on.
+    static let tile = Color(light: "F0F1F3", dark: "2B2B2E")
+    /// `#F3F5F4` — a `999`-radius pill's fill.
+    static let pillFill = Color(light: "F3F5F4", dark: "27282A")
+
+    /// `#F6FAF7` — a green-tinted plate. Distinct from `accentTint`, which is the fill *under*
+    /// accent-coloured copy; this is a surface that happens to be warm, and the design pairs it
+    /// with `accentSurfaceBorder` or with the dashed `accentBorder`.
+    static let accentSurface = Color(light: "F6FAF7", dark: "16201A")
+    /// `#E4EDE7` — the solid border around `accentSurface`.
+    static let accentSurfaceBorder = Color(light: "E4EDE7", dark: "24352B")
+
     // MARK: Accent
     //
     // Green, from `Sycamore 3a System.dc.html` — `#1A7F55` is the single most-used colour in
@@ -168,11 +214,19 @@ enum Theme {
     // 4.93:1, so it clears AA for normal text at the 11.5pt the design sets it in — which is why
     // the label is the dark end and not `warning` itself (that would be 2.9:1).
 
-    /// The amber itself — an icon, a rule, a standalone glyph.
+    /// The amber itself — an icon, a rule, or **plain text with no fill behind it**.
+    ///
+    /// That last case is the common one and is easy to get wrong: `8k`'s "Needs a coach" is
+    /// `color:#B67A16` on a 13.5px line with nothing behind it, not a pill. The pill below
+    /// appears in exactly four screens — `8d`, `8i`, `8j`, `8r`. Reach for the pair only there.
     static let warning = Color(light: "B67A16", dark: "E0A845")
     /// Label on `warningTint`. The dark end of the family.
     static let warningDark = Color(light: "8A6416", dark: "F0C97A")
     /// The pill fill behind `warningDark`.
+    ///
+    /// The design also contains a single `#FBF2E2` / `#8A5E0F` pair, one use each, against these
+    /// nine and eleven. Treated as a stray rather than a second amber — a palette with two
+    /// warnings is a palette with none.
     static let warningTint = Color(light: "FAF6EC", dark: "2A2213")
     /// `#F0E3C6` — the border around a card of rows that still need a detail. Rarer than the
     /// other three, and here rather than in a feature so the family cannot be split up again.

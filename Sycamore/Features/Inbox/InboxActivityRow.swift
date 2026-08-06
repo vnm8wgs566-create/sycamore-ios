@@ -7,6 +7,11 @@
 //  Read-only by design. Nothing here is waiting on anybody; it is what already happened, newest
 //  first, so a coach walking in at 9:40 can catch up on the forty minutes they missed.
 //
+//  The two states are one view because they are one row, but the design does not merely fade
+//  the live one: a cleared row is tighter (11pt of padding, not 12), its title is half a point
+//  smaller, its detail line a full point, and the gap between them closes from 3 to 2. Fading
+//  alone left it noticeably taller than the design draws it.
+//
 
 import SwiftUI
 
@@ -16,18 +21,25 @@ struct InboxActivityRow: View {
     /// `8h` draws its cleared rows at 62% with no caret. Dealt with, still legible.
     var isCleared: Bool = false
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        CardRow(verticalPadding: Spacing.medium) {
+        CardRow(verticalPadding: isCleared ? InboxMetrics.clearedRowPaddingV : InboxMetrics.rowPaddingV) {
             InboxIconTile(for: item, isCleared: isCleared)
 
-            VStack(alignment: .leading, spacing: InboxMetrics.titleGap) {
+            VStack(alignment: .leading, spacing: isCleared ? InboxMetrics.clearedTitleGap : InboxMetrics.titleGap) {
                 Text(item.title)
-                    .typeStyle(.rowLabel, color: Theme.ink)
+                    .typeStyle(isCleared ? InboxType.clearedTitle : InboxType.rowTitle, color: Theme.ink)
 
                 if let detail = item.detail {
                     Text(detail)
-                        .typeStyle(.rowSubtitle, color: isCleared ? Theme.inkFaint : Theme.inkMuted)
-                        .lineLimit(1)
+                        .typeStyle(
+                            isCleared ? InboxType.clearedDetail : InboxType.rowDetail,
+                            color: isCleared ? Theme.inkFaint : Theme.inkMuted
+                        )
+                        // `white-space:nowrap`, except at the accessibility sizes, where one
+                        // line is four words and truncating is the same as deleting.
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
                         .truncationMode(.tail)
                 }
             }
@@ -53,7 +65,7 @@ struct InboxActivityRow: View {
     let venueID = UUID()
 
     return VStack(spacing: Spacing.large) {
-        Card {
+        Card(radius: InboxMetrics.cardRadius) {
             InboxActivityRow(
                 item: InboxItem(
                     venueID: venueID, kind: .note,
@@ -80,12 +92,12 @@ struct InboxActivityRow: View {
             )
         }
 
-        Card {
+        Card(radius: InboxMetrics.cardRadius) {
             InboxActivityRow(
                 item: InboxItem(
                     venueID: venueID, kind: .activity,
                     title: "Austin Z moved to Court 2",
-                    detail: "Nass asked",
+                    detail: "9:38 · you approved",
                     actorID: UUID(), playerID: UUID(), resolved: true
                 ),
                 isCleared: true
@@ -93,5 +105,5 @@ struct InboxActivityRow: View {
         }
     }
     .padding(Spacing.gutter)
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }

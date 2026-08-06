@@ -24,10 +24,37 @@ struct SetupView: View {
 
     /// The design gives "Invite" no destination, so it hands over the code and says so.
     @State private var inviteCopied = false
+
+    /// Expanding the staff list is decoration — the rows are all still reachable — so it is the
+    /// first thing to go when the reader has asked for less movement.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The design's `padding:14px 22px 18px`, less the 4pt the back disc's 44pt hit frame hangs
+    /// above its 36pt circle.
+    private let headerTop: CGFloat = 10
+    private let headerBottom: CGFloat = 18
+
+    /// The 40pt plate on a venue row. Grows with the reader's type so it keeps its proportion to
+    /// the two lines of copy beside it.
+    @ScaledMetric(relativeTo: .body) private var venueTileSize: CGFloat = 40
+
     /// `8t` collapses the whole staff list into one summary row with a caret. There is no staff
     /// screen to send that caret to and no `PushedScreen` case to reach one, so the row opens
     /// the list in place — which is also what keeps the staff sheet reachable.
     @State private var isShowingStaff = false
+
+    /// Whether "Roll a new code" is asking first. Rolling is destructive in the way that counts:
+    /// the old code is already in somebody's texts, and there is no putting it back.
+    @State private var isConfirmingRoll = false
+
+    /// Whether the camp's name row is open for editing. It swaps itself for a field in place
+    /// rather than pushing a screen the design does not draw — the same call `8s`'s emergency
+    /// number row makes.
+    @State private var isEditingIdentity = false
+    /// The open editor's working values. They live here, not in the store, so an abandoned edit
+    /// leaves the camp untouched.
+    @State private var nameDraft = ""
+    @State private var sportDraft = Sport.tennis
 
     init(store: AppStore) {
         self.store = store
@@ -47,7 +74,11 @@ struct SetupView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        // `#F8F9F8` — the same warm page as `8s`, which this arrives on top of.
+        .background(Theme.surfaceWarm)
+        // The copy has no visible confirmation beyond the word "Copied" swapping in, which a
+        // reader looking at the code rather than the header will miss.
+        .sensoryFeedback(.success, trigger: inviteCopied) { _, copied in copied }
     }
 
     // MARK: - Header
@@ -70,18 +101,17 @@ struct SetupView: View {
                 }
 
                 Text("Camp settings")
-                    .typeStyle(.tabTitle, color: Theme.ink)
-                    .padding(.top, Spacing.medium)
+                    .typeStyle(.screenTitle, color: Theme.ink)
+                    // `margin-top:15px`, less the same 4pt of hit-frame overhang.
+                    .padding(.top, Spacing.row)
 
                 Text(subtitle)
-                    .typeStyle(.sheetSubtitle, color: Theme.inkMuted)
+                    .typeStyle(.headerDetail, color: Theme.inkMuted)
                     .padding(.top, Spacing.tight)
             }
             .padding(.horizontal, Spacing.header)
-            // The back disc carries its own 44pt hit frame, which is 4pt taller than the disc;
-            // this is the rest of the design's 14pt above it.
-            .padding(.top, Spacing.small)
-            .padding(.bottom, Spacing.large)
+            .padding(.top, headerTop)
+            .padding(.bottom, headerBottom)
         }
         .background(Theme.surface)
         .overlay(alignment: .bottom) { Hairline(color: Theme.hairline) }
@@ -93,19 +123,15 @@ struct SetupView: View {
         return "\(camp.name) · \(camp.summaryLine)"
     }
 
-    /// The shield pill in the corner. `Badge` carries no glyph, and the shield is what makes
-    /// this read as a permission rather than a job title, so it is drawn from the same tokens.
+    /// The shield pill in the corner — the same capsule as `8s`'s role pill, with the glyph that
+    /// makes it read as a permission rather than a job title.
     private var adminBadge: some View {
-        HStack(spacing: Spacing.tight) {
-            Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 13, weight: .regular))
-            Text("Admin")
-                .typeStyle(.badge.tracking(em: 0.09))
-        }
-        .foregroundStyle(Theme.accentDark)
-        .padding(.horizontal, Spacing.row)
-        .padding(.vertical, Spacing.tight)
-        .background(Theme.accentTint, in: Capsule(style: .continuous))
+        AccentPill(
+            "Admin",
+            systemImage: "checkmark.shield.fill",
+            horizontalPadding: Spacing.row,
+            verticalPadding: Spacing.tight
+        )
     }
 
     // MARK: - Not an admin
@@ -128,17 +154,17 @@ struct SetupView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 venuesSection(camp)
-                    .padding(.bottom, Spacing.large)
+                    .padding(.bottom, Spacing.cardStack)
 
                 staffSection(camp)
-                    .padding(.bottom, Spacing.large)
+                    .padding(.bottom, Spacing.cardStack)
 
                 seasonSection(camp)
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.large)
             // No `tabBarClearance`: this is a sheet, and it draws no tab bar.
-            .padding(.bottom, Spacing.hero)
+            .padding(.bottom, Spacing.sheetFoot)
         }
     }
 
@@ -152,7 +178,7 @@ struct SetupView: View {
                 Task { await store.addVenue() }
             }
 
-            Card {
+            Card(radius: Radius.settingsCard) {
                 ForEach(camp.orderedVenues) { venue in
                     venueRow(venue, in: camp)
                 }
@@ -181,28 +207,35 @@ struct SetupView: View {
                 store.present(.venue(venue.id))
             } label: {
                 HStack(spacing: Spacing.row) {
+                    // The venue's own tint, with the design's generic pin on it. `8t` lists
+                    // several venues at once, so the plate is what tells them apart.
                     RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                         .fill(Theme.color(for: venue.tint))
-                        .frame(width: 40, height: 40)
-                        .overlay { Text(venue.icon).font(.system(size: 19)) }
+                        .frame(width: venueTileSize, height: venueTileSize)
+                        .overlay {
+                            Image(systemName: "mappin")
+                                .font(.system(size: 17, weight: .regular))
+                                .foregroundStyle(Theme.inkSecondary)
+                        }
+                        .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                        HStack(spacing: 7) {
+                        HStack(spacing: Spacing.nameBadge) {
                             Text(venue.name)
-                                .typeStyle(.bodyStrong, color: Theme.ink)
+                                .typeStyle(.cardTitleSm, color: Theme.ink)
                                 .lineLimit(1)
-                            // Only when it needs someone: `8t` badges the short venue and leaves
+                            // Only when it needs someone: `8t` flags the short venue and leaves
                             // the healthy one clean.
-                            if let status = camp.staffingStatus(for: venue.id), status.needsAttention {
-                                // The stepper on the right is 126pt of the row, so this line is
-                                // narrow. The badge holds its width and the name gives way —
-                                // a truncated "2 coaches shor…" would say nothing.
-                                Badge(status.badgeText, tone: .accent)
+                            if let flag = camp.staffingStatus(for: venue.id)?.flagText {
+                                // The stepper on the right is most of this row, so the line is
+                                // narrow. The flag holds its width and the name gives way —
+                                // a truncated "2 shor…" would say nothing.
+                                StaffingFlag(flag)
                                     .fixedSize()
                             }
                         }
                         Text(headcount(for: venue, in: camp))
-                            .typeStyle(.meta, color: Theme.inkMuted)
+                            .typeStyle(.detailSm, color: Theme.inkMuted)
                             .lineLimit(1)
                     }
 
@@ -213,11 +246,17 @@ struct SetupView: View {
             .buttonStyle(.plain)
 
             VenueCourtStepper(venue: venue) { courts in
-                var updated = venue
-                updated.groupCount = courts
-                Task { await store.updateVenue(updated) }
+                setCourts(courts, for: venue)
             }
         }
+    }
+
+    /// A court count is a write to the whole camp, so it goes back through the store rather than
+    /// being mutated in place.
+    private func setCourts(_ courts: Int, for venue: Venue) {
+        var updated = venue
+        updated.groupCount = courts
+        Task { await store.updateVenue(updated) }
     }
 
     /// `50 kids · 6 coaches`. The court count moved to the stepper, so unlike `Camp.rowSummary`
@@ -236,7 +275,7 @@ struct SetupView: View {
                 copyInviteCode(camp)
             }
 
-            Card {
+            Card(radius: Radius.settingsCard) {
                 staffSummaryRow(camp)
 
                 if isShowingStaff {
@@ -251,33 +290,61 @@ struct SetupView: View {
                     subtitle: "Anyone with it joins as a worker",
                     accessory: .code(camp.inviteCode)
                 )
+                // Spelt out, so VoiceOver reads "S Y C 4 8 2 1" rather than trying the whole
+                // thing as a word. A code is only useful character by character.
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Invite code, \(spelled(camp.inviteCode))")
+                .accessibilityHint("Anyone with it joins as a worker")
 
-                // Drawn, but inert, the same way `8f`'s "Add the first block" is: rolling a code
-                // is a write to the camp, and the repository has no camp write to make it with.
-                // It gets no action rather than a dead button, and it will get the confirmation
-                // dialog "Delete account" uses the moment there is something to confirm.
                 SettingsRow(
                     "Roll a new code",
                     accessory: .glyph("arrow.triangle.2.circlepath")
-                )
+                ) {
+                    isConfirmingRoll = true
+                }
+                // No `.combine` now the row is a button: its label already reads as one element,
+                // and combining a button's children risks flattening the trait that says so.
+                // The title alone does not say what is lost, though, which is the one thing
+                // somebody should know before they tap it.
+                .accessibilityHint("Replaces the code. Anyone holding the old one can no longer join.")
+                // Attached to the row rather than to the screen so the dialog animates out of
+                // the control that raised it — the same reason a menu is anchored to its button.
+                .confirmationDialog(
+                    "Roll a new invite code?",
+                    isPresented: $isConfirmingRoll,
+                    titleVisibility: .visible
+                ) {
+                    // The same shape "Delete account" uses, which this row's old comment said it
+                    // would get the moment there was something to confirm.
+                    Button("Roll a new code", role: .destructive) {
+                        Task { await store.rollInviteCode() }
+                    }
+                    Button("Keep this one", role: .cancel) {}
+                } message: {
+                    Text("The code you have already handed out stops working. Anyone still joining on it will need the new one.")
+                }
             }
         }
+    }
+
+    /// `SYC-4821` -> `S Y C - 4 8 2 1`. Spacing the characters is what makes a speech synthesiser
+    /// read them out rather than attempt them as a word.
+    private func spelled(_ code: String) -> String {
+        code.map(String.init).joined(separator: " ")
     }
 
     /// The three faces, the count, and what the count is made of. Tapping opens the list under
     /// it rather than pushing a screen that does not exist yet.
     private func staffSummaryRow(_ camp: Camp) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) { isShowingStaff.toggle() }
-        } label: {
+        Button(action: toggleStaffList) {
             CardRow(spacing: Spacing.row) {
                 StaffAvatarStack(members: Array(camp.staff.prefix(3)))
 
                 VStack(alignment: .leading, spacing: Spacing.hairGap) {
                     Text("\(camp.staffCount) staff")
-                        .typeStyle(.bodyStrong, color: Theme.ink)
+                        .typeStyle(.cardTitleSm, color: Theme.ink)
                     Text(staffBreakdown(camp))
-                        .typeStyle(.meta, color: Theme.inkMuted)
+                        .typeStyle(.detailSm, color: Theme.inkMuted)
                 }
 
                 Spacer(minLength: Spacing.small)
@@ -289,8 +356,18 @@ struct SetupView: View {
             .frame(minHeight: HitTarget.minimum)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(camp.staffCount) staff")
+        .accessibilityLabel("\(camp.staffCount) staff, \(staffBreakdown(camp))")
         .accessibilityHint(isShowingStaff ? "Hides the list" : "Shows the list")
+        // The caret flips to say the list is open. `AccessibilityTraits` has no expansion trait,
+        // so the state rides in the value instead — otherwise the row sounds identical either way.
+        .accessibilityValue(isShowingStaff ? "Expanded" : "Collapsed")
+    }
+
+    /// The rows arrive either way; only the sliding is optional.
+    private func toggleStaffList() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            isShowingStaff.toggle()
+        }
     }
 
     /// `2 admins · 4 unassigned`
@@ -385,20 +462,165 @@ struct SetupView: View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader("Season")
 
-            Card {
-                // Both rows are drawn and inert for the same reason as "Roll a new code":
-                // renaming a camp and archiving one are camp writes, and the repository has
-                // neither. The design closes both with a caret; neither has anywhere to send it,
-                // so neither keeps it.
-                SettingsRow("Camp name & sport", accessory: .value(camp.sport.displayName))
+            Card(radius: Radius.settingsCard) {
+                // `SwiftUI.Group` rather than `Group`, which in this app is a court.
+                SwiftUI.Group {
+                    if isEditingIdentity {
+                        CampIdentityEditor(
+                            name: $nameDraft,
+                            sport: $sportDraft,
+                            onCancel: { isEditingIdentity = false },
+                            onSave: commitIdentity
+                        )
+                    } else {
+                        // The caret the design draws is back. It was dropped only because the
+                        // row had nowhere to send it, and the sport took the trailing slot to
+                        // fill the gap; now that the row opens an editor, the caret says so and
+                        // the sport moves to the line under the title. No `.combine` either — a
+                        // button's label is already one element, and this is a button now.
+                        SettingsRow(
+                            "Camp name & sport",
+                            subtitle: camp.sport.displayName,
+                            accessory: .chevron
+                        ) {
+                            beginEditingIdentity(camp)
+                        }
+                    }
+                }
 
+                // Still drawn and still inert, and now the only row on `8t` that is. There is
+                // nowhere to record that a camp is archived: `camps` is `id, name, sport,
+                // invite_code, icon, tint, created_at`, and `Camp` carries no flag either. It
+                // wants a migration adding `camps.archived_at timestamptz` and a matching
+                // `Camp.archivedAt` — and then a decision neither of those can make on its own,
+                // which is whether an archived camp still comes back from
+                // `memberships(forAccount:)` and what the picker does with it if it does.
+                // Guessing a column into existence here would be guessing at all three.
                 SettingsRow(
                     "Archive this camp",
                     accessory: .plain,
                     titleColor: Theme.danger
                 )
+                .accessibilityElement(children: .combine)
             }
         }
+    }
+
+    /// Seeds the editor from the camp as it stands, so an edit starts from what is on screen
+    /// rather than from whatever the last abandoned one left behind.
+    private func beginEditingIdentity(_ camp: Camp) {
+        nameDraft = camp.name
+        sportDraft = camp.sport
+        isEditingIdentity = true
+    }
+
+    /// Closes the editor first, then writes. The store round-trip is what redraws the row, and
+    /// leaving the field open until it lands would show a name the camp has already taken.
+    private func commitIdentity() {
+        let name = nameDraft.trimmingCharacters(in: .whitespaces)
+        // `renameCamp` refuses an empty name; the editor's Save is already disabled for it, and
+        // this is the backstop for the keyboard's own Return.
+        guard !name.isEmpty else { return }
+        let sport = sportDraft
+        isEditingIdentity = false
+        Task { await store.renameCamp(name: name, sport: sport) }
+    }
+}
+
+// MARK: - Camp identity editor
+
+/// The camp's name and the sport it plays, edited in place.
+///
+/// The design draws this row with a caret and never draws what is behind it, so the editor is
+/// assembled from pieces the design does specify: `8s`'s in-place phone editor for the shape,
+/// and screen 4's own sport chips for the sport — so the two places that ask which sport a camp
+/// plays ask it the same way.
+private struct CampIdentityEditor: View {
+    @Binding var name: String
+    @Binding var sport: Sport
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    @FocusState private var isFocused: Bool
+
+    /// The same rule `CampDraft.isValid` applies on the way in. A camp with no name is not a
+    /// camp, and `camps.name` has a `char_length between 1 and 80` CHECK saying so.
+    private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var body: some View {
+        CardRow(
+            spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: 13, alignment: .top
+        ) {
+            VStack(alignment: .leading, spacing: Spacing.small) {
+                Text("Camp name & sport")
+                    .typeStyle(.rowLabel, color: Theme.ink)
+
+                nameField
+                sportChips
+
+                HStack(spacing: Spacing.small) {
+                    Spacer(minLength: 0)
+                    Pill(
+                        "Cancel", tone: .outline,
+                        horizontalPadding: 13, verticalPadding: 8, action: onCancel
+                    )
+                    Pill(
+                        "Save", tone: .accent,
+                        horizontalPadding: 13, verticalPadding: 8, action: onSave
+                    )
+                    // Refusing before the tap rather than after it: the alternative is a banner
+                    // saying "Give the camp a name first" over a field that is already open.
+                    .opacity(isValid ? 1 : 0.45)
+                    .disabled(!isValid)
+                }
+            }
+        }
+        .onAppear { isFocused = true }
+    }
+
+    /// A property rather than inline in `body` because the `#if` needs a `return`, which a
+    /// `@ViewBuilder` body cannot give it. The same shape `8s`'s phone field takes.
+    private var nameField: some View {
+        let field = TextField(
+            "", text: $name, prompt: Text("Camp name").foregroundStyle(Theme.inkFaint)
+        )
+        .textFieldStyle(.plain)
+        .typeStyle(.fieldValue, color: Theme.ink)
+        .focused($isFocused)
+        .autocorrectionDisabled()
+        .accessibilityLabel("Camp name")
+        .onSubmit(onSave)
+        .padding(.horizontal, Spacing.medium)
+        .padding(.vertical, Spacing.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Theme.grouped, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+        )
+
+        #if os(iOS)
+        return field
+            .textInputAutocapitalization(.words)
+            .submitLabel(.done)
+        #else
+        return field
+        #endif
+    }
+
+    /// `FlowLayout` rather than a plain row: five chips do not fit across a card inset by the
+    /// 12pt gutter, and at larger type sizes they fit even less.
+    private var sportChips: some View {
+        FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
+            ForEach(Sport.selectable, id: \.self) { option in
+                let isSelected = sport.matchesChip(option)
+                Chip(option.chipTitle, isSelected: isSelected, metrics: .sport) {
+                    sport = option
+                }
+                // The chip draws its selection but does not say it, and "which sport" is
+                // unanswerable by ear without it.
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+        .sensoryFeedback(.selection, trigger: sport)
     }
 }
 

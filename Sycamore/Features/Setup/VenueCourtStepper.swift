@@ -3,13 +3,18 @@
 //  Sycamore
 //
 //  The −/6/+ control on the right of every venue row in `8t`. It sets how many courts the venue
-//  has, which is a write to the camp, so it cannot drive `StepperControl` from the model
-//  directly: the value has to settle locally and then be sent.
+//  has, which is a write to the camp, so the value has to settle locally and then be sent.
 //
-//  A view of its own rather than a binding built in `SetupView.body`. `StepperControl` wants a
-//  real `Binding<Int>`, and the only way to make one out of `venue.groupCount` inside a body is
-//  `Binding(get:set:)` — which is rebuilt on every pass and fires a write from inside view
-//  evaluation. Local `@State` plus `onChange` keeps the write on the far side of the render.
+//  Drawn here rather than through `StepperControl` because `8t`'s stepper is not that stepper.
+//  The shared one comes from "Shape" and the venue sheet, where the buttons are 34×32 and both
+//  glyphs are ink; this one draws 28×28 and colours the two glyphs differently — minus in
+//  `inkSecondary`, plus in `accent` — because adding a court is the move the screen is
+//  encouraging and taking one away is not. Those are parameters `StepperControl` does not have,
+//  and adding them means editing `DesignSystem/`.
+//
+//  Local `@State` plus `onChange` keeps the write on the far side of the render: a
+//  `Binding(get:set:)` built in a body is rebuilt every pass and fires its setter from inside
+//  view evaluation.
 //
 
 import SwiftUI
@@ -22,6 +27,16 @@ struct VenueCourtStepper: View {
 
     @State private var count: Int
 
+    /// `28×28` buttons and a `28`-wide readout. Scaled because the number between them is text,
+    /// and a court count clipped to "1…" is worse than a stepper that has grown a little.
+    @ScaledMetric(relativeTo: .body) private var buttonSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var valueWidth: CGFloat = 28
+
+    /// `padding:3px` on the grey track the two buttons sit in.
+    private let trackInset: CGFloat = 3
+
+    private var range: ClosedRange<Int> { CampDraft.groupRange }
+
     init(venue: Venue, onChange: @escaping (Int) -> Void) {
         self.venue = venue
         self.onChange = onChange
@@ -29,12 +44,22 @@ struct VenueCourtStepper: View {
     }
 
     var body: some View {
-        StepperControl(
-            value: $count,
-            range: CampDraft.groupRange,
-            valueWidth: 28,
-            glyphSize: 14
-        )
+        HStack(spacing: Spacing.hairGap) {
+            button("minus", tint: Theme.inkSecondary, enabled: count > range.lowerBound) {
+                count = max(range.lowerBound, count - 1)
+            }
+
+            Text("\(count)")
+                .typeStyle(.stepperCount, color: Theme.ink)
+                .frame(minWidth: valueWidth)
+                .multilineTextAlignment(.center)
+
+            button("plus", tint: Theme.accent, enabled: count < range.upperBound) {
+                count = min(range.upperBound, count + 1)
+            }
+        }
+        .padding(trackInset)
+        .background(Theme.fill, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         .onChange(of: count) { _, new in
             guard new != venue.groupCount else { return }
             onChange(new)
@@ -45,7 +70,45 @@ struct VenueCourtStepper: View {
         .onChange(of: venue.groupCount) { _, saved in
             if saved != count { count = saved }
         }
+        .sensoryFeedback(.selection, trigger: count)
+        // One adjustable control rather than two buttons and a label. VoiceOver and Switch
+        // Control then drive it by swiping up and down, which is the whole point of a stepper —
+        // and it means neither 28pt glyph has to be found and hit individually.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Courts at \(venue.name)")
+        .accessibilityValue("\(count)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: if count < range.upperBound { count += 1 }
+            case .decrement: if count > range.lowerBound { count -= 1 }
+            @unknown default: break
+            }
+        }
+    }
+
+    private func button(
+        _ symbol: String,
+        tint: Color,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(enabled ? tint : Theme.inkGhost)
+                .frame(width: buttonSize, height: buttonSize)
+                .background(
+                    Theme.surface,
+                    in: RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous)
+                )
+                // The white button still draws 28×28; the frame outside it only carries the tap.
+                // It widens the grey track past the design's 94pt, which is the trade the rest of
+                // this app already makes wherever a drawn control lands under 44.
+                .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 }
 

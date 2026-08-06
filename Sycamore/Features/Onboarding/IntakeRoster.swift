@@ -9,9 +9,10 @@
 //  decided yet — "nobody is ranked yet" is the promise `8c` makes — and a half-filled `Player`
 //  with a sentinel rank would leak into the ladder the first time somebody forgot to check.
 //  This is the shape of a row in a spreadsheet, and it becomes a `Player` at the moment it is
-//  committed. `IntakePlayer.lastName` is the whole surname for the same reason: the file has
-//  it, `Player.lastInitial` does not, and dropping it before the import is confirmed means two
-//  Liams cannot be told apart on the review screen.
+//  committed. `IntakePlayer.lastName` is the whole surname because the file has one and the
+//  review screen needs it — two Liams cannot be told apart by an initial. It is no longer cut
+//  down at the door: `Player.lastName` now holds a surname too, so `asPlayer()` hands the whole
+//  thing over and the initial is derived beside it rather than instead of it.
 //
 
 import Foundation
@@ -26,6 +27,13 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
     var age: Int?
     var gender: Gender?
     var isReturning: Bool = false
+    /// Which of `8b`'s venues this kid was answered into, by position.
+    ///
+    /// A position rather than a `Venue.ID` because the venues do not exist yet — the camp is
+    /// written at the end of the flow, and until then a venue is a row somebody drew. A file's
+    /// rows keep the default: "Venue — optional, ask later" is what `8c` promises, and the first
+    /// venue is where the design puts everyone who has not been asked.
+    var venueIndex: Int = 0
 
     /// `Priya Nandan`, and just the first name when the file gave no surname.
     var displayName: String {
@@ -44,6 +52,39 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
     var detail: String {
         guard let age else { return "Age unknown" }
         return "\(age) year\(age == 1 ? "" : "s")"
+    }
+
+    /// The kid the camp keeps.
+    ///
+    /// One gap still has to be closed here, because `Player` cannot hold it open: no gender reads
+    /// as `.x`, which is the case the app already means by "not said". The file left the column
+    /// blank; nobody is being assigned one.
+    ///
+    /// The other two now pass straight through, which is what lets `8d` save a row it could only
+    /// show before:
+    ///
+    /// - Age stays unknown. `Player.age` is `Int?`, so a row somebody read and imported anyway
+    ///   keeps its gap instead of landing as a `0` — a zero reads as a real age *and* is rejected
+    ///   by the column's own 4…19 CHECK, so that kid could not round-trip at all.
+    /// - The whole surname comes with it. `lastInitial` is still derived, because every existing
+    ///   row has only that and ~21 files read it; `lastName` sits beside it so "Serene Chu"
+    ///   survives an import rather than being cut to "Serene C" at the door. An empty cell goes as
+    ///   nil rather than `""` — the column admits null or 1…60 characters and nothing between.
+    ///
+    /// Venue, court and rank are the repository's to set — a kid joins the back of a venue's
+    /// ladder with no court, which is what `Groups`' unassigned band is for.
+    func asPlayer() -> Player {
+        let surname = lastName.trimmingCharacters(in: .whitespaces)
+        return Player(
+            firstName: firstName,
+            lastInitial: surname.first.map { String($0).uppercased() } ?? "",
+            lastName: surname.isEmpty ? nil : surname,
+            age: age,
+            gender: gender ?? .x,
+            isReturning: isReturning,
+            overallRank: 0,
+            courtRank: 0
+        )
     }
 }
 

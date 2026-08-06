@@ -28,12 +28,16 @@ struct GroupsHeader: View {
     var movingName: String?
     /// `8g`. The chips and the field are pointless below eight kids.
     var isLocked: Bool = false
-    /// The grey figure beside the title — `8g` writes "5 kids added · Sycamore" there.
+    /// The grey line under the title — `8g` writes "5 kids added · Sycamore" there.
+    ///
+    /// Named `count` because `GroupsView` still calls it that, and that file is another pair of
+    /// hands this week. It is a sentence, not a figure, and it goes to `ScreenHeader`'s
+    /// `subtitle` slot accordingly; the name follows when the call site is next open.
     var count: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader(title: "Groups", count: count, initials: store.avatarInitials) {
+            ScreenHeader(title: "Groups", subtitle: count, initials: store.avatarInitials) {
                 store.pushedScreen = .profile
             }
 
@@ -49,17 +53,25 @@ struct GroupsHeader: View {
 
     // MARK: Ordinary state
 
+    /// Everything below the title is inset by `Spacing.header`, the design's 22 — and so is the
+    /// title now.
+    ///
+    /// This used to read 16 with a note saying it could not be fixed alone: the design sets the
+    /// whole white block at 22, but the title belongs to `ScreenHeader`, which drew all four tabs
+    /// at 16, and moving only the half of the block this file owns would have left the chips
+    /// hanging 6pt outside the heading above them. That was the right call and this is the other
+    /// half of it — the two moved together.
     private var controls: some View {
         VStack(spacing: 0) {
             venueChips
-                .padding(.bottom, Spacing.medium)
+                .padding(.bottom, Spacing.gutterWide)
 
             SearchField(text: $store.searchText, placeholder: "Find a player")
-                .padding(.horizontal, Spacing.bar)
+                .padding(.horizontal, Spacing.header)
                 .padding(.bottom, Spacing.medium)
 
             hint
-                .padding(.horizontal, Spacing.bar)
+                .padding(.horizontal, Spacing.header)
                 .padding(.bottom, Spacing.large)
         }
     }
@@ -78,25 +90,26 @@ struct GroupsHeader: View {
                 ForEach(store.camp?.orderedVenues ?? []) { venue in
                     let isSelected = venue.id == selectedVenueID
 
-                    Chip(venue.name, isSelected: isSelected, selectedTone: .dark, metrics: .venue) {
+                    Chip(venue.name, isSelected: isSelected, selectedTone: .dark, metrics: .groupsVenue) {
                         store.venueFilter = .venue(venue.id)
                     }
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 }
             }
-            .padding(.horizontal, Spacing.bar)
+            .padding(.horizontal, Spacing.header)
         }
         .scrollIndicators(.hidden)
     }
 
     private var hint: some View {
-        HStack(spacing: Spacing.tight) {
+        HStack(spacing: GroupsMetrics.hintGap) {
             Image(systemName: "hand.draw")
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: GroupsMetrics.hintGlyph, weight: .regular))
                 .foregroundStyle(Theme.inkFaint)
+                .accessibilityHidden(true)
 
             Text("Hold the handle to move a kid between groups")
-                .typeStyle(.footnote, color: Theme.inkMuted)
+                .typeStyle(GroupsType.hint, color: Theme.inkMuted)
 
             Spacer(minLength: 0)
         }
@@ -107,17 +120,18 @@ struct GroupsHeader: View {
     // MARK: Moving
 
     private func movingLine(_ name: String) -> some View {
-        HStack(spacing: Spacing.tight) {
+        HStack(spacing: GroupsMetrics.hintGap) {
             Image(systemName: "hand.draw.fill")
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: GroupsMetrics.hintGlyph, weight: .regular))
                 .foregroundStyle(Theme.accent)
+                .accessibilityHidden(true)
 
             Text("Moving \(name)")
-                .typeStyle(.chipMedium, color: Theme.accent)
+                .typeStyle(.metaStrong, color: Theme.accent)
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, Spacing.bar)
+        .padding(.horizontal, Spacing.header)
         .padding(.bottom, Spacing.large)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isSummaryElement)
@@ -131,7 +145,7 @@ struct GroupsHeader: View {
         GroupsHeader(store: .preview, selectedVenueID: SampleData.sycamore.id)
         Spacer(minLength: 0)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
     .showsMockStatusBar()
     .frame(width: 402, height: 420)
 }
@@ -141,7 +155,7 @@ struct GroupsHeader: View {
         GroupsHeader(store: .preview, movingName: "Austin Z")
         Spacer(minLength: 0)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
     .frame(width: 402, height: 300)
 }
 
@@ -150,6 +164,6 @@ struct GroupsHeader: View {
         GroupsHeader(store: .preview, isLocked: true, count: "5 kids added · Sycamore")
         Spacer(minLength: 0)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
     .frame(width: 402, height: 300)
 }

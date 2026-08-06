@@ -46,6 +46,22 @@ extension ScheduleBlock {
         guard let endsAt else { return players }
         return "\(players) · rotate at \(endsAt.clockLabel)"
     }
+
+    /// What VoiceOver reads for one card on `8k`.
+    ///
+    /// The card is a stack of five or six runs — a time, a title, a grey line, a rule, a glyph,
+    /// a note, a count — and read one at a time they arrive as a list of fragments with the
+    /// glyphs interleaved. Combined into a single sentence they arrive as the row a sighted
+    /// reader sees in one glance: when it is, what it is, and what is wrong with it.
+    func accessibilityLine(isCurrent: Bool) -> String {
+        var parts = [startsAt.clockLabel, title]
+        if let subtitle { parts.append(subtitle) }
+        if isCurrent { parts.append("on now") }
+        if !notes.isEmpty {
+            parts.append("\(notes.count) note\(notes.count == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: ", ")
+    }
 }
 
 // MARK: - Status
@@ -57,33 +73,26 @@ extension ScheduleBlockStatus {
         switch self {
         case .planned: Theme.inkMuted
         case .done: Theme.chevron
-        case .needsCoach: ScheduleTheme.warning
+        case .needsCoach: Theme.warning
         }
     }
 }
 
 // MARK: - The day
 
-/// Section 8's Schedule reads top to bottom, so where you are in the day is a position in the
-/// list rather than a field on a row: the first block that is not behind you is the one you are
-/// on. That keeps the green card in the right place with no clock at all, which matters because
-/// `Weekday.today` is still stubbed and a wrong "On now" is worse than none.
+/// Where a day is up to, and how that reads.
 ///
-/// The minutes remaining *do* need a real clock, so they are asked for separately and only
-/// answered when the wall clock actually falls inside the block.
+/// *Which* block is running is `ScheduleBlock.running(in:at:)` — a fact about a list of blocks
+/// and a clock, which lives on the model because Overview, the Postgres repository and this
+/// screen all have to agree on it. This enum only turns that answer into words.
 enum ScheduleDay {
-
-    /// The block the day is on, or nil once every block is done.
-    static func currentBlockID(in blocks: [ScheduleBlock]) -> ScheduleBlock.ID? {
-        blocks.first { $0.status != .done }?.id
-    }
 
     /// `On now · 41 min left`, `On now`, `Needs a coach`, `Done`, `Later today`.
     ///
     /// - Parameter now: injected rather than read from `Date()` inside, so a preview can put the
     ///   clock inside the block the design depicts instead of wherever today happens to be.
     static func statusLine(
-        for block: ScheduleBlock, isCurrent: Bool, now: TimeOfDay = .now
+        for block: ScheduleBlock, isCurrent: Bool, now: TimeOfDay = .now()
     ) -> String {
         switch block.status {
         case .done:
@@ -91,26 +100,16 @@ enum ScheduleDay {
         case .needsCoach:
             return "Needs a coach"
         case .planned:
-            guard isCurrent else { return "Later today" }
+            guard isCurrent else {
+                // "Later today" for everything not running was a lie every afternoon: once the
+                // last block ends, nothing is current and the whole day claimed to be ahead.
+                return block.startsAt <= now ? "Earlier today" : "Later today"
+            }
             guard let endsAt = block.endsAt, now >= block.startsAt, now < endsAt else {
                 return "On now"
             }
             return "On now · \(endsAt.id - now.id) min left"
         }
-    }
-}
-
-// MARK: - Clock
-
-extension TimeOfDay {
-
-    /// The wall clock, for the one thing on these screens that genuinely needs it.
-    ///
-    /// `Weekday.today` is pinned to Wednesday until the backend lands, but the *time* has no
-    /// such stand-in and inventing one would make "41 min left" a decoration.
-    static var now: TimeOfDay {
-        let parts = Calendar.current.dateComponents([.hour, .minute], from: .now)
-        return TimeOfDay(parts.hour ?? 0, parts.minute ?? 0)
     }
 }
 

@@ -15,9 +15,16 @@ import SwiftUI
 struct ScheduleBlockCard: View {
 
     let block: ScheduleBlock
-    /// The block the day is on. See `ScheduleDay.currentBlockID`.
+    /// The block the camp is in the middle of. See `ScheduleBlock.running(in:at:)`.
     let isCurrent: Bool
     let onOpen: () -> Void
+
+    /// The design draws the gutter 52 wide against a 13pt time. At `.accessibility1` that time
+    /// is half again as tall and a fixed column clips it, so the column grows with the type it
+    /// is holding.
+    @ScaledMetric(relativeTo: .callout) private var timeColumn = ScheduleMetrics.timeColumn
+    /// …and so does the drop that lands it on the card's title rather than on its top edge.
+    @ScaledMetric(relativeTo: .callout) private var timeBaseline = ScheduleMetrics.timeBaseline
 
     var body: some View {
         if block.status == .done {
@@ -25,6 +32,9 @@ struct ScheduleBlockCard: View {
         } else {
             Button(action: onOpen) { card }
                 .buttonStyle(.plain)
+                // A time, a title, a grey line, a rule, a glyph, a note and a count are seven
+                // runs SwiftUI would otherwise read out in order. One sentence instead.
+                .accessibilityLabel(block.accessibilityLine(isCurrent: isCurrent))
                 .accessibilityHint("Opens the block")
         }
     }
@@ -37,17 +47,16 @@ struct ScheduleBlockCard: View {
         HStack(spacing: Spacing.medium) {
             Text(block.gutterLabel)
                 .typeStyle(ScheduleType.blockTime, color: Theme.chevron)
-                // `minWidth`, not `width`: the column is 52 in the design, but the time inside
-                // it grows with Dynamic Type and a fixed box wraps "10:45" onto two lines.
-                .frame(minWidth: ScheduleMetrics.timeColumn, alignment: .leading)
+                .frame(minWidth: timeColumn, alignment: .leading)
 
             Text(block.doneLabel)
-                .typeStyle(.body, color: Theme.chevron)
+                .typeStyle(ScheduleType.doneLine, color: Theme.chevron)
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, ScheduleMetrics.rowInset)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(block.accessibilityLine(isCurrent: false))
     }
 
     // MARK: Still to come
@@ -59,19 +68,19 @@ struct ScheduleBlockCard: View {
                     isCurrent ? ScheduleType.blockTimeNow : ScheduleType.blockTime,
                     color: isCurrent ? Theme.accent : Theme.inkFaint
                 )
-                // `minWidth`, not `width`: the column is 52 in the design, but the time inside
-                // it grows with Dynamic Type and a fixed box wraps "10:45" onto two lines.
-                .frame(minWidth: ScheduleMetrics.timeColumn, alignment: .leading)
-                // The gutter time lines up with the card's title, not with its top edge.
-                .padding(.top, ScheduleMetrics.timeBaseline)
+                .frame(minWidth: timeColumn, alignment: .leading)
+                .padding(.top, timeBaseline)
 
             plate
         }
     }
 
+    /// `8k`'s running block wears a green border at the same weight as every other card's grey
+    /// one, and no shadow. Only `8l`'s court card is lifted — see `ScheduleShadows.courtCard`.
     private var plate: some View {
         let shape = RoundedRectangle(cornerRadius: ScheduleMetrics.cardRadius, style: .continuous)
-        let lift = ScheduleShadows.currentBlock
+        // The card running now is a point roomier around its rule than the rest.
+        let ruleGap = isCurrent ? ScheduleMetrics.noteRuleNow : ScheduleMetrics.noteRule
 
         return VStack(alignment: .leading, spacing: 0) {
             Text(block.title)
@@ -83,15 +92,15 @@ struct ScheduleBlockCard: View {
             if let subtitle = block.subtitle {
                 Text(subtitle)
                     .typeStyle(ScheduleType.blockDetail, color: block.status.tint)
-                    .padding(.top, Spacing.tight)
+                    .padding(.top, ScheduleMetrics.detailGap)
             }
 
             if !block.notes.isEmpty {
                 Hairline(color: Theme.hairlineSoft)
-                    .padding(.top, Spacing.row)
+                    .padding(.top, ruleGap)
 
                 noteLine
-                    .padding(.top, Spacing.row)
+                    .padding(.top, ruleGap)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -103,9 +112,6 @@ struct ScheduleBlockCard: View {
                 lineWidth: BorderWidth.hairline
             )
         }
-        // Spelled out rather than branched, so the card keeps one identity when the day moves on
-        // and this block stops being the current one.
-        .shadow(color: isCurrent ? lift.color : .clear, radius: lift.radius, y: lift.y)
         .contentShape(shape)
     }
 
@@ -115,15 +121,16 @@ struct ScheduleBlockCard: View {
     @ViewBuilder
     private var noteLine: some View {
         if isCurrent, let pinned = block.notes.first {
-            HStack(spacing: Spacing.tight) {
+            HStack(spacing: ScheduleMetrics.noteGap) {
                 DisclosureChevron(systemName: "pin.fill", size: 13, color: Theme.accent)
+                    .accessibilityHidden(true)
 
                 Text(pinned)
-                    .typeStyle(ScheduleType.noteLine, color: ScheduleTheme.noteInk)
+                    .typeStyle(ScheduleType.noteLine, color: Theme.inkWarm)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Spacer(minLength: Spacing.tight)
+                Spacer(minLength: ScheduleMetrics.noteGap)
 
                 if block.additionalNoteCount > 0 {
                     Text("+\(block.additionalNoteCount)")
@@ -134,8 +141,9 @@ struct ScheduleBlockCard: View {
                 }
             }
         } else if let summary = block.noteSummary {
-            HStack(spacing: Spacing.tight) {
+            HStack(spacing: ScheduleMetrics.noteGap) {
                 DisclosureChevron(systemName: "note.text", size: 14, color: Theme.inkFaint)
+                    .accessibilityHidden(true)
 
                 Text(summary)
                     .typeStyle(ScheduleType.noteLine, color: Theme.inkMuted)
@@ -152,7 +160,9 @@ struct ScheduleBlockCard: View {
 
 #Preview("Blocks") {
     let blocks = ScheduleSampleDay.blocks(venueID: SampleData.sycamore.id)
-    let currentID = ScheduleDay.currentBlockID(in: blocks)
+    // The design's clock, so the preview marks the block `8k` marks rather than whichever one
+    // the machine's afternoon happens to land in.
+    let currentID = ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41))?.id
 
     return ScrollView {
         VStack(spacing: ScheduleMetrics.blockGap) {
@@ -163,5 +173,5 @@ struct ScheduleBlockCard: View {
         .padding(.horizontal, Spacing.gutter)
         .padding(.vertical, ScheduleMetrics.listTop)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }

@@ -322,6 +322,12 @@ struct Group: Identifiable, Hashable, Codable, Sendable {
     /// Working head-count ceiling for one court. Derived from the venue at seed time —
     /// see `SampleData` — and stored so the over-capacity banner is a pure read.
     var capacity: Int
+    /// What this court is doing, when that is not what the running block says. `8i` titles four
+    /// cards "Drills", "Match play", "Skills rotation" and "Net down" while the header reads
+    /// "Skills rotation · until 10:30" — three of the four disagree with the block, so a court
+    /// that has gone its own way needs somewhere to say so. Nil means it has not: follow the
+    /// schedule, which is what every seeded court does.
+    var activity: String?
 
     /// Denormalised counts. Maintained by `Camp.reindex()`; never set these by hand
     /// outside the model layer.
@@ -358,7 +364,15 @@ struct Player: Identifiable, Hashable, Codable, Sendable {
     var firstName: String
     /// A single letter. Camps write kids as "Serene C" so two Liams stay apart.
     var lastInitial: String
-    var age: Int
+    /// The whole surname, once a camp has collected one. It sits beside `lastInitial` rather than
+    /// replacing it: the initial is all every existing row holds, and "Chu" cannot be recovered
+    /// from "C", so the two have to coexist while imports fill this in.
+    var lastName: String?
+    /// Nil for a roster row that arrived without an age — `8d` ("Check the import") is the screen
+    /// for exactly those. The column has always been nullable and 41 of the 100 seeded kids are
+    /// null in it; the zero this used to stand in reads as a real age *and* is rejected by the
+    /// column's own CHECK, which admits 4…19 and nothing else.
+    var age: Int?
     var gender: Gender
     var isReturning: Bool
     var venueID: Venue.ID?
@@ -368,11 +382,44 @@ struct Player: Identifiable, Hashable, Codable, Sendable {
     /// Position inside the court, which a coach can reorder independently.
     var courtRank: Int
 
-    var displayName: String { "\(firstName) \(lastInitial)" }
+    /// "Serene Chu" once there is a surname, "Serene C" while there is only the initial.
+    ///
+    /// The design writes the full name on every screen that names a kid, so the surname wins when
+    /// there is one. The fallback is not a courtesy — it is what keeps all 100 existing rows, and
+    /// the ~21 files that read this, rendering unchanged while `last_name` fills in. A kid with
+    /// neither is their first name alone, rather than a name with a space hung off the end.
+    /// A whole name is ordered by `PersonNameComponents` rather than glued together with a space:
+    /// given-then-family is an English convention, not a fact about names, and the formatter reads
+    /// "Serene Chu" in the design's locale while still ordering it correctly in one that puts the
+    /// family name first. The initial keeps the plain spelling — "C" is not a family name, and
+    /// there is nothing for the formatter to order.
+    var displayName: String {
+        let surname = lastName?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !surname.isEmpty else {
+            return lastInitial.isEmpty ? firstName : "\(firstName) \(lastInitial)"
+        }
+        var components = PersonNameComponents()
+        components.givenName = firstName
+        components.familyName = surname
+        return components.formatted(.name(style: .medium))
+    }
+
+    /// `13 years` under a name that read cleanly, and `Age unknown` for one that did not — the
+    /// two readings `8d` puts side by side.
+    var ageLabel: String {
+        guard let age else { return "Age unknown" }
+        return "\(age) year\(age == 1 ? "" : "s")"
+    }
 
     /// `13 · F · returning`, or `12 · M` for a first-timer.
+    ///
+    /// An unknown age drops out of the line rather than showing as a gap: the meta line is read at
+    /// a glance beside a name, and `· F ·` with nothing in front of it says "not recorded" more
+    /// plainly than a dash would.
     var metaLine: String {
-        var parts = ["\(age)", gender.symbol]
+        var parts: [String] = []
+        if let age { parts.append("\(age)") }
+        parts.append(gender.symbol)
         if isReturning { parts.append("returning") }
         return parts.joined(separator: " · ")
     }

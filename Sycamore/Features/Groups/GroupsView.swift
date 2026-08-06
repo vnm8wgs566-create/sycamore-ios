@@ -24,6 +24,11 @@ import SwiftUI
 struct GroupsView: View {
 
     @Environment(AppStore.self) private var store
+    /// The lift, the drop and the fold are all changes of *position*, which is the one thing
+    /// Reduce Motion is actually about. Every animation on the screen goes through
+    /// `GroupsMetrics.fold(reduceMotion:)`, so the state still changes — it arrives rather than
+    /// travels.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Groups the reader has opened past their first three kids. Local rather than
     /// `store.collapsedGroupIDs`, because the design's default is the *folded* card and an empty
@@ -53,9 +58,11 @@ struct GroupsView: View {
             content(entries, venue: venue)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        // `#F8F9F8`, which is a touch warmer than the `grouped` every other tab draws. Section 8
+        // gives this screen its own page colour; see the PR for why it is not `Theme.grouped`.
+        .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { moveBar }
-        .animation(GroupsMetrics.fold, value: move == nil)
+        .animation(GroupsMetrics.fold(reduceMotion: reduceMotion), value: move == nil)
         // A filter that changes under a kid in the air can take their group off the screen.
         .onChange(of: store.searchText) { move = nil }
         .onChange(of: store.venueFilter) { move = nil }
@@ -85,7 +92,7 @@ struct GroupsView: View {
             // Not a `LazyVStack`: a card that has not been created has no rectangle, and a group
             // with no rectangle is a group a kid cannot be dropped into. A camp has a dozen of
             // them, not a thousand.
-            VStack(spacing: Spacing.small) {
+            VStack(spacing: GroupsMetrics.cardGap) {
                 ForEach(entries) { entry in
                     cardView(entry)
                 }
@@ -99,7 +106,7 @@ struct GroupsView: View {
                 addGroupRow(venue)
             }
             .padding(.horizontal, Spacing.gutter)
-            .padding(.top, Spacing.medium)
+            .padding(.top, GroupsMetrics.listTop)
             .padding(.bottom, Spacing.tabBarClearance)
             .coordinateSpace(.named(GroupsSpace.list))
             .overlay(alignment: .top) { dropIndicator }
@@ -118,7 +125,7 @@ struct GroupsView: View {
             visibleRows: entry.visibleRows,
             move: move,
             onToggle: { toggle(entry.id) },
-            onOpenPlayer: { store.present(.player($0.id)) },
+            onOpenPlayer: { store.pushedScreen = .player($0.id) },
             onAim: { aim(at: entry.id) },
             onMoveBegan: { beginMove($0, in: entry) },
             onMoveChanged: updateMove(to:),
@@ -138,25 +145,31 @@ struct GroupsView: View {
     @ViewBuilder
     private func addGroupRow(_ venue: Venue?) -> some View {
         if move == nil, let venue {
+            let shape = RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous)
+
             Button {
                 Task { await addGroup(to: venue) }
             } label: {
-                HStack(spacing: Spacing.small) {
+                HStack(spacing: GroupsMetrics.addGroupGap) {
                     Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: GroupsMetrics.addGroupGlyph, weight: .regular))
+                        .accessibilityHidden(true)
                     Text("Add a group")
-                        .typeStyle(.buttonSmall)
+                        .typeStyle(GroupsType.addGroup)
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(Theme.accent)
-                .padding(Spacing.large)
+                .padding(GroupsMetrics.cardPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                        .strokeBorder(
-                            Theme.accentBorder,
-                            style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: GroupsMetrics.dash)
-                        )
+                .frame(minHeight: HitTarget.minimum)
+                // The design fills this white and then dashes the border. Without the fill it
+                // reads as a hole in the list rather than as the next card along.
+                .background(Theme.surface, in: shape)
+                .overlay {
+                    shape.strokeBorder(
+                        Theme.accentBorder,
+                        style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: GroupsMetrics.dash)
+                    )
                 }
                 .contentShape(.rect)
             }
@@ -184,52 +197,65 @@ struct GroupsView: View {
 
     // MARK: - Move overlays
 
-    /// The accent bar marking where the kid will land — the same treatment Rank used, because it
-    /// is the same gesture answering the same question.
+    /// Where the kid will land: a dot, then a rule across the rest of the card.
+    ///
+    /// The dot is not decoration — a bare green line between two rows reads as a divider that
+    /// has changed colour, and the dot is what turns it back into a caret pointing at a place.
     @ViewBuilder
     private var dropIndicator: some View {
         if let slot = move?.target {
-            Capsule(style: .continuous)
-                .fill(Theme.accent)
-                .frame(height: BorderWidth.insertion)
-                // The overlay spans the whole list, gutter included, so the inset has to clear
-                // the gutter *and* the card's own padding to line up with the names.
-                .padding(.horizontal, Spacing.gutter + Spacing.medium)
-                // The bar straddles the boundary rather than sitting under it.
-                .offset(y: slot.y - BorderWidth.insertion / 2)
-                .allowsHitTesting(false)
+            HStack(spacing: GroupsMetrics.dropDotGap) {
+                Circle()
+                    .fill(Theme.accent)
+                    .frame(width: GroupsMetrics.dropDot, height: GroupsMetrics.dropDot)
+
+                Capsule(style: .continuous)
+                    .fill(Theme.accent)
+                    .frame(height: BorderWidth.focus)
+            }
+            // The overlay spans the whole list, gutter included, so the inset has to clear the
+            // gutter *and* the card's own padding to line up with the names.
+            .padding(.horizontal, Spacing.gutter + GroupsMetrics.cardPadding)
+            // Centred on the boundary rather than hanging below it — the dot is the tallest
+            // part, so it is the dot that has to straddle the line.
+            .offset(y: slot.y - GroupsMetrics.dropDot / 2)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 
     /// The kid, out of the list and under the finger. The original row stays in the flow as a
     /// dashed gap so the measured geometry — and therefore every drop slot — holds still.
+    ///
+    /// Drawn from the same `GroupsRow` as the row it came out of, and that matters: this card is
+    /// positioned directly over that row at the moment of pick-up, so a numeral column or a
+    /// name inset that disagreed by even a point would read as the kid jumping sideways as they
+    /// leave the ladder. The design changes weight and colour between the two, nothing else.
     @ViewBuilder
     private var liftedRow: some View {
         if let move {
             let shape = RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
 
-            HStack(spacing: Spacing.row) {
-                Text("\(move.row.player.overallRank)")
-                    .typeStyle(.rankNumeral, color: Theme.accent)
-                    .frame(width: GroupsMetrics.numeralWidth, alignment: .trailing)
-
-                Text(move.row.player.displayName)
-                    .typeStyle(.bodyStrong, color: Theme.ink)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
+            GroupsRow(
+                rank: move.row.player.overallRank,
+                rankColor: Theme.accent,
+                name: move.row.player.displayName,
+                nameStyle: GroupsType.liftedName,
+                nameColor: Theme.ink
+            ) {
+                // Phosphor's filled grip. There is no fill axis on `line.3.horizontal`, so the
+                // weight carries what the fill did.
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 19, weight: .regular))
+                    .font(.system(size: GroupsMetrics.handleGlyph, weight: .semibold))
                     .foregroundStyle(Theme.accent)
             }
-            .padding(.horizontal, Spacing.gutterWide)
+            .padding(.horizontal, GroupsMetrics.cardPadding)
             .padding(.vertical, Spacing.medium)
             .background { shape.fill(Theme.surface).shadow(Shadows.liftedRow) }
             .overlay { shape.strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.hairline) }
             // Inset past the gutter as well, so the card carrying the kid sits proud of the
             // cards it is travelling over rather than covering one edge to edge.
-            .padding(.horizontal, Spacing.gutter + Spacing.gutterWide)
+            .padding(.horizontal, Spacing.gutter + GroupsMetrics.cardPadding)
             .offset(y: move.origin.minY + move.translation)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -244,7 +270,7 @@ struct GroupsView: View {
                 // than the tab that owns it. So it stacks above the pill instead of replacing
                 // it — one bar over the other, neither hidden.
                 .padding(.bottom, Spacing.tabBarClearance)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -292,13 +318,13 @@ struct GroupsView: View {
 
     private func entries(in venue: Venue?) -> [GroupsEntry] {
         guard let camp = store.camp, let venue else { return [] }
-        let bands = bands(in: camp)
+        let ranges = rankRanges(in: camp)
 
         return store.groupsSections
             .first { $0.id == venue.id }?
             .cards
             .map { card in
-                let band = bands[card.id]
+                let range = ranges[card.id]
                 let visible = GroupsRules.visibleCount(
                     of: card.rows.count,
                     preview: GroupsRules.previewRows,
@@ -307,37 +333,48 @@ struct GroupsView: View {
 
                 return GroupsEntry(
                     card: card,
-                    summary: summary(for: band),
+                    summary: summary(
+                        of: card.group,
+                        over: range,
+                        lifted: move?.sourceGroupID == card.id
+                    ),
                     visibleRows: Array(card.rows.prefix(visible)),
-                    tailRank: (band?.high ?? 0) + 1
+                    tailRank: (range?.upperBound ?? 0) + 1
                 )
             } ?? []
     }
 
-    /// Every group's head-count and rank range, in one pass over the roster.
+    /// Every group's rank range, in one pass over the roster.
     ///
     /// `Camp.players(inGroup:)` filters and sorts the whole player array, so asking it once per
     /// card is O(cards × players) — and `body` runs on every frame of a drag. This is the same
     /// answer in O(players), once.
-    private func bands(in camp: Camp) -> [Group.ID: (count: Int, low: Int, high: Int)] {
-        var bands: [Group.ID: (count: Int, low: Int, high: Int)] = [:]
+    ///
+    /// The head-count is deliberately not in here: `Group.playerCount` is denormalised by
+    /// `Camp.reindex()` and already holds it, so counting again would be a second answer to a
+    /// question the model has settled.
+    private func rankRanges(in camp: Camp) -> [Group.ID: ClosedRange<Int>] {
+        var ranges: [Group.ID: ClosedRange<Int>] = [:]
         for player in camp.players {
             guard let groupID = player.groupID else { continue }
-            guard var band = bands[groupID] else {
-                bands[groupID] = (1, player.overallRank, player.overallRank)
+            guard let range = ranges[groupID] else {
+                ranges[groupID] = player.overallRank...player.overallRank
                 continue
             }
-            band.count += 1
-            band.low = min(band.low, player.overallRank)
-            band.high = max(band.high, player.overallRank)
-            bands[groupID] = band
+            ranges[groupID] = min(range.lowerBound, player.overallRank)...max(range.upperBound, player.overallRank)
         }
-        return bands
+        return ranges
     }
 
-    private func summary(for band: (count: Int, low: Int, high: Int)?) -> String {
-        guard let band else { return "No kids yet" }
-        return "\(band.count) player\(band.count == 1 ? "" : "s") · ranked \(band.low)–\(band.high)"
+    /// `8 players · ranked 1–8`, and one short of it while this group's kid is in the air —
+    /// `8p` draws the card Austin came out of as "7 players · ranked 1–8".
+    ///
+    /// The band is deliberately left alone: the group really does hold seven at that moment, but
+    /// the kid has not landed anywhere yet, so the span of ranks it covers is still 1–8.
+    private func summary(of group: Group, over range: ClosedRange<Int>?, lifted: Bool) -> String {
+        let count = group.playerCount - (lifted ? 1 : 0)
+        guard let range, count > 0 else { return "No kids yet" }
+        return "\(count) player\(count == 1 ? "" : "s") · ranked \(range.lowerBound)–\(range.upperBound)"
     }
 
     /// A boundary above every drawn row, one below the last of them, and one at the foot of
@@ -399,7 +436,7 @@ struct GroupsView: View {
     // MARK: - Intents
 
     private func toggle(_ groupID: Group.ID) {
-        withAnimation(GroupsMetrics.fold) {
+        withAnimation(GroupsMetrics.fold(reduceMotion: reduceMotion)) {
             if expandedGroupIDs.contains(groupID) {
                 expandedGroupIDs.remove(groupID)
             } else {
@@ -473,7 +510,7 @@ struct GroupsView: View {
         var updated = current
         updated.target = slot
         updated.translation = slot.y - current.origin.midY
-        withAnimation(GroupsMetrics.fold) { move = updated }
+        withAnimation(GroupsMetrics.fold(reduceMotion: reduceMotion)) { move = updated }
     }
 
     private func cancelMove() {
@@ -530,47 +567,21 @@ struct GroupsView: View {
         // landing in a group this venue does not have is still not something to write.
         guard let camp = store.camp, card(landing.groupID) != nil else { return }
 
-        var assignments = store.rankAssignments()
-        guard let target = assignments.firstIndex(where: { $0.venueID == landing.venueID }) else { return }
-        for index in assignments.indices {
-            assignments[index].playerIDs.removeAll { $0 == row.id }
-        }
-
-        // The landing already names the kid the insertion bar sat above, so there is no index to
-        // translate. That is the point of anchoring on an id: a row number only means something
-        // beside the list it was counted against, and this screen's list is filtered by the
-        // search field, folded to three rows, and about to have the mover taken out of it.
-        //
-        // Taking the mover out of every assignment first (above) is what keeps the arithmetic to
-        // one step: every row below them has already shifted up, so the anchor's index in the
-        // ladder *is* the insertion point.
-        let ladder = assignments[target].playerIDs
-        let roster = camp.players(inGroup: landing.groupID).filter { $0.id != row.id }
-
-        // A nil anchor means the back of the group, which is whoever there holds its highest
-        // rank — and landing behind them is one past their place in the ladder.
-        let isBackOfGroup = landing.anchor == nil
-        let anchor = landing.anchor ?? roster.max { $0.overallRank < $1.overallRank }?.id
-
-        let insertion = anchor
-            .flatMap { ladder.firstIndex(of: $0) }
-            .map { isBackOfGroup ? $0 + 1 : $0 }
-            // An empty group has no place of its own in the ladder yet, and the back of the
-            // venue is the only answer that does not invent one.
-            ?? ladder.count
-        assignments[target].playerIDs.insert(row.id, at: insertion)
-
-        // The group's own order, read back off the ladder that was just built — the two cannot
-        // disagree if only one of them is authored.
-        var members = Set(roster.map(\.id))
-        members.insert(row.id)
-        let courtOrder = assignments[target].playerIDs.filter { members.contains($0) }
+        // The arithmetic itself is in `GroupsLandingPlan`, which is where it can be tested — it
+        // needs neither the store, the environment nor the main actor, and this is the one piece
+        // of section 8 that can put a kid on the wrong court with nothing on screen looking wrong.
+        guard let plan = GroupsLandingPlan(
+            moving: row.id,
+            to: landing,
+            ladder: store.rankAssignments(),
+            roster: camp.players(inGroup: landing.groupID)
+        ) else { return }
 
         Task {
-            await store.commitRankOrder(assignments)
+            await store.commitRankOrder(plan.assignments)
             // `reorder` carries group *and* venue membership, so this is also what moves the kid
             // between cards; `commitRankOrder` only reassigns a group when the venue changed.
-            await store.reorder(group: landing.groupID, playerIDs: courtOrder)
+            await store.reorder(group: landing.groupID, playerIDs: plan.courtOrder)
         }
     }
 }
@@ -608,5 +619,21 @@ struct GroupsView: View {
 
     return GroupsView()
         .environment(store)
+        .frame(width: 402, height: 874)
+}
+
+/// The rank column and every 44pt row at the app's ceiling. A two-digit place that truncates
+/// here is a two-digit place that truncates on a real reader's phone.
+#Preview("Groups — large type") {
+    GroupsView()
+        .environment(AppStore.preview)
+        .dynamicTypeSize(.accessibility1)
+        .frame(width: 402, height: 874)
+}
+
+#Preview("Groups — dark") {
+    GroupsView()
+        .environment(AppStore.preview)
+        .preferredColorScheme(.dark)
         .frame(width: 402, height: 874)
 }

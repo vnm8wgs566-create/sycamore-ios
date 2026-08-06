@@ -24,21 +24,14 @@
 //  3. `sites.name` is globally unique and `camps.invite_code` is too, which the app's own
 //     "Venue 1" naming walks straight into. Both inserts retry with a disambiguated value.
 //
-//  And one thing that is not a schema gap but will look like a broken client until it is fixed:
-//  the two section 8 migrations created `camps`, `memberships`, `profiles`, `schedule_blocks` and
-//  `inbox_items`, and recreated `today_courts`, `roster_today` and `player_scores`, without
-//  granting a single privilege to `anon` or `authenticated`. `delete` is missing from the older
-//  tables too. Every one of those relations answers `42501 permission denied` over REST, so
-//  signing in, picking a camp, Schedule and the Inbox all fail until:
+//  4. `camps` SELECT is members-only, so `joinCamp` cannot read a camp by its invite code — the
+//     one moment you legitimately need a camp you are not yet in. It goes through the
+//     `join_camp_by_code` RPC instead, which is the only unauthenticated-by-membership read of
+//     that table and writes the membership itself.
 //
-//      grant select, insert, update, delete on all tables in schema public
-//        to anon, authenticated;
-//      grant select on public.today_courts, public.roster_today, public.player_scores
-//        to anon, authenticated;
-//
-//  Row level security is already the gate — every table has RLS on, and `20260805074039`
-//  documents its open `mvp_all` policy as a deliberate placeholder — so this restores the
-//  intent the migrations wrote down rather than loosening anything.
+//  The missing REST grants this header used to warn about were fixed in
+//  `20260805152045_grant_rest_privileges`, and the open `mvp_all` policies it described were
+//  replaced by real per-camp RLS in `20260806013152_real_rls`.
 //
 
 import Foundation
@@ -120,17 +113,15 @@ actor SupabaseRepository: SycamoreRepository {
     /// token surfaces as what it is.
     /// Refuses before the network when there is no token to send.
     ///
-    /// `AppStore.continueWithApple` defaults its token to `""`, because nothing in this app has
-    /// ever produced a real one — there is no `ASAuthorization` anywhere in it. Against
-    /// `InMemoryRepository` that was invisible: the offline build ignores the token, so the
-    /// button appeared to work. Against GoTrue the empty string came back as
-    /// `id_token required`, which is an internal detail of an endpoint the reader never asked
-    /// about and gives them nothing to act on.
+    /// `AppleSignIn` produces a real token now, and `continueWithApple` no longer defaults it to
+    /// `""` — the compiler enforces one. The guard stays as a backstop for the empty-string case
+    /// the type system cannot rule out, because what GoTrue answers to an empty token is
+    /// `id_token required`: an internal detail of an endpoint the reader never asked about.
     ///
-    /// This project also has `external_apple_enabled = false`, so the provider is switched off
-    /// server-side as well. Both have to change before the button can work: the Apple provider
-    /// enabled in the dashboard, and `ASAuthorizationAppleIDProvider` wired into `SignInView` to
-    /// produce the token.
+    /// It is also the honest error while the provider is off. Apple sign-in needs two switches
+    /// the app cannot throw for itself — the provider enabled in the Supabase dashboard with the
+    /// bundle id as its Client ID, and "Sign In with Apple" ticked on the App ID in the Apple
+    /// developer portal. Until both are on, this is what a person sees.
     func signInWithApple(identityToken: String) async throws -> Account {
         guard !identityToken.isEmpty else { throw SycamoreError.appleSignInUnavailable }
         let session = try await auth.signInWithApple(identityToken: identityToken)
@@ -377,36 +368,42 @@ actor SupabaseRepository: SycamoreRepository {
         return camp
     }
 
+    /// The single column `join_camp_by_code` returns.
+    private struct JoinedCamp: Decodable, Sendable {
+        var campId: UUID
+    }
+
     func joinCamp(inviteCode: String, accountID: Account.ID) async throws -> Membership {
         guard let code = Self.formattedInviteCode(inviteCode) else {
             throw SycamoreError.unknownInviteCode
         }
-        let camps: [CampRecord] = try await db.select(
-            Relation.camps, .select("*").eq("invite_code", code)
-        )
-        guard let campRecord = camps.first else { throw SycamoreError.unknownInviteCode }
+        // Through the RPC, not a `camps` select. `camps` SELECT is members-only now, and joining
+        // is the one moment you need to read a camp *before* you are a member — so that read
+        // matched no policy, came back empty, and surfaced as "No camp uses that code" for a code
+        // that was perfectly good.
+        //
+        // `join_camp_by_code` is the only read of `camps` that does not require membership. It is
+        // `security definer`, takes nothing but the code, derives the account from `auth.uid()`
+        // rather than trusting a caller-supplied id, and writes the `worker` membership itself —
+        // idempotently, so the `existing` check this used to do is now the function's job.
+        //
+        // It also answers the same way for a wrong code as for any other failure, which is what
+        // stops it being an oracle for which camps exist.
+        let joined: [JoinedCamp] = try await db.rpc("join_camp_by_code", ["code": code])
+        guard let campID = joined.first?.campId else { throw SycamoreError.unknownInviteCode }
 
-        // Idempotent by reading first rather than by upserting: a merge would reset an admin who
-        // pasted their own code back down to `worker`, and `joinCamp` is documented to hand the
-        // existing membership back untouched.
+        // The role is read back rather than assumed: the RPC leaves an existing membership alone,
+        // so an admin who pastes their own code stays an admin instead of being reset to `worker`.
         let existing: [MembershipRecord] = try await db.select(
             Relation.memberships,
-            .select("*").eq("account_id", accountID).eq("camp_id", campRecord.id)
+            .select("*").eq("account_id", accountID).eq("camp_id", campID)
         )
-        if existing.isEmpty {
-            // A code hands out the lowest useful permission; an admin promotes from Setup.
-            try await db.insert(Relation.memberships, [RowValues([
-                "account_id": .uuid(accountID),
-                "camp_id": .uuid(campRecord.id),
-                "role": .text(PostgresEnum.text(Role.worker)),
-            ])])
-        }
         try await adoptStaffRow(
             accountID: accountID,
-            campID: campRecord.id,
+            campID: campID,
             role: existing.first.map { PostgresEnum.role($0.role, label: $0.roleLabel) } ?? .worker
         )
-        return try await membership(forAccount: accountID, camp: campRecord.id)
+        return try await membership(forAccount: accountID, camp: campID)
     }
 
     func createCamp(_ draft: CampDraft, accountID: Account.ID) async throws -> Membership {
@@ -548,6 +545,28 @@ actor SupabaseRepository: SycamoreRepository {
 
             try await insertSite(venue, campID: campID)
             try await db.insert(Relation.groups, after.groups(in: venue.id).map(Self.groupRow))
+            return try await camp(id: campID)
+        }
+    }
+
+    /// One PATCH, and then the graph back.
+    ///
+    /// No `before` read to validate against, unlike `updateVenue`: there is no sub-object to
+    /// find and nothing to reconcile, and `camps_update_admin` already refuses a camp the caller
+    /// does not administer. Asking first would only turn one round trip into two and still leave
+    /// the real check to the policy.
+    func renameCamp(name: String, sport: Sport, campID: Camp.ID) async throws -> Camp {
+        // `camps.name` is `check (char_length(name) between 1 and 80)`, so an all-spaces name is
+        // a 400 from Postgres describing a constraint. Caught here, it is a sentence.
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { throw SycamoreError.campNameRequired }
+
+        return try await serialised(campID) {
+            try await db.update(
+                Relation.camps,
+                set: Self.campRow(name: trimmed, sport: sport),
+                where: PostgRESTQuery().eq("id", campID)
+            )
             return try await camp(id: campID)
         }
     }

@@ -29,13 +29,13 @@ struct InboxActionButton: View {
                 .padding(.horizontal, InboxMetrics.actionPaddingH)
                 .padding(.vertical, InboxMetrics.actionPaddingV)
                 .background(Theme.accentTint, in: Capsule(style: .continuous))
-                // The capsule keeps the size the design draws it at — about 28pt tall — and
+                // The capsule keeps the size the design draws it at — about 29pt tall — and
                 // the frame outside it carries the tap.
                 //
                 // This does make a needs-action row taller than the design's 58pt, because a
-                // 28pt target is not one. The alternative, stretching the hit region to the
+                // 29pt target is not one. The alternative, stretching the hit region to the
                 // row instead, tops out at the 34pt of the icon tile and is still short.
-                .frame(minHeight: HitTarget.minimum)
+                .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

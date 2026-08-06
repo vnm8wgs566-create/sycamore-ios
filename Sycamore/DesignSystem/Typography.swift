@@ -16,31 +16,26 @@ import SwiftUI
 
 /// The raw value is the CSS weight so the styles below read like the design's `font:` shorthand.
 ///
-/// Instrument Sans' weight axis runs 400–700, and the design asks Google Fonts for exactly
-/// `wght@400..700`. `extraBold` therefore has no face of its own and resolves to the 700 one.
-/// That is a correction rather than a compromise: 800 is left over from when this app was set
-/// in Manrope, and the design document does not use it anywhere — its weights are 400 (360
-/// uses), 500 (91), 600 (419) and 700 (38).
+/// There is no `extraBold`. 800 was left over from when this app was set in Manrope, and the
+/// design does not draw it anywhere: across section 8's 486 app-content declarations the weights
+/// are 400 (212 uses), 500 (24) and 600 (250) — no 700 either. Instrument Sans' axis runs 400–700
+/// and the design asks Google Fonts for exactly `wght@400..700`, so 800 never had a face of its
+/// own; it resolved to the 700 one and simply drew every heading a step heavier than the design.
 ///
-/// The case is kept rather than folded into `bold` so the seventeen heading styles that name it
-/// keep reading as "the heaviest weight there is", and so a family that does ship 800 would
-/// light up by editing this one file. Both the bundled-face path and the system fallback map it
-/// to bold, so the two never disagree about how heavy a heading is.
+/// `bold` stays because the mono styles and a run of sign-in copy still name it. Nothing in the
+/// type table below does.
 enum TypeWeight: Int, CaseIterable, Sendable {
     case regular = 400
     case medium = 500
     case semibold = 600
     case bold = 700
-    case extraBold = 800
 
     var fontWeight: Font.Weight {
         switch self {
         case .regular: .regular
         case .medium: .medium
         case .semibold: .semibold
-        // Not `.heavy`: the bundled face tops out at 700, and a fallback heavier than the real
-        // font would make the missing-font state look *bolder* than the shipped one.
-        case .bold, .extraBold: .bold
+        case .bold: .bold
         }
     }
 
@@ -58,7 +53,7 @@ enum TypeWeight: Int, CaseIterable, Sendable {
         case .regular: "InstrumentSans-Regular"
         case .medium: "InstrumentSans-Regular_Medium"
         case .semibold: "InstrumentSans-Regular_SemiBold"
-        case .bold, .extraBold: "InstrumentSans-Regular_Bold"
+        case .bold: "InstrumentSans-Regular_Bold"
         }
     }
 }
@@ -79,6 +74,18 @@ enum FontFamily {
     }()
 
     static var usesInstrumentSans: Bool { !availableFaces.isEmpty }
+
+    /// Newsreader's regular, and only its regular — the design sets every serif heading at 400.
+    ///
+    /// The name is read off the file, not guessed, and it is the second time that has mattered:
+    /// Newsreader's optical-size axis means Core Text synthesises the default instance as
+    /// `Newsreader16pt-Regular` while its siblings come back `NewsreaderRoman-Light`,
+    /// `-Medium`, `-Bold`. Neither pattern is inferable from the family name, and asking for the
+    /// wrong one drops silently to the system serif.
+    static let serifFace: String? = {
+        let name = "Newsreader16pt-Regular"
+        return faceIsRegistered(name) ? name : nil
+    }()
 
     /// `CTFontCreateWithName` never fails — it substitutes. So ask for the face and check that
     /// what came back is actually the face we asked for.
@@ -102,6 +109,17 @@ struct TypeStyle: Sendable, Equatable {
     var lineHeightMultiple: CGFloat?
     var isUppercased: Bool = false
     var isMonospaced: Bool = false
+    /// Draws in Newsreader rather than Instrument Sans.
+    ///
+    /// The design loads three families and this app had bundled one. Newsreader sets **every
+    /// screen title in section 8** — "Sycamore", "Shape the camp", "Players", "Schedule",
+    /// "Groups", "Friday is empty." — 44 times, always at weight 400 and 22–40px. Every one of
+    /// them was rendering in a sans, which is not a near-miss: it is the difference between a
+    /// masthead and a label, and it is the first thing on every screen.
+    ///
+    /// (The document's third family, Manrope, is the spec's own annotation chrome — "Final — the
+    /// app in order", "8a" — not app content. Dropping it was right.)
+    var isSerif: Bool = false
 
     /// Letter-spacing in points, which is what SwiftUI's `tracking(_:)` wants.
     var tracking: CGFloat { size * trackingEm }
@@ -172,43 +190,89 @@ struct TypeStyle: Sendable, Equatable {
         copy.isUppercased = flag
         return copy
     }
+
+    /// Draws this style in Newsreader. For the section 8 headings a feature declares itself
+    /// rather than taking from the shared table.
+    func serif(_ flag: Bool = true) -> TypeStyle {
+        var copy = self
+        copy.isSerif = flag
+        return copy
+    }
 }
 
 // MARK: - The type table
+//
+// This table used to be a step or two heavier than the design. It was transcribed from the
+// screens this app shipped with, and section 8 — the final design, the app in order — sets the
+// same roles lighter throughout. Eight feature folders each noticed and each compensated
+// privately, which is the wrong altitude: a dozen local overrides of a shared table is how the
+// table stops being shared. They are gone; this is what they were compensating for.
+//
+// Counted over the 486 app-content declarations in section 8's own CSS (`8a`–`8u`, excluding the
+// Manrope the document sets its *own* annotation chrome in), the design uses three weights:
+//
+//     400   212 uses          600   250 uses
+//     500    24 uses          700     0        800     0
+//
+// So the ceiling is 600, and every `bold` and `extraBold` heading in this table sat above the
+// heaviest thing the design draws. Per size, where the table had a row:
+//
+//     17px    600, 22 of 22       16.5px  600,  2 of  2
+//     16px    600,  9 of  9       15px    600, 11 of 11
+//     14.5px  600, 19 of 34       14px    600, 50 of 71
+//     13.5px  400, 38 of 44       13px    400, 61 of 77
+//     12.5px  600, 41 / 400, 44   12px    400, 21 of 37
+//     11.5px  400,  7 of 11       10.5px  600, 36 of 36      10px  600, 10 of 10
+//
+// Two rows are deliberately left heavy. `badge` (9.5) has no section-8 equivalent to measure
+// against — the design's badges are all at 10px — and the three mono styles have none either,
+// because section 8 sets no monospace at all. Guessing at those would be the same mistake in the
+// other direction.
+//
+// A table drawn in three weights instead of five has rows that coincide: `chip` and `countdown`
+// are both `600 13` now, `sheetSubtitle` and `rankNumeral` both `400 13`, `bodyStrong` and
+// `venueRow` both `600 15/-.02em`. They are kept as separate rows rather than aliased to each
+// other because they are separate *roles*, and roles that agree today are not thereby the same
+// thing — the day a chip changes, a countdown should not follow it. Feature files alias onto
+// these rows precisely because those names are the same role under a screen's local vocabulary.
 //
 // Everything in SPEC.md section 1 "Type", in the order it appears there.
 
 extension TypeStyle {
 
     /// `800 35/1.05`, `-.042em` — sign-in wordmark.
-    static let display = TypeStyle(size: 35, weight: .extraBold, trackingEm: -0.042, lineHeightMultiple: 1.05)
+    static let display = TypeStyle(size: 35, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.05, isSerif: true)
     /// `800 31/1.08`, `-.038em` — "Check your email".
-    static let title1 = TypeStyle(size: 31, weight: .extraBold, trackingEm: -0.038, lineHeightMultiple: 1.08)
+    static let title1 = TypeStyle(size: 31, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.08, isSerif: true)
     /// `800 29/1.1`, `-.038em` — "Which camp?", "New camp".
-    static let title2 = TypeStyle(size: 29, weight: .extraBold, trackingEm: -0.038, lineHeightMultiple: 1.1)
+    static let title2 = TypeStyle(size: 29, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.1, isSerif: true)
     /// `800 28/1`, `-.038em` — Groups / Rank / Setup.
-    static let tabTitle = TypeStyle(size: 28, weight: .extraBold, trackingEm: -0.038, lineHeightMultiple: 1)
+    static let tabTitle = TypeStyle(size: 28, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.02, isSerif: true)
     /// `800 24/1.1`, `-.035em`.
-    static let profileName = TypeStyle(size: 24, weight: .extraBold, trackingEm: -0.035, lineHeightMultiple: 1.1)
+    static let profileName = TypeStyle(size: 24, weight: .regular, trackingEm: -0.02, lineHeightMultiple: 1.15, isSerif: true)
     /// `800 22`, `-.03em`.
-    static let sheetTitle = TypeStyle(size: 22, weight: .extraBold, trackingEm: -0.03)
-    /// `800 17`, `-.03em` — venue heading in Rank.
-    static let venueHeading = TypeStyle(size: 17, weight: .extraBold, trackingEm: -0.03)
-    /// `800 16.5`, `-.028em` — coach name, camp name.
-    static let rowTitleLg = TypeStyle(size: 16.5, weight: .extraBold, trackingEm: -0.028)
-    /// `800 16`, `-.025em`.
-    static let rowTitle = TypeStyle(size: 16, weight: .extraBold, trackingEm: -0.025)
-    /// `700 15`, `-.02em` — player name, setting label.
-    static let bodyStrong = TypeStyle(size: 15, weight: .bold, trackingEm: -0.02)
-    /// `500 14.5/1.5` — descriptive copy.
+    static let sheetTitle = TypeStyle(size: 22, weight: .regular, trackingEm: -0.02, isSerif: true)
+    /// `600 17`, `-.03em` — venue heading in Rank, a court card's big line, a group's name.
+    static let venueHeading = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.03)
+    /// `600 16.5`, `-.028em` — coach name, camp name.
+    static let rowTitleLg = TypeStyle(size: 16.5, weight: .semibold, trackingEm: -0.028)
+    /// `600 16`, `-.025em`.
+    static let rowTitle = TypeStyle(size: 16, weight: .semibold, trackingEm: -0.025)
+    /// `600 15`, `-.02em` — player name, setting label.
+    static let bodyStrong = TypeStyle(size: 15, weight: .semibold, trackingEm: -0.02)
+    /// `500 14.5/1.5` — descriptive copy. One of the two sizes the design still sets at 500.
     static let body = TypeStyle(size: 14.5, weight: .medium, lineHeightMultiple: 1.5)
-    /// `500 12` — "13 · F · returning".
-    static let meta = TypeStyle(size: 12, weight: .medium)
-    /// `700 13` — sport chips, time pills.
-    static let chip = TypeStyle(size: 13, weight: .bold)
+    /// `400 12` — "13 · F · returning".
+    static let meta = TypeStyle(size: 12, weight: .regular)
+    /// `600 13` — sport chips, time pills, venue chips.
+    static let chip = TypeStyle(size: 13, weight: .semibold)
     /// `700 11`, `+.1em`, uppercase — "YOUR CAMPS".
     static let sectionHeader = TypeStyle(size: 11, weight: .bold, trackingEm: 0.1, isUppercased: true)
     /// `700 9.5`, uppercase — "Away", "In range", "Worker".
+    ///
+    /// The one weight in this table left above the design's 600 ceiling, because there is nothing
+    /// to measure it against: section 8 sets every badge it draws at 10px (`statLabel`), and its
+    /// only 9.5 is a set of initials. Lightening a badge on that evidence would be a guess.
     ///
     /// Tracking is the one thing the design varies here: `+.07em` on Groups' `Away`, `+.08em`
     /// on the venue status badges, `+.09em` on Profile's role badge. `+.08em` is the value
@@ -226,88 +290,132 @@ extension TypeStyle {
 extension TypeStyle {
 
     // Chrome
-    /// `700 15`, `-.01em` — the 9:41 in the mock status bar.
-    static let statusTime = TypeStyle(size: 15, weight: .bold, trackingEm: -0.01)
-    /// `700 13.5` — selected tab label.
-    static let tabLabel = TypeStyle(size: 13.5, weight: .bold)
+    /// `600 15`, `-.01em` — the 9:41 in the mock status bar. The design draws its own at `600 14`;
+    /// the size is left alone because this is a drawing of iOS, not a screen of the app.
+    static let statusTime = TypeStyle(size: 15, weight: .semibold, trackingEm: -0.01)
+    /// `600 13.5` — selected tab label. Section 8 draws no tab bar, so the weight follows its
+    /// 13.5 rule rather than a declaration: 400 is the size's majority but a *selected* tab is
+    /// emphasis, and 600 is the only other weight the design sets 13.5 in.
+    static let tabLabel = TypeStyle(size: 13.5, weight: .semibold)
 
     // Buttons
-    /// `700 16.5`, `-.015em` — "Continue with Apple", "Email me a code".
-    static let buttonLarge = TypeStyle(size: 16.5, weight: .bold, trackingEm: -0.015)
-    /// `700 16`, `-.015em` — "Create camp".
-    static let button = TypeStyle(size: 16, weight: .bold, trackingEm: -0.015)
-    /// `700 15` — "Join", the early-pick-up confirm bar.
-    static let buttonSmall = TypeStyle(size: 15, weight: .bold)
-    /// `700 14` — "Sign out", "Delete account", "Remove from camp".
-    static let buttonCompact = TypeStyle(size: 14, weight: .bold)
+    /// `600 16.5`, `-.015em` — "Continue with Apple", "Email me a code".
+    static let buttonLarge = TypeStyle(size: 16.5, weight: .semibold, trackingEm: -0.015)
+    /// `600 16`, `-.015em` — "Create camp", "Take attendance", the pinned call to action.
+    static let button = TypeStyle(size: 16, weight: .semibold, trackingEm: -0.015)
+    /// `600 15` — "Join", the early-pick-up confirm bar.
+    static let buttonSmall = TypeStyle(size: 15, weight: .semibold)
+    /// `600 14` — "Sign out", "Delete account", "Remove from camp".
+    static let buttonCompact = TypeStyle(size: 14, weight: .semibold)
 
     // Fields
-    /// `800 17`, `-.025em` — the camp-name field's value.
-    static let fieldTitle = TypeStyle(size: 17, weight: .extraBold, trackingEm: -0.025)
+    /// `600 17`, `-.025em` — the camp-name field's value.
+    static let fieldTitle = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.025)
     /// `500 15.5` — the email field's value / placeholder.
     static let fieldValue = TypeStyle(size: 15.5, weight: .medium)
     /// `500 15` — the search field's placeholder.
     static let searchValue = TypeStyle(size: 15, weight: .medium)
-    /// `800 26`, `-.03em` — a filled OTP cell.
-    static let otpDigit = TypeStyle(size: 26, weight: .extraBold, trackingEm: -0.03)
+    /// `600 26`, `-.03em` — a filled OTP cell. Section 8 draws no OTP; 26 is a serif display line
+    /// there (`8s`'s name), which is a different role, so only the weight follows the ceiling.
+    static let otpDigit = TypeStyle(size: 26, weight: .semibold, trackingEm: -0.03)
 
     // Copy
-    /// `500 14/1.5` — "Signed in as …".
+    /// `500 14/1.5` — "Signed in as …". The other size the design still sets at 500.
     static let bodyAlt = TypeStyle(size: 14, weight: .medium, lineHeightMultiple: 1.5)
-    /// `500 13/1.55` — the Rank header's explainer.
-    static let bodySmall = TypeStyle(size: 13, weight: .medium, lineHeightMultiple: 1.55)
-    /// `500 13` — sheet subtitles.
-    static let sheetSubtitle = TypeStyle(size: 13, weight: .medium)
-    /// `500 12.5/1.5` — centred footnotes under a CTA.
-    static let footnote = TypeStyle(size: 12.5, weight: .medium, lineHeightMultiple: 1.5)
-    /// `500 12.5/1.55` — copy inside an info banner.
+    /// `400 13/1.55` — the Rank header's explainer.
+    static let bodySmall = TypeStyle(size: 13, weight: .regular, lineHeightMultiple: 1.55)
+    /// `400 13` — sheet subtitles, a breadcrumb, a field's label, a card's grey second line, a
+    /// rank numeral read as an index. The design's single most-declared style: 61 of section 8's
+    /// 77 uses of 13px are this.
+    static let sheetSubtitle = TypeStyle(size: 13, weight: .regular)
+    /// `400 13.5` — the grey line under a screen title, "+3 more", a name in a court's list.
+    static let subtitle = TypeStyle(size: 13.5, weight: .regular)
+    /// `400 12.5` — a subtitle under a name, a row's grey second line, a note, a hint.
+    static let rowDetail = TypeStyle(size: 12.5, weight: .regular)
+    /// `400 12.5/1.5` — centred footnotes under a CTA.
+    static let footnote = TypeStyle(size: 12.5, weight: .regular, lineHeightMultiple: 1.5)
+    /// `400 13.5/1.6` — the paragraph inside an empty-state card. `8f`, `8g` and `8h` set the
+    /// same sentence under the same serif heading, and each had spelled this out privately.
+    static let emptyBody = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.6)
+    /// `500 12.5/1.55` — copy inside an info banner. Section 8 draws no info banner; left at 500
+    /// because 12.5 is the one size where the design genuinely still uses it.
     static let caption = TypeStyle(size: 12.5, weight: .medium, lineHeightMultiple: 1.55)
-    /// `600 11.5` — the "or" divider label.
+    /// `600 11.5` — the "or" divider label, and the initials in a small disc.
     static let dividerLabel = TypeStyle(size: 11.5, weight: .semibold)
-    /// `600 13` — "Resend in 0:42".
+    /// `600 13` — "Resend in 0:42", the time beside the block running now.
     static let countdown = TypeStyle(size: 13, weight: .semibold)
 
     // Rows
-    /// `800 15`, `-.02em` — venue name in a Groups section header.
-    static let venueRow = TypeStyle(size: 15, weight: .extraBold, trackingEm: -0.02)
-    /// `700 14.5`, `-.02em` — account row title, sheet action row title.
-    static let rowLabel = TypeStyle(size: 14.5, weight: .bold, trackingEm: -0.02)
-    /// `500 12.5` — account row value.
+    /// `600 15`, `-.02em` — venue name in a Groups section header.
+    static let venueRow = TypeStyle(size: 15, weight: .semibold, trackingEm: -0.02)
+    /// `600 14.5`, `-.02em` — account row title, sheet action row title.
+    ///
+    /// Section 8 tracks this size `-.025em` in 17 of its 19 uses. The difference is 0.07pt, so
+    /// the row keeps `-.02em` and the four callers that want the design's own figure ask for it
+    /// with `tracking(em: -0.025)` rather than each respelling the style.
+    static let rowLabel = TypeStyle(size: 14.5, weight: .semibold, trackingEm: -0.02)
+    /// `600 14`, `-.02em` — a name in a list that is people rather than a rank band: "Who is
+    /// where", a cleared Inbox row, `8g`'s "Added so far".
+    static let rowTitleSm = TypeStyle(size: 14, weight: .semibold, trackingEm: -0.02)
+    /// `400 14` — a name that has been answered, a kid's name in a group card, a field's
+    /// placeholder. Regular, not bold: eight of these in a card is a list to scan, and the design
+    /// lets the numerals and the marks carry the emphasis.
+    static let rowValue = TypeStyle(size: 14, weight: .regular)
+    /// `500 12.5` — account row value, a pinned note. 12.5 splits almost evenly between 400 and
+    /// 600 in section 8 and keeps three uses of 500; this is one of them. The 400 cut is
+    /// `rowDetail`, the 600 cut is `metaStrong`.
     static let rowSubtitle = TypeStyle(size: 12.5, weight: .medium)
-    /// `500 11.5` — the venue sheet's limits sub-copy.
-    static let rowSubtitleSmall = TypeStyle(size: 11.5, weight: .medium)
+    /// `400 11.5` — the venue sheet's limits sub-copy, the amber line on a marked row.
+    static let rowSubtitleSmall = TypeStyle(size: 11.5, weight: .regular)
     /// `600 12.5` — "Court 1 · 8 here", "50 kids", "Coach · Sycamore, Court 3".
     static let metaStrong = TypeStyle(size: 12.5, weight: .semibold)
     /// `600 12` — "1–50", inline banner copy.
     static let metaSmall = TypeStyle(size: 12, weight: .semibold)
-    /// `700 13` — rank numerals.
-    static let rankNumeral = TypeStyle(size: 13, weight: .bold)
+    /// `400 13` — rank numerals. The design sets the numeral and the band it labels in exactly
+    /// the same face; only their colours differ.
+    static let rankNumeral = TypeStyle(size: 13, weight: .regular)
 
     // Overlines
     /// `600 11`, `+.08em`, uppercase — "HIGHER LEVEL".
     static let venueLabel = TypeStyle(size: 11, weight: .semibold, trackingEm: 0.08, isUppercased: true)
     /// `600 11.5`, `+.06em`, uppercase — a staff row's role, "45 MORE IN SYCAMORE".
     static let overline = TypeStyle(size: 11.5, weight: .semibold, trackingEm: 0.06, isUppercased: true)
+    /// `600 10.5`, `+.14em`, uppercase — every section heading in section 8: "STILL TO MARK · 2",
+    /// "YOUR COURT", "NEEDS YOU · 2", "ADDED SO FAR", "VENUES".
+    ///
+    /// The row this table was missing, and seven feature files had each declared it. Neither
+    /// `venueLabel` (11 / `+.08em`) nor `overline` (11.5 / `+.06em`) is within a rounding of it,
+    /// and section 8 sets nothing at all at 11 or 11.5 uppercase — those two are the earlier
+    /// design's, kept for the screens still drawn from it.
+    ///
+    /// Tracking is the one thing the design varies: `+.14em` on `8c`/`8d`/`8j`/`8l`/`8m`/`8n`/
+    /// `8q`/`8r` and `+.15em` on `8a`/`8b`/`8f`/`8g`/`8h`/`8s`/`8t`/`8u`, which is 16 against 17
+    /// and as near a tie as makes no difference. `+.14em` is carried because it is the value four
+    /// of the seven callers already treated as the base; `tracking(em: 0.15)` reaches the other.
+    static let overlineSmall = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.14, isUppercased: true)
 
     // Sheets
     /// `800 21`, `-.03em` — the staff sheet's title, which sits beside an avatar.
-    static let sheetTitleSm = TypeStyle(size: 21, weight: .extraBold, trackingEm: -0.03)
-    /// `700 10`, `+.09em`, uppercase — stat tile label.
-    static let statLabel = TypeStyle(size: 10, weight: .bold, trackingEm: 0.09, isUppercased: true)
-    /// `800 20`, `-.03em` — stat tile value.
-    static let statValue = TypeStyle(size: 20, weight: .extraBold, trackingEm: -0.03)
-    /// `800 15` — the stepper's value, the venue sheet's `4 – 7`.
-    static let stepperValue = TypeStyle(size: 15, weight: .extraBold)
-    /// `600 13.5` — a history entry's title.
+    static let sheetTitleSm = TypeStyle(size: 21, weight: .regular, trackingEm: -0.02, isSerif: true)
+    /// `600 10`, `+.09em`, uppercase — stat tile label, a role pill, a venue's amber flag.
+    ///
+    /// The design tracks 10px five different ways (`+.1em` to `+.14em`) with no majority, so the
+    /// `+.09em` this was transcribed at stays and each caller nudges it. Only the weight moved.
+    static let statLabel = TypeStyle(size: 10, weight: .semibold, trackingEm: 0.09, isUppercased: true)
+    /// `600 20`, `-.03em` — stat tile value.
+    static let statValue = TypeStyle(size: 20, weight: .semibold, trackingEm: -0.03)
+    /// `600 15` — the stepper's value, the venue sheet's `4 – 7`.
+    static let stepperValue = TypeStyle(size: 15, weight: .semibold)
+    /// `600 13.5` — a history entry's title, a court card's "Open" badge.
     static let timelineTitle = TypeStyle(size: 13.5, weight: .semibold)
-    /// `500 11.5` — a history entry's byline.
-    static let timelineMeta = TypeStyle(size: 11.5, weight: .medium)
+    /// `400 11.5` — a history entry's byline.
+    static let timelineMeta = TypeStyle(size: 11.5, weight: .regular)
 
     // Chips
-    /// `700 12.5` — venue filter chips, "Even out", "Add" / "Invite".
-    static let chipMedium = TypeStyle(size: 12.5, weight: .bold)
-    /// `700 12` — staff filter chips.
-    static let chipCompact = TypeStyle(size: 12, weight: .bold)
+    /// `600 12.5` — venue filter chips, "Even out", "Add" / "Invite".
+    static let chipMedium = TypeStyle(size: 12.5, weight: .semibold)
+    /// `600 12` — staff filter chips.
+    static let chipCompact = TypeStyle(size: 12, weight: .semibold)
     /// `600 12` — attribute chips ("Everyone", "Boys").
     static let chipSmall = TypeStyle(size: 12, weight: .semibold)
     /// `600 12.5` — court chips in the staff sheet.
@@ -319,15 +427,18 @@ extension TypeStyle {
     /// `700 17`, `+.18em` — the join-with-a-code input.
     static let monoInput = TypeStyle(size: 17, weight: .bold, trackingEm: 0.18, isMonospaced: true)
 
-    /// Initials sized for an avatar of `diameter`. The design does not use a constant ratio —
-    /// the 36 and 44pt avatars are 700, the 46 and 72pt ones are 800 — so this is a lookup with
-    /// a proportional tail for anything larger.
+    /// Initials sized for an avatar of `diameter`. The design does not use a constant ratio, so
+    /// this is a lookup with a proportional tail for anything larger.
+    ///
+    /// One weight now, where there were two. The 36/44pt discs were 700 and the 46/72pt ones 800
+    /// — a split read off the earlier screens, and section 8 sets every set of initials it draws
+    /// at 600 regardless of the disc (`8g` at 32pt, `8s` at 64, `8t`'s overlapping stack at 24).
     static func initials(forAvatarSize diameter: CGFloat) -> TypeStyle {
         switch diameter {
-        case ..<40: TypeStyle(size: 12, weight: .bold)
-        case ..<46: TypeStyle(size: 13.5, weight: .bold)
-        case ..<60: TypeStyle(size: 15, weight: .extraBold)
-        default: TypeStyle(size: (diameter * 0.305).rounded(), weight: .extraBold)
+        case ..<40: TypeStyle(size: 12, weight: .semibold)
+        case ..<46: TypeStyle(size: 13.5, weight: .semibold)
+        case ..<60: TypeStyle(size: 15, weight: .semibold)
+        default: TypeStyle(size: (diameter * 0.305).rounded(), weight: .semibold)
         }
     }
 }
@@ -347,10 +458,21 @@ extension Font {
         sycamore(size: size ?? style.size, weight: style.weight, monospaced: style.isMonospaced)
     }
 
-    static func sycamore(size: CGFloat, weight: TypeWeight, monospaced: Bool = false) -> Font {
-        // The design's mono is `ui-monospace, Menlo` — i.e. the platform mono, never Manrope.
+    static func sycamore(
+        size: CGFloat, weight: TypeWeight, monospaced: Bool = false, serif: Bool = false
+    ) -> Font {
+        // The design's mono is `ui-monospace, Menlo` — i.e. the platform mono, never a bundled
+        // face.
         if monospaced {
             return .system(size: size, weight: weight.fontWeight, design: .monospaced)
+        }
+        // The design writes `Newsreader, Georgia, serif`, so the fallback is the platform serif
+        // rather than the sans — a heading that loses Newsreader should still read as a heading.
+        if serif {
+            guard let face = FontFamily.serifFace else {
+                return .system(size: size, weight: .regular, design: .serif)
+            }
+            return .custom(face, fixedSize: size)
         }
         if let face = FontFamily.availableFaces[weight.rawValue] {
             return .custom(face, fixedSize: size)
@@ -363,6 +485,12 @@ extension Font {
     static func sycamore(_ style: TypeStyle, scaledRelativeTo textStyle: Font.TextStyle) -> Font {
         if style.isMonospaced {
             return .system(style.textStyle, design: .monospaced).weight(style.weight.fontWeight)
+        }
+        if style.isSerif {
+            guard let face = FontFamily.serifFace else {
+                return .system(textStyle, design: .serif)
+            }
+            return .custom(face, size: style.size, relativeTo: textStyle)
         }
         if let face = FontFamily.availableFaces[style.weight.rawValue] {
             return .custom(face, size: style.size, relativeTo: textStyle)
@@ -394,7 +522,7 @@ private struct TypeStyleModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let styled = content
-            .font(.sycamore(style, size: scaledSize))
+            .font(.sycamore(size: scaledSize, weight: style.weight, monospaced: style.isMonospaced, serif: style.isSerif))
             .tracking(style.tracking)
             .lineSpacing(style.lineSpacing)
             .textCase(style.isUppercased ? .uppercase : nil)
