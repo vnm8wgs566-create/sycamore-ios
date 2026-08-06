@@ -104,6 +104,43 @@ enum Theme {
     /// Disclosure carets, drag handles.
     static let chevron = Color(light: "C7CBD2", dark: "4B4F57")
 
+    // MARK: Section 8's own greys
+    //
+    // Nine values the design uses that this palette had no name for. They were found by diffing
+    // every hex in `Sycamore 3a System.dc.html` against every hex declared here, which is the
+    // only way to know: a screen transcribed by eye reaches for the nearest existing token and
+    // the drift is invisible one screen at a time.
+
+    /// `#3F4A44` — the design's warm ink, and the biggest single gap: 73 uses against `ink`'s
+    /// 144. Field labels and names are set in it, not in near-black.
+    ///
+    /// A step *between* `ink` and `inkSecondary` in weight but green-tinted rather than neutral,
+    /// which is what makes it warm — it is the green in the brand showing through the type
+    /// rather than a second grey. Rendering these in `ink` is not merely darker, it is colder.
+    static let inkWarm = Color(light: "3F4A44", dark: "C8D2CC")
+
+    /// `#B3B7BE` — a glyph on a plate. The design's icons are a step lighter than its text.
+    static let glyph = Color(light: "B3B7BE", dark: "6C7078")
+    /// `#D3D7DD` — a glyph that is present but inactive.
+    static let glyphFaint = Color(light: "D3D7DD", dark: "55585F")
+
+    /// `#F8F9F8` — a card that carries its own `rgba(0,0,0,.11)` border. Warmer than `grouped`,
+    /// which is the page behind it.
+    static let surfaceWarm = Color(light: "F8F9F8", dark: "1E1F1E")
+    /// `#FAFBFA` — a row inside `surfaceWarm`, one step up again.
+    static let surfaceRaised = Color(light: "FAFBFA", dark: "222322")
+    /// `#F0F1F3` — the 44pt tile an icon sits on.
+    static let tile = Color(light: "F0F1F3", dark: "2B2B2E")
+    /// `#F3F5F4` — a `999`-radius pill's fill.
+    static let pillFill = Color(light: "F3F5F4", dark: "27282A")
+
+    /// `#F6FAF7` — a green-tinted plate. Distinct from `accentTint`, which is the fill *under*
+    /// accent-coloured copy; this is a surface that happens to be warm, and the design pairs it
+    /// with `accentSurfaceBorder` or with the dashed `accentBorder`.
+    static let accentSurface = Color(light: "F6FAF7", dark: "16201A")
+    /// `#E4EDE7` — the solid border around `accentSurface`.
+    static let accentSurfaceBorder = Color(light: "E4EDE7", dark: "24352B")
+
     // MARK: Accent
     //
     // Green, from `Sycamore 3a System.dc.html` — `#1A7F55` is the single most-used colour in
