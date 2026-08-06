@@ -252,6 +252,12 @@ extension SupabaseRepository {
     /// `gender` takes `Gender.symbol`, not `rawValue`. The enum's raw values are lowercase and
     /// the column's CHECK demands `'M','F','X'` — sending the raw value fails every insert.
     ///
+    /// `last_name` and `age` are the two columns an import is allowed to leave null, and both go
+    /// as whatever the file said. This row is the only thing that survives the insert — the camp
+    /// is re-read from Postgres afterwards — so a surname the roster carried is lost here or not
+    /// at all. Null rather than `""` for a kid with no surname: the column admits null or 1…60
+    /// characters, and an empty string fails it.
+    ///
     /// `group_id` is deliberately absent. A new kid has no court until somebody puts them on one,
     /// which is what Groups' unassigned band is for; defaulting them onto court 1 would quietly
     /// outrank kids already standing there.
@@ -260,6 +266,7 @@ extension SupabaseRepository {
             "id": .uuid(player.id),
             "first_name": .text(player.firstName),
             "last_initial": .text(player.lastInitial),
+            "last_name": .text(player.lastName),
             "age": .int(player.age),
             "gender": .text(player.gender.symbol),
             "is_returning": .bool(player.isReturning),
