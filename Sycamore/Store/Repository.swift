@@ -128,6 +128,25 @@ protocol SycamoreRepository: SectionEightData {
     /// Setup's "Add" beside the VENUES header.
     func addVenue(campID: Camp.ID) async throws -> Camp
 
+    /// `8t`'s "Camp name & sport".
+    ///
+    /// The two fields that row edits, rather than a whole `Camp`. A `Camp` argument would read
+    /// as though the venues, the roster and the staff hanging off it were being written too —
+    /// and it would let a caller holding a stale copy of any of them post it back.
+    ///
+    /// The invite code deliberately does not follow the name. It is derived from the name only
+    /// once, when the camp is created; after that it is a thing people have written down, and
+    /// silently retiring it because somebody fixed a typo would lock out a camp that had done
+    /// nothing wrong. `rollInviteCode` is how a code changes.
+    func renameCamp(name: String, sport: Sport, campID: Camp.ID) async throws -> Camp
+
+    /// `8t`'s "Roll a new code".
+    ///
+    /// Keeps the three letters and moves the four digits: the letters are the camp's initials
+    /// and are what makes a code recognisable read down a phone. The old code stops working,
+    /// which is the point of the row — it is how a camp closes a code that got out.
+    func rollInviteCode(campID: Camp.ID) async throws -> Camp
+
     // MARK: Enrolment
 
     /// `8e` — Add a player, one at a time.
@@ -427,6 +446,30 @@ actor InMemoryRepository: SycamoreRepository {
         }
     }
 
+    /// Goes through `mutate` for the same reason `updateVenue` does: it refreshes the camp
+    /// picker's denormalised `Membership.campName`, which is the copy of this field anybody not
+    /// currently inside the camp is looking at.
+    func renameCamp(name: String, sport: Sport, campID: Camp.ID) async throws -> Camp {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { throw SycamoreError.campNameRequired }
+        return try mutate(campID) { camp in
+            camp.name = trimmed
+            camp.sport = sport
+        }
+    }
+
+    func rollInviteCode(campID: Camp.ID) async throws -> Camp {
+        // Every other camp's code. Postgres has a UNIQUE index on `camps.invite_code` and
+        // `SupabaseRepository` finds a collision by being rejected; here the whole set is in
+        // hand, so the collision is avoided instead of discovered.
+        let taken = Set(
+            camps.values.lazy.filter { $0.id != campID }.map { Self.normalise($0.inviteCode) }
+        )
+        return try mutate(campID) { camp in
+            camp.inviteCode = Self.freeInviteCode(unlike: camp.inviteCode, avoiding: taken)
+        }
+    }
+
     func updateStaffRole(_ staffID: StaffMember.ID, role: Role, campID: Camp.ID) async throws -> Camp {
         try mutate(campID) { camp in
             guard camp.staff(staffID) != nil else { throw SycamoreError.unknownStaff }
@@ -531,5 +574,35 @@ actor InMemoryRepository: SycamoreRepository {
     /// `SYC-4821`, `syc4821` and `SYC 4821` are the same code.
     private static func normalise(_ code: String) -> String {
         code.uppercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    /// A code with the same three letters, four different digits, and nobody else already on it.
+    ///
+    /// Only the digits move. The letters are the camp's initials — they are what makes a code
+    /// recognisable when somebody reads it down a phone, and they are already in the CHECK the
+    /// column carries. `SupabaseRepository.rollInviteCode` rerolls exactly the same way.
+    ///
+    /// Rolls once, then walks. The roll is what stops a new code from being the obvious next
+    /// one; the walk is what makes this total, and it cannot spin because four digits are ten
+    /// thousand slots and it visits each of them at most once.
+    private static func freeInviteCode(unlike current: String, avoiding taken: Set<String>) -> String {
+        let mine = normalise(current)
+        let letters = mine.prefix(3)
+        // The same `CMP` the model itself falls back to for a name with no usable letters, for
+        // the same reason `SupabaseRepository.acceptableInviteCode` does: `^[A-Z]{3}-[0-9]{4}$`
+        // is what the column will take, and a camp called "Été Tennis" does not reach it.
+        let prefix = letters.count == 3 && letters.allSatisfy(\.isLetter) ? String(letters) : "CMP"
+        let start = Int.random(in: 0...9999)
+        for step in 0..<10_000 {
+            // `String(format:)` and not a `FormatStyle`: a code is data checked against a regex,
+            // not a number shown to somebody, and a locale-aware formatter would pad it with
+            // whatever digits the reader's locale uses. `٠٠٤٢` is not `[0-9]{4}`.
+            let code = "\(prefix)-\(String(format: "%04d", (start + step) % 10_000))"
+            let key = normalise(code)
+            if key != mine, !taken.contains(key) { return code }
+        }
+        // Ten thousand camps sharing three initials, which the offline build cannot reach.
+        // Handing the code back unchanged beats failing a settings tap over it.
+        return current
     }
 }

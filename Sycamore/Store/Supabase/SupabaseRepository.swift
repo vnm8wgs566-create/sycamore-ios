@@ -550,6 +550,28 @@ actor SupabaseRepository: SycamoreRepository {
         }
     }
 
+    /// One PATCH, and then the graph back.
+    ///
+    /// No `before` read to validate against, unlike `updateVenue`: there is no sub-object to
+    /// find and nothing to reconcile, and `camps_update_admin` already refuses a camp the caller
+    /// does not administer. Asking first would only turn one round trip into two and still leave
+    /// the real check to the policy.
+    func renameCamp(name: String, sport: Sport, campID: Camp.ID) async throws -> Camp {
+        // `camps.name` is `check (char_length(name) between 1 and 80)`, so an all-spaces name is
+        // a 400 from Postgres describing a constraint. Caught here, it is a sentence.
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { throw SycamoreError.campNameRequired }
+
+        return try await serialised(campID) {
+            try await db.update(
+                Relation.camps,
+                set: Self.campRow(name: trimmed, sport: sport),
+                where: PostgRESTQuery().eq("id", campID)
+            )
+            return try await camp(id: campID)
+        }
+    }
+
     func updateStaffRole(
         _ staffID: StaffMember.ID, role: Role, campID: Camp.ID
     ) async throws -> Camp {
