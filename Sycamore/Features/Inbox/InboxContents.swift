@@ -12,7 +12,10 @@
 
 import Foundation
 
-struct InboxContents: Sendable {
+/// `Equatable` so the body below it can animate on the whole derivation at once. Resolving an
+/// item and changing a chip move the same pieces, and two separate `.animation(_:value:)` passes
+/// over the same layout is how one of them ends up half a frame behind the other.
+struct InboxContents: Equatable, Sendable {
 
     /// Still waiting on a decision, *whatever the chips say*.
     ///
@@ -70,11 +73,11 @@ struct InboxContents: Sendable {
         needsYou.isEmpty && feed.isEmpty && !openNeedsAction.isEmpty
     }
 
-    /// The grey line beside the title. `8h` writes "Nothing waiting on you"; on `8r` the count
-    /// says the same thing about a morning that is not clear.
-    var headerCount: String {
-        let waiting = openNeedsAction.count
-        guard waiting > 0 else { return "Nothing waiting on you" }
-        return waiting == 1 ? "1 needs you" : "\(waiting) need you"
+    /// The grey line beside the title.
+    ///
+    /// `8h` writes "Nothing waiting on you". `8r` writes nothing at all — the "Needs you · 2"
+    /// heading a few points below is already the count, and the design does not say it twice.
+    var headerSubtitle: String? {
+        openNeedsAction.isEmpty ? "Nothing waiting on you" : nil
     }
 }

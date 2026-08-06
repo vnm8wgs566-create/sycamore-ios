@@ -23,23 +23,23 @@ struct InboxList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !needsYou.isEmpty {
-                SectionHeader("Needs you · \(needsYou.count)")
-                Card {
+                InboxOverline("Needs you · \(needsYou.count)")
+                Card(radius: InboxMetrics.cardRadius) {
                     ForEach(needsYou) { item in
                         InboxNeedsActionRow(item: item) { onResolve(item) }
                     }
                 }
-                .padding(.bottom, Spacing.large)
+                .padding(.bottom, InboxMetrics.sectionGap)
             }
 
             ForEach(feed) { section in
-                SectionHeader(section.title)
-                Card {
+                InboxOverline(section.title)
+                Card(radius: InboxMetrics.cardRadius) {
                     ForEach(section.items) { item in
                         InboxActivityRow(item: item)
                     }
                 }
-                .padding(.bottom, Spacing.large)
+                .padding(.bottom, InboxMetrics.sectionGap)
             }
         }
     }
@@ -56,5 +56,5 @@ struct InboxList: View {
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.large)
     }
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }
