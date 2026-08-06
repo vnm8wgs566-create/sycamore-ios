@@ -40,6 +40,7 @@ enum SycamoreError: LocalizedError, Equatable {
     case unknownInviteCode
     case campNameRequired
     case notPermitted
+    case appleSignInUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -54,6 +55,7 @@ enum SycamoreError: LocalizedError, Equatable {
         case .unknownInviteCode: "No camp uses that code."
         case .campNameRequired: "Give the camp a name first."
         case .notPermitted: "Only an admin can do that."
+        case .appleSignInUnavailable: "Apple sign-in isn't set up yet. Use your email instead."
         }
     }
 }

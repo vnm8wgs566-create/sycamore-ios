@@ -118,7 +118,21 @@ actor SupabaseRepository: SycamoreRepository {
     /// No mapping onto `invalidCode`: there is no code on this screen, and "That code didn't work"
     /// is not something a coach who tapped Continue with Apple can act on. A rejected identity
     /// token surfaces as what it is.
+    /// Refuses before the network when there is no token to send.
+    ///
+    /// `AppStore.continueWithApple` defaults its token to `""`, because nothing in this app has
+    /// ever produced a real one — there is no `ASAuthorization` anywhere in it. Against
+    /// `InMemoryRepository` that was invisible: the offline build ignores the token, so the
+    /// button appeared to work. Against GoTrue the empty string came back as
+    /// `id_token required`, which is an internal detail of an endpoint the reader never asked
+    /// about and gives them nothing to act on.
+    ///
+    /// This project also has `external_apple_enabled = false`, so the provider is switched off
+    /// server-side as well. Both have to change before the button can work: the Apple provider
+    /// enabled in the dashboard, and `ASAuthorizationAppleIDProvider` wired into `SignInView` to
+    /// produce the token.
     func signInWithApple(identityToken: String) async throws -> Account {
+        guard !identityToken.isEmpty else { throw SycamoreError.appleSignInUnavailable }
         let session = try await auth.signInWithApple(identityToken: identityToken)
         return try await adoptProfile(for: session)
     }

@@ -24,7 +24,23 @@ struct SycamoreApp: App {
     ///
     /// `InMemoryRepository()` is still what every `#Preview` and the `AppStore.preview` family
     /// construct, so previews keep rendering without a network.
-    @State private var store = AppStore(repository: SupabaseRepository())
+    @State private var store = AppStore(repository: SycamoreApp.repository())
+
+    /// Postgres, unless a debug build was launched with `-offline`.
+    ///
+    /// The switch exists because walking the app end to end otherwise costs a real sign-in, and
+    /// this project has no custom SMTP: GoTrue's built-in mailer sends to project members only,
+    /// twice an hour. Verifying that the screens compose is not worth that budget, and it is a
+    /// different question from whether the network layer works.
+    ///
+    /// Debug only, on purpose. A release build has no way to reach the offline store however it
+    /// is launched, so this cannot become a shipped code path by accident.
+    private static func repository() -> SycamoreRepository {
+        #if DEBUG
+        if CommandLine.arguments.contains("-offline") { return InMemoryRepository() }
+        #endif
+        return SupabaseRepository()
+    }
 
     /// Cleared once the opening beat has played. Scene-scoped, so it happens on a cold launch
     /// and not every time the app returns from the background.
