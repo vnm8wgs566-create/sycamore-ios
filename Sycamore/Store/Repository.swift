@@ -513,7 +513,22 @@ actor InMemoryRepository: SycamoreRepository {
             // The back of the venue's ladder, in the order they were given. `reindex()` in
             // `mutate` assigns the real ranks afterwards — setting them here would be guessing
             // at numbers it is about to overwrite.
-            let tail = camp.players.filter { $0.venueID == venueID }.count
+            //
+            // Counted off where the venue's block *ends* in the camp ladder, not off how many
+            // kids are standing in it. `overallRank` is camp-wide, so a venue holding ranks
+            // 51…100 has a head-count of 50: counting off the head-count handed a new arrival
+            // rank 50 and made them the venue's top kid instead of its last.
+            let tail = (camp.players.filter { $0.venueID == venueID }.map(\.overallRank).max() ?? 0) + 1
+
+            // Everyone from `tail` down slides back by the size of the intake to make room. That
+            // leaves every existing kid in the order they were already in, and it keeps the
+            // arrivals from tying with whoever holds `tail` now — `reindex()` sorts on
+            // `overallRank` alone, so a tie is settled by whatever `sort` happens to do, which is
+            // not something to leave a child's place in the ladder to.
+            for index in camp.players.indices where camp.players[index].overallRank >= tail {
+                camp.players[index].overallRank += players.count
+            }
+
             for (offset, player) in players.enumerated() {
                 var joined = player
                 joined.venueID = venueID

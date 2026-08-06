@@ -258,14 +258,11 @@ struct RepositoryEnrolmentTests {
         #expect(after.orderedPlayers.map(\.overallRank) == Array(1...after.players.count))
     }
 
-    /// A kid imported into the *second* venue is given an overall rank counted from that venue's
-    /// head-count rather than from where its block actually starts in the camp ladder, so they
-    /// land at the top of the venue instead of the back of it — ahead of fifty children who were
-    /// already there. Nothing errors and the roster count is right, which is why it survives.
-    ///
-    /// `withKnownIssue` keeps the suite green while the expectation stays honest: fixing the
-    /// rank arithmetic makes this test start failing as an unexpectedly-resolved issue, which is
-    /// the notification you want.
+    /// The second venue is the one that catches the arithmetic. `overallRank` is camp-wide, so a
+    /// rank counted off the venue's head-count rather than off where its block ends puts a new
+    /// arrival at the *top* of the venue instead of the back of it — ahead of fifty children who
+    /// were already there. Nothing errors and the roster count is right, which is why it survived
+    /// as long as it did.
     @Test("An imported kid joins the back of their venue's ladder")
     func importedKidsJoinTheBackOfTheVenue() async throws {
         let (repo, camp) = loaded()
@@ -279,9 +276,7 @@ struct RepositoryEnrolmentTests {
         let arrived = try #require(after.player(newcomer.id))
         let neighbours = after.players(in: venue.id).filter { $0.id != newcomer.id }
 
-        withKnownIssue("The rank is counted off the venue's size, not off where its block starts") {
-            #expect(neighbours.allSatisfy { $0.overallRank < arrived.overallRank })
-        }
+        #expect(neighbours.allSatisfy { $0.overallRank < arrived.overallRank })
     }
 
     @Test("An import into a venue that is not there fails, and writes nothing")
