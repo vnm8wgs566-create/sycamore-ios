@@ -61,6 +61,7 @@
 	<key>UIAppFonts</key>
 	<array>
 		<string>InstrumentSans[wdth,wght].ttf</string>
+		<string>Newsreader[opsz,wght].ttf</string>
 	</array>
 </dict>
 </plist>

@@ -80,6 +80,18 @@ enum FontFamily {
 
     static var usesInstrumentSans: Bool { !availableFaces.isEmpty }
 
+    /// Newsreader's regular, and only its regular — the design sets every serif heading at 400.
+    ///
+    /// The name is read off the file, not guessed, and it is the second time that has mattered:
+    /// Newsreader's optical-size axis means Core Text synthesises the default instance as
+    /// `Newsreader16pt-Regular` while its siblings come back `NewsreaderRoman-Light`,
+    /// `-Medium`, `-Bold`. Neither pattern is inferable from the family name, and asking for the
+    /// wrong one drops silently to the system serif.
+    static let serifFace: String? = {
+        let name = "Newsreader16pt-Regular"
+        return faceIsRegistered(name) ? name : nil
+    }()
+
     /// `CTFontCreateWithName` never fails — it substitutes. So ask for the face and check that
     /// what came back is actually the face we asked for.
     private static func faceIsRegistered(_ name: String) -> Bool {
@@ -102,6 +114,17 @@ struct TypeStyle: Sendable, Equatable {
     var lineHeightMultiple: CGFloat?
     var isUppercased: Bool = false
     var isMonospaced: Bool = false
+    /// Draws in Newsreader rather than Instrument Sans.
+    ///
+    /// The design loads three families and this app had bundled one. Newsreader sets **every
+    /// screen title in section 8** — "Sycamore", "Shape the camp", "Players", "Schedule",
+    /// "Groups", "Friday is empty." — 44 times, always at weight 400 and 22–40px. Every one of
+    /// them was rendering in a sans, which is not a near-miss: it is the difference between a
+    /// masthead and a label, and it is the first thing on every screen.
+    ///
+    /// (The document's third family, Manrope, is the spec's own annotation chrome — "Final — the
+    /// app in order", "8a" — not app content. Dropping it was right.)
+    var isSerif: Bool = false
 
     /// Letter-spacing in points, which is what SwiftUI's `tracking(_:)` wants.
     var tracking: CGFloat { size * trackingEm }
@@ -181,17 +204,17 @@ struct TypeStyle: Sendable, Equatable {
 extension TypeStyle {
 
     /// `800 35/1.05`, `-.042em` — sign-in wordmark.
-    static let display = TypeStyle(size: 35, weight: .extraBold, trackingEm: -0.042, lineHeightMultiple: 1.05)
+    static let display = TypeStyle(size: 35, weight: .regular, lineHeightMultiple: 1.05, isSerif: true)
     /// `800 31/1.08`, `-.038em` — "Check your email".
-    static let title1 = TypeStyle(size: 31, weight: .extraBold, trackingEm: -0.038, lineHeightMultiple: 1.08)
+    static let title1 = TypeStyle(size: 31, weight: .regular, lineHeightMultiple: 1.08, isSerif: true)
     /// `800 29/1.1`, `-.038em` — "Which camp?", "New camp".
-    static let title2 = TypeStyle(size: 29, weight: .extraBold, trackingEm: -0.038, lineHeightMultiple: 1.1)
+    static let title2 = TypeStyle(size: 29, weight: .regular, lineHeightMultiple: 1.1, isSerif: true)
     /// `800 28/1`, `-.038em` — Groups / Rank / Setup.
-    static let tabTitle = TypeStyle(size: 28, weight: .extraBold, trackingEm: -0.038, lineHeightMultiple: 1)
+    static let tabTitle = TypeStyle(size: 28, weight: .regular, lineHeightMultiple: 1.02, isSerif: true)
     /// `800 24/1.1`, `-.035em`.
-    static let profileName = TypeStyle(size: 24, weight: .extraBold, trackingEm: -0.035, lineHeightMultiple: 1.1)
+    static let profileName = TypeStyle(size: 24, weight: .regular, lineHeightMultiple: 1.15, isSerif: true)
     /// `800 22`, `-.03em`.
-    static let sheetTitle = TypeStyle(size: 22, weight: .extraBold, trackingEm: -0.03)
+    static let sheetTitle = TypeStyle(size: 22, weight: .regular, isSerif: true)
     /// `800 17`, `-.03em` — venue heading in Rank.
     static let venueHeading = TypeStyle(size: 17, weight: .extraBold, trackingEm: -0.03)
     /// `800 16.5`, `-.028em` — coach name, camp name.
@@ -291,7 +314,7 @@ extension TypeStyle {
 
     // Sheets
     /// `800 21`, `-.03em` — the staff sheet's title, which sits beside an avatar.
-    static let sheetTitleSm = TypeStyle(size: 21, weight: .extraBold, trackingEm: -0.03)
+    static let sheetTitleSm = TypeStyle(size: 21, weight: .regular, isSerif: true)
     /// `700 10`, `+.09em`, uppercase — stat tile label.
     static let statLabel = TypeStyle(size: 10, weight: .bold, trackingEm: 0.09, isUppercased: true)
     /// `800 20`, `-.03em` — stat tile value.
@@ -347,10 +370,21 @@ extension Font {
         sycamore(size: size ?? style.size, weight: style.weight, monospaced: style.isMonospaced)
     }
 
-    static func sycamore(size: CGFloat, weight: TypeWeight, monospaced: Bool = false) -> Font {
-        // The design's mono is `ui-monospace, Menlo` — i.e. the platform mono, never Manrope.
+    static func sycamore(
+        size: CGFloat, weight: TypeWeight, monospaced: Bool = false, serif: Bool = false
+    ) -> Font {
+        // The design's mono is `ui-monospace, Menlo` — i.e. the platform mono, never a bundled
+        // face.
         if monospaced {
             return .system(size: size, weight: weight.fontWeight, design: .monospaced)
+        }
+        // The design writes `Newsreader, Georgia, serif`, so the fallback is the platform serif
+        // rather than the sans — a heading that loses Newsreader should still read as a heading.
+        if serif {
+            guard let face = FontFamily.serifFace else {
+                return .system(size: size, weight: .regular, design: .serif)
+            }
+            return .custom(face, fixedSize: size)
         }
         if let face = FontFamily.availableFaces[weight.rawValue] {
             return .custom(face, fixedSize: size)
@@ -363,6 +397,12 @@ extension Font {
     static func sycamore(_ style: TypeStyle, scaledRelativeTo textStyle: Font.TextStyle) -> Font {
         if style.isMonospaced {
             return .system(style.textStyle, design: .monospaced).weight(style.weight.fontWeight)
+        }
+        if style.isSerif {
+            guard let face = FontFamily.serifFace else {
+                return .system(textStyle, design: .serif)
+            }
+            return .custom(face, size: style.size, relativeTo: textStyle)
         }
         if let face = FontFamily.availableFaces[style.weight.rawValue] {
             return .custom(face, size: style.size, relativeTo: textStyle)
@@ -394,7 +434,7 @@ private struct TypeStyleModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let styled = content
-            .font(.sycamore(style, size: scaledSize))
+            .font(.sycamore(size: scaledSize, weight: style.weight, monospaced: style.isMonospaced, serif: style.isSerif))
             .tracking(style.tracking)
             .lineSpacing(style.lineSpacing)
             .textCase(style.isUppercased ? .uppercase : nil)
