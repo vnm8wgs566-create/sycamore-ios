@@ -96,6 +96,17 @@ struct TimeOfDay: Codable, Hashable, Comparable, Identifiable, Sendable {
 
     static func < (lhs: TimeOfDay, rhs: TimeOfDay) -> Bool { lhs.id < rhs.id }
 
+    /// The wall clock, as the camp's own time-of-day.
+    ///
+    /// Here rather than in whichever screen wanted it first: two things now need to know which
+    /// block is running, and a clock the model cannot read is a rule the model cannot own.
+    /// `Weekday.today` is still a stub returning Wednesday — this is not, so the two disagree
+    /// until that one is given a real calendar.
+    static func now(_ date: Date = .now, calendar: Calendar = .current) -> TimeOfDay {
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return TimeOfDay(parts.hour ?? 0, parts.minute ?? 0)
+    }
+
     /// 12:00 → 15:30 in half-hour steps, exactly the eight pills in the design.
     static let pickupOptions: [TimeOfDay] = stride(from: 12 * 60, through: 15 * 60 + 30, by: 30)
         .map { TimeOfDay($0 / 60, $0 % 60) }

@@ -23,7 +23,7 @@ enum ScheduleTheme {
     ///
     /// Lightened in the dark, where `B67A16` on `1C1C1E` measures 3.4:1 and this metadata line
     /// is drawn at 13.5pt — small text, which needs 4.5:1.
-    static let warning = Color(light: "B67A16", dark: "E7AE4A")
+    static let warning = Theme.warning
 
     /// `#3F4A44` — the ink a note is written in. A green-shifted grey rather than the neutral
     /// ramp, because a note always sits on or beside the green.

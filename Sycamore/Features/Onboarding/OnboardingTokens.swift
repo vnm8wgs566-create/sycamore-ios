@@ -28,13 +28,13 @@ enum OnboardingTheme {
     // failure. Red would send somebody looking for a problem that is not there.
 
     /// `#B67A16` — "No age in the file".
-    static let warning = Color(light: "B67A16", dark: "E0A64B")
+    static let warning = Theme.warning
     /// `#8A6416` — the label on a `warningTint` chip.
-    static let warningStrong = Color(light: "8A6416", dark: "F2CA80")
+    static let warningStrong = Theme.warningDark
     /// `#FAF6EC` — the "Fix" chip's plate.
-    static let warningTint = Color(light: "FAF6EC", dark: "2C2418")
+    static let warningTint = Theme.warningTint
     /// `#F0E3C6` — the border around the card of rows that need a detail.
-    static let warningBorder = Color(light: "F0E3C6", dark: "4C3E24")
+    static let warningBorder = Theme.warningBorder
 }
 
 enum OnboardingShadows {

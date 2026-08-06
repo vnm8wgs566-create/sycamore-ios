@@ -20,7 +20,7 @@ enum GroupsPalette {
     /// The one warm colour on the screen, and deliberately not `Theme.danger`: leaving at 2:30
     /// is a plan, not a problem. Hoist it when Schedule draws its "needs a coach" amber, which
     /// is the same value in the design document.
-    static let pickup = Color(light: "B67A16", dark: "E0A03C")
+    static let pickup = Theme.warning
 
     /// `0 0 0 4px rgba(26,127,85,.09)` — the halo the design puts around the card a kid is
     /// about to land in. Derived from the accent rather than spelled, so it follows it.

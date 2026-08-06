@@ -24,12 +24,12 @@ enum OverviewTheme {
     // MARK: Warning amber
 
     /// A closed court's second line, and the warning glyph on its badge — `#B67A16`.
-    static let warning = Color(light: "B67A16", dark: "E3AC4B")
+    static let warning = Theme.warning
     /// A closed court's title and the label on its badge — `#8A6416`. A step darker than
     /// `warning` so the two read apart at 12.5pt.
-    static let warningInk = Color(light: "8A6416", dark: "F1CE86")
+    static let warningInk = Theme.warningDark
     /// The plate a `Closed` badge sits on — `#FAF6EC`.
-    static let warningTint = Color(light: "FAF6EC", dark: "2E2716")
+    static let warningTint = Theme.warningTint
 
     // MARK: Lift
 

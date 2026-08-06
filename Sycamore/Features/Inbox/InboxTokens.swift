@@ -36,7 +36,7 @@ enum InboxTint: Sendable {
         // are derived the way `Theme` derives its own: the tile climbs to a warm near-black
         // rather than going flat, and the glyph brightens because `#B67A16` on a dark surface
         // falls well under 4.5:1.
-        case .warning: Color(light: "FAF6EC", dark: "2A2317")
+        case .warning: Theme.warningTint
         case .neutral: Theme.fill
         }
     }
@@ -44,7 +44,7 @@ enum InboxTint: Sendable {
     var glyph: Color {
         switch self {
         case .accent: Theme.accent
-        case .warning: Color(light: "B67A16", dark: "E0A63C")
+        case .warning: Theme.warning
         case .neutral: Theme.inkSecondary
         }
     }

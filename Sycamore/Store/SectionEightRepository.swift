@@ -126,19 +126,57 @@ enum DayShape: String, CaseIterable, Identifiable, Sendable {
 /// the camp graph — `Camp` predates section 8.
 extension InMemoryRepository: SectionEightData {
 
+    /// Derived from the camp graph rather than stored.
+    ///
+    /// It used to read a `sectionEightCourts` array that nothing ever wrote, so it always
+    /// answered `[]` — and `OverviewView` quietly made up the difference by rebuilding the cards
+    /// itself, in the feature layer, only while the array was empty. That meant two
+    /// implementations of "what is on each court today" with no way to check them against each
+    /// other, and the moment Postgres returned a single court the offline one silently stopped,
+    /// so a partly-populated venue drew a partial screen.
+    ///
+    /// Every column `today_courts` selects is already in the graph, so there is nothing to store.
     func courts(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [CourtCard] {
-        sectionEightCourts.filter { $0.venueID == venueID }.sorted { $0.rankOrder < $1.rankOrder }
+        let camp = try await camp(id: campID)
+        let activity = ScheduleBlock.running(
+            in: try await scheduleBlocks(forVenue: venueID, day: .today, campID: campID),
+            at: .now()
+        )?.title
+
+        return camp.groups(in: venueID)
+            .sorted { $0.rankOrder < $1.rankOrder }
+            .map { group in
+                let coach = camp.coach(forGroup: group.id)
+                return CourtCard(
+                    id: group.id,
+                    venueID: group.venueID,
+                    groupName: group.label,
+                    courtLabel: group.label,
+                    rankOrder: group.rankOrder,
+                    coachID: coach?.id,
+                    coachName: coach?.name,
+                    playersHere: camp.players(inGroup: group.id)
+                        .count { !camp.isAway($0.id, on: .today) },
+                    activity: activity,
+                    // A closed court keeps its card — the design draws the reason on it — so the
+                    // closure is an overlay on the derivation, not a row that replaces it.
+                    status: closedCourts[group.id].map { .closed(reason: $0) } ?? .open
+                )
+            }
     }
 
     func setCourtStatus(
         _ status: CourtStatus, forGroup groupID: Group.ID, campID: Camp.ID
     ) async throws -> [CourtCard] {
-        guard let index = sectionEightCourts.firstIndex(where: { $0.id == groupID }) else {
+        let camp = try await camp(id: campID)
+        guard let group = camp.groups.first(where: { $0.id == groupID }) else {
             throw SycamoreError.unknownGroup
         }
-        sectionEightCourts[index].status = status
-        let venueID = sectionEightCourts[index].venueID
-        return try await courts(forVenue: venueID, campID: campID)
+        switch status {
+        case .open: closedCourts[groupID] = nil
+        case .closed(let reason): closedCourts[groupID] = reason
+        }
+        return try await courts(forVenue: group.venueID, campID: campID)
     }
 
     func scheduleBlocks(

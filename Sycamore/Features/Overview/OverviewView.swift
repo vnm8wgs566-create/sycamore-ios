@@ -30,51 +30,36 @@ struct OverviewView: View {
 
     @Environment(AppStore.self) private var store
 
-    /// Courts exactly as the repository returned them. Empty is the ordinary case for now, and
-    /// `courts` below is where that is answered.
-    @State private var loadedCourts: [CourtCard] = []
-    @State private var blocks: [ScheduleBlock] = []
-    @State private var inbox: [InboxItem] = []
-
     var body: some View {
         OverviewScreen(
             store: store,
-            courts: courts,
+            courts: store.courts,
             pinnedNote: pinnedNote,
             blockNote: runningBlock?.notes.first,
             nowLine: nowLine
         )
-        .task(id: venueID) { await load() }
+        .task(id: store.readVenueID) { await load() }
     }
 
     // MARK: What the screen draws
 
-    /// The venue this screen is about: the one you are standing in, or the camp's first when
-    /// you are standing in none of them.
-    private var venueID: Venue.ID? {
-        store.myStaffRecord?.venueID
-            ?? store.todayAssignment?.venueID
-            ?? store.camp?.orderedVenues.first?.id
-    }
+    /// The venue this screen is about now comes from `AppStore.readVenueID`, so Overview,
+    /// Schedule and Inbox cannot disagree about which venue they are showing — they each used to
+    /// answer that question their own way, and two of the five fell back to `camp.venues.first`
+    /// where the others used `orderedVenues.first`. `venues` has no guaranteed order.
+    private var venueID: Venue.ID? { store.readVenueID }
 
-    /// Derived rather than held in `@State` so the cards stay honest between loads: marking a
-    /// kid away anywhere in the app changes a headcount here on the next pass.
-    private var courts: [CourtCard] {
-        if !loadedCourts.isEmpty { return loadedCourts }
-        guard let camp = store.camp, let venueID else { return [] }
-        return TodayCourts.derive(
-            forVenue: venueID, in: camp, activity: runningBlock?.title, day: store.today
-        )
-    }
-
+    /// One rule, on the model, shared with the repository and with Schedule. This screen used to
+    /// ask the clock in its own words while Schedule asked block *status*, so on any morning a
+    /// coach forgot to mark a block done the two tabs named different blocks as current.
     private var runningBlock: ScheduleBlock? {
-        TodayCourts.running(in: blocks, at: TodayCourts.now())
+        ScheduleBlock.running(in: store.scheduleBlocks, at: .now())
     }
 
     /// The design banners one note. Items arrive newest first, so the newest one still standing
     /// is the one the morning is about.
     private var pinnedNote: InboxItem? {
-        inbox.first { $0.kind == .note && !$0.resolved }
+        store.inboxItems.first { $0.kind == .note && !$0.resolved }
     }
 
     /// "Skills rotation · until 10:30" while a block is running.
@@ -87,23 +72,21 @@ struct OverviewView: View {
         // more than one and every venue numbers its courts from 1, so which one this is is the
         // most useful thing the line can say.
         guard let venue = venueID.flatMap({ store.venue($0) }) else { return nil }
-        return "\(venue.name) · \(courts.count) court\(courts.count == 1 ? "" : "s")"
+        let count = store.courts.count
+        return "\(venue.name) · \(count) court\(count == 1 ? "" : "s")"
     }
 
     // MARK: Loading
 
+    /// Through the store, not the repository.
+    ///
+    /// This screen held its three lists in `@State` and read the repository directly, because the
+    /// unit that built it could not edit `AppStore`. That meant a write on another tab was
+    /// invisible here — resolving an Inbox item that reassigns a court has to change what these
+    /// cards say — and every tab switch re-issued the whole read set, because `MainTabView`
+    /// switches on the selected tab and so destroys the view and its `@State` each time.
     private func load() async {
-        guard let campID = store.camp?.id, let venueID else { return }
-        do {
-            loadedCourts = try await store.repository.courts(forVenue: venueID, campID: campID)
-            blocks = try await store.repository.scheduleBlocks(
-                forVenue: venueID, day: store.today, campID: campID
-            )
-            inbox = try await store.repository.inboxItems(forVenue: venueID, campID: campID)
-        } catch {
-            // The tab shell is already watching `errorMessage` and floats the banner for it.
-            store.errorMessage = error.localizedDescription
-        }
+        await store.loadOverview()
     }
 }
 

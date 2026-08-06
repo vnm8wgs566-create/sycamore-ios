@@ -34,9 +34,6 @@ struct GroupsMove: Equatable {
 
     let row: PlayerRow
     let sourceGroupID: Group.ID
-    /// The row's index inside the rows its card actually draws — the same list the drop slots
-    /// are numbered against, so the two can be compared without translating.
-    let sourceIndex: Int
     /// The kid immediately below the mover in their own group at lift time, or nil if they were
     /// last in it.
     ///

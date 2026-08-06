@@ -24,7 +24,7 @@ enum OnTheDayTokens {
     /// "answered", amber means "answered, and there is a catch". The dark value is lifted and
     /// desaturated the way the rest of the palette is, so it clears 4.5:1 on `surface` in both
     /// schemes rather than turning to mud on near-black.
-    static let warning = Color(light: "B67A16", dark: "E0A54A")
+    static let warning = Theme.warning
 
     // MARK: Geometry
 

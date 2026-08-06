@@ -428,7 +428,6 @@ struct GroupsView: View {
         move = GroupsMove(
             row: row,
             sourceGroupID: entry.id,
-            sourceIndex: index,
             nextRowID: entry.card.rows.indices.contains(index + 1)
                 ? entry.card.rows[index + 1].id
                 : nil,

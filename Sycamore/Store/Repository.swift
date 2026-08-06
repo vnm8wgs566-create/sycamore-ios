@@ -175,7 +175,10 @@ actor InMemoryRepository: SycamoreRepository {
     // mean every existing screen re-decoding three things it does not use. Not `private` —
     // `SectionEightRepository.swift` implements against them from an extension, and an
     // extension cannot reach a private stored property.
-    var sectionEightCourts: [CourtCard] = []
+    /// Courts are *derived* from the camp graph, not stored — see
+    /// `SectionEightRepository.courts(forVenue:campID:)`. Only the closure reason is state,
+    /// because nothing in the graph knows a net is down.
+    var closedCourts: [Group.ID: String] = [:]
     var sectionEightBlocks: [ScheduleBlock] = []
     var sectionEightInbox: [InboxItem] = []
 

@@ -12,10 +12,10 @@
 //  was cleared, which is the difference between an inbox that is empty because nothing happened
 //  and one that is empty because you dealt with it.
 //
-//  The rows are held here in `@State` and read straight off the repository. `AppStore` has no
-//  inbox surface yet, and every screen in section 8 is being written at once — a store method
-//  added now is a merge conflict for all of them. What it should eventually expose is in the
-//  pull request.
+//  The rows live on `AppStore`, not here. They were held in this view's `@State` while section
+//  8's screens were being written in parallel — a store method added then was a merge conflict
+//  for all of them — but a private copy meant a write on one tab could not be seen from another,
+//  and resolving an item that reassigns a court has to change what Overview draws.
 //
 
 import SwiftUI
@@ -24,12 +24,7 @@ struct InboxView: View {
 
     @Environment(AppStore.self) private var store
 
-    @State private var items: [InboxItem] = []
     @State private var filter: InboxFilter
-    /// Read and write failures. Local rather than `store.errorMessage`: this screen reads a
-    /// relation nothing else on the tab bar is waiting on, and the store's banner is shared by
-    /// all four tabs.
-    @State private var failure: String?
     /// Bumped by a successful resolve, so the haptic fires on the tap and not on a load that
     /// happens to arrive with cleared rows already in it.
     @State private var resolveCount = 0
@@ -43,7 +38,7 @@ struct InboxView: View {
     var body: some View {
         // Derived once per pass. Read as four separate computed properties this walked, grouped
         // and sorted the whole morning four times to draw it once.
-        let contents = InboxContents(items: items, filter: filter)
+        let contents = InboxContents(items: store.inboxItems, filter: filter)
 
         return VStack(spacing: 0) {
             // The design puts the title and the chips on white and the list on the grey
@@ -77,9 +72,13 @@ struct InboxView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.grouped)
-        .task(id: store.inboxVenueID) { await load() }
+        .task(id: store.readVenueID) { await load() }
         .sensoryFeedback(.success, trigger: resolveCount)
-        .storeErrorBanner(message: failure) { failure = nil }
+        // No banner of its own. Reads and writes now go through `AppStore.perform`, which owns
+        // `errorMessage` and `isWorking` — and `MainTabView` already floats one banner for all
+        // four tabs. A second here meant a failure on this tab looked like a different class of
+        // problem from the same failure on the next, and set no in-flight state, so section 8's
+        // writes had no spinner and no double-tap guard.
     }
 
     // MARK: Filters
@@ -158,15 +157,7 @@ struct InboxView: View {
     // MARK: Intents
 
     private func load() async {
-        guard let venueID = store.inboxVenueID, let campID = store.camp?.id else {
-            items = []
-            return
-        }
-        do {
-            items = try await store.repository.inboxItems(forVenue: venueID, campID: campID)
-        } catch {
-            failure = error.localizedDescription
-        }
+        await store.loadInbox()
     }
 
     /// "Review" / "Assign".
@@ -176,32 +167,13 @@ struct InboxView: View {
     /// declined to resolve simply comes back unresolved, instead of disappearing optimistically
     /// and reappearing a moment later.
     private func resolve(_ item: InboxItem) {
-        guard let campID = store.camp?.id else { return }
         Task {
-            do {
-                let updated = try await store.repository.resolveInboxItem(item.id, campID: campID)
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
-                    items = updated
-                }
-                resolveCount += 1
-            } catch {
-                failure = error.localizedDescription
-            }
+            let before = store.inboxItems.count { !$0.resolved }
+            await store.resolveInboxItem(item.id)
+            // Only when the store actually took it. A rejected write leaves the count where it
+            // was, and a haptic for something that did not happen is worse than none.
+            if store.inboxItems.count(where: { !$0.resolved }) < before { resolveCount += 1 }
         }
-    }
-}
-
-// MARK: - Which venue
-
-extension AppStore {
-    /// The venue the Inbox is about.
-    ///
-    /// A person's own posting first — the design's rows are the morning on the court they are
-    /// standing on — falling back to the camp's first venue for an admin who is not posted
-    /// anywhere today. `inboxItems(forVenue:campID:)` takes one venue, so somebody has to
-    /// choose, and this is the only screen choosing.
-    var inboxVenueID: Venue.ID? {
-        todayAssignment?.venueID ?? camp?.venues.first?.id
     }
 }
 
@@ -237,7 +209,7 @@ private struct InboxPreviewHarness: View {
         let store = AppStore.preview
         store.selectedTab = .inbox
 
-        guard let campID = store.camp?.id, let venueID = store.inboxVenueID else { return store }
+        guard let campID = store.camp?.id, let venueID = store.readVenueID else { return store }
         let items = InboxPreviewItems.morning(venueID: venueID)
         for item in items {
             _ = try? await store.repository.addInboxItem(item, campID: campID)

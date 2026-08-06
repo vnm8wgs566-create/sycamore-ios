@@ -90,6 +90,28 @@ struct ScheduleBlock: Identifiable, Hashable, Sendable, Codable {
     }
 }
 
+extension ScheduleBlock {
+
+    /// The block a camp is in the middle of: the last one that has started, unless it has ended.
+    ///
+    /// One rule, in the model, because there were three — Overview asked the clock, the Postgres
+    /// repository asked the clock again in its own words, and Schedule asked block *status*
+    /// ("first one not marked done"). On any morning where a coach forgot to mark a block done,
+    /// the tabs named different blocks as current and neither was wrong by its own definition.
+    ///
+    /// It is a fact about a list of blocks, not a drawing decision, which is why it lives here
+    /// rather than in whichever screen needed it first.
+    static func running(in blocks: [ScheduleBlock], at time: TimeOfDay) -> ScheduleBlock? {
+        blocks
+            .filter { $0.startsAt <= time }
+            .max { $0.startsAt < $1.startsAt }
+            .flatMap { block in
+                guard let ends = block.endsAt, ends <= time else { return block }
+                return nil
+            }
+    }
+}
+
 enum ScheduleBlockStatus: String, Hashable, Sendable, Codable, CaseIterable {
     /// The ordinary state.
     case planned

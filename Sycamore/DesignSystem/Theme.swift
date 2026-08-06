@@ -174,6 +174,9 @@ enum Theme {
     static let warningDark = Color(light: "8A6416", dark: "F0C97A")
     /// The pill fill behind `warningDark`.
     static let warningTint = Color(light: "FAF6EC", dark: "2A2213")
+    /// `#F0E3C6` — the border around a card of rows that still need a detail. Rarer than the
+    /// other three, and here rather than in a feature so the family cannot be split up again.
+    static let warningBorder = Color(light: "F0E3C6", dark: "4C3E24")
 
     // MARK: Surfaces
 

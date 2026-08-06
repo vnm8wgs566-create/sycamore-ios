@@ -19,18 +19,49 @@ import Foundation
 extension AppStore {
 
     // MARK: The venue these reads are scoped to
-    //
-    // All three relations are per-venue in Postgres. The app's venue *filter* can be "All",
-    // which no single `site_id` answers — so the reads fall back to the first venue rather than
-    // returning nothing, and a camp-wide read is a schema question (a `camp_id` on the views)
-    // rather than something to fake by looping here.
 
+    /// The venue Overview, Schedule and Inbox are about: the court you are posted to, then the
+    /// one you are on today, then the camp's first.
+    ///
+    /// One rule, because there were five. Each section 8 screen grew its own — some falling back
+    /// to `camp.venues.first`, some to `camp.orderedVenues.first`. `venues` carries no guaranteed
+    /// order, which is exactly why `orderedVenues` exists, so those two families could name
+    /// *different* venues in the same session: Overview showing one venue while the Inbox read
+    /// another's items, and neither saying so.
+    ///
+    /// Deliberately not keyed off `venueFilter`. That is Groups' chip row, and wiring these reads
+    /// to it would mean tapping a chip on one tab silently retargeted the other three — a
+    /// coupling nobody asked for, through a filter the redesign otherwise removed. `venueFilter`
+    /// also has an `.all` case that no per-venue relation can answer, and every screen privately
+    /// correcting for a state the model should not hold is a symptom, not a fix.
     var readVenueID: Venue.ID? {
-        if case .venue(let id) = venueFilter { return id }
-        return camp?.venues.first?.id
+        myStaffRecord?.venueID
+            ?? todayAssignment?.venueID
+            ?? camp?.orderedVenues.first?.id
     }
 
     // MARK: Overview
+
+    /// Overview's three reads, in one wave and one `perform`.
+    ///
+    /// One `perform` because it tracks in-flight work with a plain `Bool`: three concurrent calls
+    /// would each set it true and the first to finish would clear it, so the spinner would vanish
+    /// while two reads were still out. `async let` because the three are independent — run in
+    /// sequence they cost three round trips to draw one screen.
+    func loadOverview() async {
+        guard let campID = camp?.id, let venueID = readVenueID else { return }
+        await perform {
+            async let courts = self.repository.courts(forVenue: venueID, campID: campID)
+            async let blocks = self.repository.scheduleBlocks(
+                forVenue: venueID, day: self.today, campID: campID
+            )
+            async let inbox = self.repository.inboxItems(forVenue: venueID, campID: campID)
+
+            self.courts = try await courts
+            self.scheduleBlocks = try await blocks
+            self.inboxItems = try await inbox
+        }
+    }
 
     func loadCourts() async {
         guard let campID = camp?.id, let venueID = readVenueID else { return }
