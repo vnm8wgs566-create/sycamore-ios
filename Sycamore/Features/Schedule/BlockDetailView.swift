@@ -21,17 +21,13 @@ struct BlockDetailView: View {
     @Environment(AppStore.self) private var store
 
     let block: ScheduleBlock
-    /// The block the day is on. See `ScheduleDay.currentBlockID`.
+    /// The block the camp is in the middle of. Handed down rather than recomputed so this cover
+    /// and the card behind it can never name different blocks as current.
     let isCurrent: Bool
-    /// Handed the day back after a write, so `8k` behind this cover stays true.
-    let onBlocksChanged: ([ScheduleBlock]) -> Void
     let onClose: () -> Void
 
-    /// The notes are behind a tap because the design puts a caret on that row. Expanding in
-    /// place rather than pushing a screen: three lines of text do not need one, and section 8
-    /// draws no notes screen to push to.
-    @State private var showsNotes = false
-    @State private var failure: String?
+    @ScaledMetric(relativeTo: .footnote) private var statusDot = ScheduleMetrics.statusDot
+    @ScaledMetric(relativeTo: .headline) private var ctaHeight = ScheduleMetrics.ctaHeight
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,7 +35,7 @@ struct BlockDetailView: View {
             Hairline(color: Theme.hairline)
 
             ScrollView {
-                VStack(spacing: ScheduleMetrics.blockGap) {
+                VStack(alignment: .leading, spacing: ScheduleMetrics.blockGap) {
                     yourCourt
                     whoIsWhere
                     notesRow
@@ -51,10 +47,13 @@ struct BlockDetailView: View {
             .scrollIndicators(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { takeAttendance }
-        // The cover hides `MainTabView`'s banner, so a failure in here needs one of its own.
-        .storeErrorBanner(message: failure) { failure = nil }
+        // A cover hides the pair `MainTabView` floats, so it carries the store's own — not a
+        // private banner. `AppStore.perform` owns `errorMessage` and `isWorking`; this screen
+        // just has to be somewhere they can be seen from.
+        .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
+        .storeWorkingIndicator(store.isWorking)
     }
 
     // MARK: Header
@@ -85,15 +84,16 @@ struct BlockDetailView: View {
                 .padding(.top, Spacing.large)
 
             Text(block.title)
-                .typeStyle(.tabTitle, color: Theme.ink)
-                .padding(.top, Spacing.small)
+                .typeStyle(ScheduleType.blockHeading, color: Theme.ink)
+                .padding(.top, ScheduleMetrics.rowGap)
 
             Text(subtitle)
                 .typeStyle(ScheduleType.blockDetail, color: Theme.inkMuted)
-                .padding(.top, Spacing.tight)
+                .padding(.top, ScheduleMetrics.headerSubtitleGap)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Spacing.header)
+        .padding(.top, ScheduleMetrics.headerTop)
         .padding(.bottom, ScheduleMetrics.headerBottom)
         .background(Theme.surface)
     }
@@ -109,12 +109,12 @@ struct BlockDetailView: View {
         HStack(spacing: Spacing.small) {
             Circle()
                 .fill(statusTint)
-                .frame(width: ScheduleMetrics.statusDot, height: ScheduleMetrics.statusDot)
+                .frame(width: statusDot, height: statusDot)
+                .accessibilityHidden(true)
 
             Text(ScheduleDay.statusLine(for: block, isCurrent: isCurrent))
-                .typeStyle(.chipSoft, color: statusTint)
+                .typeStyle(ScheduleType.inlineAction, color: statusTint)
         }
-        .accessibilityElement(children: .combine)
     }
 
     /// Green marks the block you are on — but never over the amber. A block that needs a coach
@@ -123,14 +123,14 @@ struct BlockDetailView: View {
         block.status == .planned && isCurrent ? Theme.accent : block.status.tint
     }
 
-    /// The design's `⋯`. Both entries are writes the section 8 repository already makes, so
-    /// neither is a button that does nothing.
+    /// The design's `⋯`. Both entries are writes `AppStore` already makes, so neither is a
+    /// button that does nothing.
     private var blockMenu: some View {
         Menu {
             if block.status != .done {
-                Button("Mark done") { Task { await markDone() } }
+                Button("Mark done", action: markDone)
             }
-            Button("Delete block", role: .destructive) { Task { await delete() } }
+            Button("Delete block", role: .destructive, action: delete)
         } label: {
             DisclosureChevron(systemName: "ellipsis", size: 20, color: Theme.inkSecondary)
                 .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
@@ -164,16 +164,7 @@ struct BlockDetailView: View {
         let people = assignees
 
         if !people.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                SectionHeader("Who is where")
-                    .padding(.top, Spacing.tight)
-
-                Card {
-                    ForEach(people) { member in
-                        assigneeRow(member)
-                    }
-                }
-            }
+            BlockAssigneeList(people: people, myID: store.myStaffRecord?.id)
         }
     }
 
@@ -190,35 +181,6 @@ struct BlockDetailView: View {
             }
     }
 
-    private func assigneeRow(_ member: StaffMember) -> some View {
-        CardRow(spacing: Spacing.row, verticalPadding: Spacing.row) {
-            InitialsAvatar(member.initials, size: ScheduleMetrics.assigneeAvatar)
-
-            VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                name(for: member)
-                    .typeStyle(ScheduleType.assigneeName, color: Theme.ink)
-
-                Text(member.role.membershipName)
-                    .typeStyle(ScheduleType.assigneeMeta, color: Theme.inkMuted)
-            }
-
-            Spacer(minLength: Spacing.small)
-
-            Text(member.assignment?.groupLabel ?? "Roaming")
-                .typeStyle(ScheduleType.assigneeMeta, color: Theme.inkFaint)
-                .layoutPriority(1)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    /// `Nass · you`, with the qualifier in the accent and a lighter weight — interpolated as one
-    /// `Text` rather than joined with `+`, which is the house rule in `Typography.swift`.
-    private func name(for member: StaffMember) -> Text {
-        guard member.id == store.myStaffRecord?.id else { return Text(member.name) }
-        let you = Text(" · you").typeStyle(ScheduleType.assigneeMeta, color: Theme.accent)
-        return Text("\(member.name)\(you)")
-    }
-
     // MARK: Notes
 
     /// Hidden outright on a block nobody has written anything on. "0 notes on this block" is a
@@ -226,42 +188,7 @@ struct BlockDetailView: View {
     @ViewBuilder
     private var notesRow: some View {
         if !block.notes.isEmpty {
-            Card(isDivided: false) {
-                VStack(spacing: 0) {
-                    Button(action: toggleNotes) {
-                        CardRow(spacing: Spacing.row, horizontalPadding: ScheduleMetrics.cardPadding) {
-                            DisclosureChevron(systemName: "note.text", size: 16, color: Theme.inkFaint)
-
-                            Text(block.notesRowLabel)
-                                .typeStyle(ScheduleType.notesRow, color: ScheduleTheme.noteInk)
-
-                            Spacer(minLength: Spacing.small)
-
-                            DisclosureChevron(size: 15)
-                                .rotationEffect(.degrees(showsNotes ? 90 : 0))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(showsNotes ? "Hides the notes" : "Shows the notes")
-
-                    if showsNotes {
-                        // Indices, not the notes themselves: two coaches can write the same
-                        // line, and identical strings would collapse into one row.
-                        ForEach(block.notes.indices, id: \.self) { index in
-                            Hairline(color: Theme.hairlineSoft)
-
-                            CardRow(spacing: Spacing.row,
-                                    horizontalPadding: ScheduleMetrics.cardPadding,
-                                    verticalPadding: Spacing.medium,
-                                    alignment: .top) {
-                                Text(block.notes[index])
-                                    .typeStyle(ScheduleType.noteLine, color: Theme.inkTertiary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-                }
-            }
+            BlockNotesCard(notes: block.notes, label: block.notesRowLabel)
         }
     }
 
@@ -270,20 +197,16 @@ struct BlockDetailView: View {
     private var takeAttendance: some View {
         PrimaryButton(
             "Take attendance",
-            height: ScheduleMetrics.ctaHeight,
-            font: .button,
+            height: ctaHeight,
+            font: ScheduleType.cta,
             action: openAttendance
         )
         .shadow(ScheduleShadows.cta)
         .padding(.horizontal, Spacing.gutter)
-        .padding(.bottom, Spacing.tabBarInset)
+        .padding(.bottom, ScheduleMetrics.ctaBottom)
     }
 
     // MARK: Actions
-
-    private func toggleNotes() {
-        withAnimation(.snappy(duration: 0.22)) { showsNotes.toggle() }
-    }
 
     /// Attendance is Groups' job — marking a kid away is the swipe on a coach card — so the
     /// design's call to action goes there rather than to a screen section 8 does not draw.
@@ -292,36 +215,17 @@ struct BlockDetailView: View {
         onClose()
     }
 
-    private func markDone() async {
+    private func markDone() {
         var updated = block
         updated.status = .done
-        await write { repository, campID in
-            try await repository.updateScheduleBlock(updated, campID: campID)
-        }
+        Task { await store.updateScheduleBlock(updated) }
     }
 
-    private func delete() async {
-        let deleted = await write { repository, campID in
-            try await repository.deleteScheduleBlock(block.id, campID: campID)
-        }
-        // Only leave once the block is actually gone — closing on a failure would drop the
-        // banner explaining why it is still there.
-        if deleted { onClose() }
-    }
-
-    @discardableResult
-    private func write(
-        _ work: (SycamoreRepository, Camp.ID) async throws -> [ScheduleBlock]
-    ) async -> Bool {
-        guard let campID = store.camp?.id else { return false }
-        do {
-            let day = try await work(store.repository, campID)
-            onBlocksChanged(day)
-            return true
-        } catch {
-            failure = error.localizedDescription
-            return false
-        }
+    /// The cover goes away when `store.scheduleBlocks` comes back without this block — see
+    /// `ScheduleView`. Closing here instead would drop the banner explaining a delete that
+    /// failed.
+    private func delete() {
+        Task { await store.deleteScheduleBlock(block.id) }
     }
 }
 
@@ -330,17 +234,20 @@ struct BlockDetailView: View {
 private struct BlockDetailPreview: View {
     var index: Int
 
+    @State private var store = AppStore.preview
+
     var body: some View {
         let blocks = ScheduleSampleDay.blocks(venueID: SampleData.sycamore.id)
-        let currentID = ScheduleDay.currentBlockID(in: blocks)
+        // The design's clock, so "On now · 41 min left" reads as `8l` draws it whatever the
+        // time is on the machine running the preview.
+        let currentID = ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41))?.id
 
         BlockDetailView(
             block: blocks[index],
             isCurrent: blocks[index].id == currentID,
-            onBlocksChanged: { _ in },
             onClose: {}
         )
-        .environment(AppStore.preview)
+        .environment(store)
         .showsMockStatusBar()
     }
 }
