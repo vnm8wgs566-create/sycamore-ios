@@ -52,13 +52,38 @@ protocol SectionEightData: Sendable {
     ) async throws -> [ScheduleBlock]
 
     // MARK: Inbox — `8r` / `8h`
+    //
+    // Two families, and the argument label is the whole difference: `forCamp:` spans the camp,
+    // `campID:` is one venue inside it.
+    //
+    // `8r` draws a row reading "LATC is 2 coaches short" while the reader is standing on
+    // Sycamore, so the Inbox is a camp-wide list — it is the one screen in section 8 that is not
+    // about a venue. The per-venue three below cannot express that, and the app has been papering
+    // over it: `AppStore.readVenueID` picks the camp's first venue and the Inbox shows that one
+    // venue's rows. Against the seeded camp today that hides exactly the row the design uses as
+    // its example, because the only LATC row is the only row not at Sycamore.
+    //
+    // The per-venue three are kept rather than replaced because `AppStore+SectionEight` and
+    // `InboxView` still call them. They should move to `forCamp:` and then these should go.
 
-    func inboxItems(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [InboxItem]
+    /// Every Inbox row in the camp, across its venues, newest first.
+    func inboxItems(forCamp campID: Camp.ID) async throws -> [InboxItem]
 
     /// The "Review" / "Assign" buttons. Resolving is what moves a row out of "Needs you" and
     /// into the day's history, so it returns the whole list rather than one row.
+    func resolveInboxItem(_ itemID: InboxItem.ID, forCamp campID: Camp.ID) async throws -> [InboxItem]
+
+    func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem]
+
+    /// One venue's rows. Superseded by `inboxItems(forCamp:)` — see above.
+    func inboxItems(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [InboxItem]
+
+    /// Answers with the resolved row's *venue*, not its camp. Superseded by
+    /// `resolveInboxItem(_:forCamp:)`.
     func resolveInboxItem(_ itemID: InboxItem.ID, campID: Camp.ID) async throws -> [InboxItem]
 
+    /// Answers with the new row's *venue*, not its camp. Superseded by
+    /// `addInboxItem(_:forCamp:)`.
     func addInboxItem(_ item: InboxItem, campID: Camp.ID) async throws -> [InboxItem]
 }
 
@@ -244,6 +269,35 @@ extension InMemoryRepository: SectionEightData {
             sectionEightBlocks.append(copy)
         }
         return try await scheduleBlocks(forVenue: venueID, day: toDay, campID: campID)
+    }
+
+    /// The camp's venues are the filter, because an Inbox row reaches its camp through its venue
+    /// — `inbox_items.site_id` → `sites.camp_id` is what the Postgres side joins on, and this has
+    /// to answer the same question the same way.
+    ///
+    /// A camp this repository does not hold has no venues and so no Inbox, rather than raising:
+    /// the Postgres read is a filter on `sites.camp_id`, and a camp that is not there matches no
+    /// site. An offline build that threw where the real one returns nothing would be a difference
+    /// only the offline build could show you.
+    func inboxItems(forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        let venues = (try? await camp(id: campID))?.venues ?? []
+        let venueIDs = Set(venues.map(\.id))
+        return sectionEightInbox
+            .filter { venueIDs.contains($0.venueID) }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func resolveInboxItem(_ itemID: InboxItem.ID, forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        guard let index = sectionEightInbox.firstIndex(where: { $0.id == itemID }) else {
+            throw SycamoreError.unknownGroup
+        }
+        sectionEightInbox[index].resolved = true
+        return try await inboxItems(forCamp: campID)
+    }
+
+    func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        sectionEightInbox.append(item)
+        return try await inboxItems(forCamp: campID)
     }
 
     func inboxItems(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [InboxItem] {
