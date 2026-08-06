@@ -214,7 +214,11 @@ enum Theme {
     // 4.93:1, so it clears AA for normal text at the 11.5pt the design sets it in — which is why
     // the label is the dark end and not `warning` itself (that would be 2.9:1).
 
-    /// The amber itself — an icon, a rule, a standalone glyph.
+    /// The amber itself — an icon, a rule, or **plain text with no fill behind it**.
+    ///
+    /// That last case is the common one and is easy to get wrong: `8k`'s "Needs a coach" is
+    /// `color:#B67A16` on a 13.5px line with nothing behind it, not a pill. The pill below
+    /// appears in exactly four screens — `8d`, `8i`, `8j`, `8r`. Reach for the pair only there.
     static let warning = Color(light: "B67A16", dark: "E0A845")
     /// Label on `warningTint`. The dark end of the family.
     static let warningDark = Color(light: "8A6416", dark: "F0C97A")

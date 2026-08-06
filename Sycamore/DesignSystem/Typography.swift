@@ -204,17 +204,17 @@ struct TypeStyle: Sendable, Equatable {
 extension TypeStyle {
 
     /// `800 35/1.05`, `-.042em` — sign-in wordmark.
-    static let display = TypeStyle(size: 35, weight: .regular, lineHeightMultiple: 1.05, isSerif: true)
+    static let display = TypeStyle(size: 35, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.05, isSerif: true)
     /// `800 31/1.08`, `-.038em` — "Check your email".
-    static let title1 = TypeStyle(size: 31, weight: .regular, lineHeightMultiple: 1.08, isSerif: true)
+    static let title1 = TypeStyle(size: 31, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.08, isSerif: true)
     /// `800 29/1.1`, `-.038em` — "Which camp?", "New camp".
-    static let title2 = TypeStyle(size: 29, weight: .regular, lineHeightMultiple: 1.1, isSerif: true)
+    static let title2 = TypeStyle(size: 29, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.1, isSerif: true)
     /// `800 28/1`, `-.038em` — Groups / Rank / Setup.
-    static let tabTitle = TypeStyle(size: 28, weight: .regular, lineHeightMultiple: 1.02, isSerif: true)
+    static let tabTitle = TypeStyle(size: 28, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.02, isSerif: true)
     /// `800 24/1.1`, `-.035em`.
-    static let profileName = TypeStyle(size: 24, weight: .regular, lineHeightMultiple: 1.15, isSerif: true)
+    static let profileName = TypeStyle(size: 24, weight: .regular, trackingEm: -0.02, lineHeightMultiple: 1.15, isSerif: true)
     /// `800 22`, `-.03em`.
-    static let sheetTitle = TypeStyle(size: 22, weight: .regular, isSerif: true)
+    static let sheetTitle = TypeStyle(size: 22, weight: .regular, trackingEm: -0.02, isSerif: true)
     /// `800 17`, `-.03em` — venue heading in Rank.
     static let venueHeading = TypeStyle(size: 17, weight: .extraBold, trackingEm: -0.03)
     /// `800 16.5`, `-.028em` — coach name, camp name.
@@ -314,7 +314,7 @@ extension TypeStyle {
 
     // Sheets
     /// `800 21`, `-.03em` — the staff sheet's title, which sits beside an avatar.
-    static let sheetTitleSm = TypeStyle(size: 21, weight: .regular, isSerif: true)
+    static let sheetTitleSm = TypeStyle(size: 21, weight: .regular, trackingEm: -0.02, isSerif: true)
     /// `700 10`, `+.09em`, uppercase — stat tile label.
     static let statLabel = TypeStyle(size: 10, weight: .bold, trackingEm: 0.09, isUppercased: true)
     /// `800 20`, `-.03em` — stat tile value.
