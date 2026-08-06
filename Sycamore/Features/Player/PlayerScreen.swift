@@ -79,7 +79,11 @@ struct PlayerScreen: View {
     /// stands on its own words instead. See the PR body.
     private var whoTheyAre: String? {
         guard let player else { return nil }
-        return "\(genderNoun(player.gender)) · \(player.age) years"
+        // `ageLabel`, not `player.age` — the age became optional when it turned out that
+        // substituting `0` for a missing one failed the column's `4..19` CHECK, so a kid imported
+        // without an age could not be written at all. Interpolating the optional directly renders
+        // "Optional(13) years".
+        return "\(genderNoun(player.gender)) · \(player.ageLabel)"
     }
 
     /// `.x` gets a noun of its own rather than a default — a camp that recorded "x" did so
