@@ -11,8 +11,12 @@
 //  `noteTint` and `noteTintBorder` that used to live here are gone rather than aliased. A local
 //  alias for a shared token is how two names for one colour start.
 //
-//  The geometry and the type below are still local, and every one of them is a hoist candidate
-//  the moment a second feature draws the same thing.
+//  It declares no type of its own any more either, for the same reason. `ScheduleType` survives as
+//  a set of aliases onto `TypeStyle` so the call sites keep reading in this screen's vocabulary —
+//  `blockTitle`, `courtBadge`, `emptyCopy` — while the numbers behind them live in one place.
+//
+//  The geometry below is still local, and every value is a hoist candidate the moment a second
+//  feature draws the same thing.
 //
 
 import SwiftUI
@@ -140,82 +144,77 @@ enum ScheduleShadows {
 
 // MARK: - Type
 
-/// Section 8's own type scale.
+/// What `8k`, `8l` and `8f` need beyond the shared table.
 ///
-/// It runs lighter than the shared table: every title on these three screens is `600` where
-/// `TypeStyle.rowTitle` and its neighbours are `800`, and the body copy is `400` where
-/// `TypeStyle.body` is `500`. That is not a local preference — `TypeWeight` already records that
-/// the design document uses no `800` anywhere, and that the `800` in the shared table is left
-/// over from when this app was set in Manrope. So this is section 8 drawn correctly beside a
-/// shared scale that is wrong, not a fork for its own sake; see the PR for the merge.
-///
-/// Sizes and tracking are the CSS values. The *family* is not: section 8 sets every screen title
-/// in `Newsreader, Georgia, serif` and this app bundles only Instrument Sans, so the two
-/// heading styles below carry the design's weight and tracking in the sans it has. Also in the PR.
+/// This used to be a parallel type scale. It ran lighter than `Typography.swift` because section
+/// 8 does — 600 where the earlier screens used 700 or 800, 400 where they used 500 — and it drew
+/// the two serif headings in the sans, because Newsreader was not bundled when it was written.
+/// Both of those are fixed at the source now: the shared table carries section 8's weights, and
+/// `TypeStyle.isSerif` carries its family. So every name here is a one-line alias, kept only so
+/// no call site has to move.
 enum ScheduleType {
 
     // MARK: `8k`
 
     /// `400 13` — the time beside a block.
-    static let blockTime = TypeStyle(size: 13, weight: .regular)
+    static let blockTime = TypeStyle.sheetSubtitle
     /// `600 13` — the time beside the block running now.
-    static let blockTimeNow = TypeStyle(size: 13, weight: .semibold)
-    /// `500 14.5` — "Drop-off · done", the one line a finished block gets.
-    static let doneLine = TypeStyle(size: 14.5, weight: .medium)
+    static let blockTimeNow = TypeStyle.countdown
+    /// `500 14.5` — "Drop-off · done", the one line a finished block gets. `body` without its
+    /// paragraph leading: one line never has a second to be spaced from.
+    static let doneLine = TypeStyle.body.lineHeight(nil)
     /// `600 16`, `-.03em` — a block's title.
-    static let blockTitle = TypeStyle(size: 16, weight: .semibold, trackingEm: -0.03)
+    static let blockTitle = TypeStyle.rowTitle.tracking(em: -0.03)
     /// `600 17`, `-.03em` — the title of the block running now, a point larger.
-    static let blockTitleNow = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.03)
+    static let blockTitleNow = TypeStyle.venueHeading
     /// `400 13.5` — a block's grey second line, and `8l`'s "9:00am – 10:30am · Courts 1–3".
-    static let blockDetail = TypeStyle(size: 13.5, weight: .regular)
+    static let blockDetail = TypeStyle.subtitle
     /// `400 12.5` — the note line under a block's rule, and `8k`'s `+2` beside it.
-    static let noteLine = TypeStyle(size: 12.5, weight: .regular)
+    static let noteLine = TypeStyle.rowDetail
 
     // MARK: `8l`
 
-    /// `400 30/1.05`, `-.022em` — the opened block's name. Serif in the design.
-    static let blockHeading = TypeStyle(size: 30, weight: .regular, trackingEm: -0.022,
-                                        lineHeightMultiple: 1.05)
+    /// `400 30/1.05 Newsreader`, `-.022em` — the opened block's name. The same heading `8m`,
+    /// `8n` and `8q` open with, which is why it takes that style rather than restating it.
+    static let blockHeading = TypeStyle.onTheDayTitle
     /// `600 10.5`, `+.14em`, uppercase — "YOUR COURT", "WHO IS WHERE". `8f`'s "OR START FROM A
     /// SHAPE" is the same style a hair wider, which it asks for with `.tracking(em: 0.15)`.
-    static let overline = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.14,
-                                    isUppercased: true)
-    /// `600 19`, `-.035em` — "Court 1 – Drills".
+    static let overline = TypeStyle.overlineSmall
+    /// `600 19`, `-.035em` — "Court 1 – Drills". The one size on these three screens the design
+    /// draws once and nowhere else, so it stays a style of its own.
     static let courtTitle = TypeStyle(size: 19, weight: .semibold, trackingEm: -0.035)
     /// `400 13` — "8 players · rotate at 10:30am".
-    static let courtMeta = TypeStyle(size: 13, weight: .regular)
+    static let courtMeta = TypeStyle.sheetSubtitle
     /// `600 13.5` — the "Open" badge on the court card.
-    static let courtBadge = TypeStyle(size: 13.5, weight: .semibold)
+    static let courtBadge = TypeStyle.timelineTitle
     /// `500 12.5` — a pinned note, which is written a shade heavier on `8l`'s plate than it is
     /// on `8k`'s card.
-    static let pinnedNote = TypeStyle(size: 12.5, weight: .medium)
+    static let pinnedNote = TypeStyle.rowSubtitle
     /// `400 12` — the `+2` beside it, a half-point smaller than `8k`'s.
-    static let noteCount = TypeStyle(size: 12, weight: .regular)
+    static let noteCount = TypeStyle.meta
     /// `600 14`, `-.02em` — a person's name in "Who is where". The " · you" after it is this
     /// style at `400`, which is why the qualifier asks for `.weight(.regular)` rather than for a
     /// style of its own.
-    static let assigneeName = TypeStyle(size: 14, weight: .semibold, trackingEm: -0.02)
+    static let assigneeName = TypeStyle.rowTitleSm
     /// `400 12.5` — their role, and the court they are on.
-    static let assigneeMeta = TypeStyle(size: 12.5, weight: .regular)
-    /// `500 13.5` — "3 notes on this block".
+    static let assigneeMeta = TypeStyle.rowDetail
+    /// `500 13.5` — "3 notes on this block". The design's single use of 500 at this size.
     static let notesRow = TypeStyle(size: 13.5, weight: .medium)
-    /// `600 16`, `-.015em` — "Take attendance". A weight under `TypeStyle.button`.
-    static let cta = TypeStyle(size: 16, weight: .semibold, trackingEm: -0.015)
+    /// `600 16`, `-.015em` — "Take attendance".
+    static let cta = TypeStyle.button
 
     // MARK: `8f`
 
-    /// `400 24/1.15`, `-.02em` — "Friday is empty." Serif in the design.
-    static let emptyHeading = TypeStyle(size: 24, weight: .regular, trackingEm: -0.02,
-                                        lineHeightMultiple: 1.15)
+    /// `400 24/1.15 Newsreader`, `-.02em` — "Friday is empty."
+    static let emptyHeading = TypeStyle.profileName
     /// `400 13.5/1.6` — the sentence under it.
-    static let emptyCopy = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.6)
+    static let emptyCopy = TypeStyle.emptyBody
     /// `600 15`, `-.02em` — "Add the first block".
-    static let emptyCta = TypeStyle(size: 15, weight: .semibold, trackingEm: -0.02)
+    static let emptyCta = TypeStyle.bodyStrong
     /// `600 14.5`, `-.025em` — "Half day", "Full day", "Tournament".
-    static let shapeTitle = TypeStyle(size: 14.5, weight: .semibold, trackingEm: -0.025)
+    static let shapeTitle = TypeStyle.rowLabel.tracking(em: -0.025)
     /// `400 12` — "5 blocks · 8:30 to 12:45".
-    static let shapeDetail = TypeStyle(size: 12, weight: .regular)
-    /// `600 12.5` — "Reassign", "Copy Monday instead". Both are accent-coloured actions set a
-    /// weight under `TypeStyle.chipMedium`.
-    static let inlineAction = TypeStyle(size: 12.5, weight: .semibold)
+    static let shapeDetail = TypeStyle.meta
+    /// `600 12.5` — "Reassign", "Copy Monday instead".
+    static let inlineAction = TypeStyle.chipSoft
 }

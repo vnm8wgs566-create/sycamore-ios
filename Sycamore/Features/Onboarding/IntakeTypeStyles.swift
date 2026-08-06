@@ -2,21 +2,16 @@
 //  IntakeType.swift
 //  Sycamore
 //
-//  Section 8's type table, for the five getting-in screens.
+//  What the five getting-in screens need beyond the shared table.
 //
-//  `Typography.swift` is transcribed from the design this app shipped with, where headings ran
-//  Manrope 800 and body copy 500. Section 8 is set differently — 600 where the old table says
-//  800, 400 where it says 500, and its headings are a *serif* — so almost every style these
-//  screens need is a row the shared table does not have. Rather than bend the nearest one and
-//  call it close, each row here is the design's `font:` shorthand read off the CSS.
+//  `Typography.swift` used to be transcribed from the design this app shipped with, where headings
+//  ran 800 and body copy 500, so almost every style these screens needed was a row it did not
+//  have and each was spelled out here from the CSS. The table now carries section 8's weights, and
+//  `TypeStyle.isSerif` carries its family, so nearly all of these are one-line aliases.
 //
-//  Hoist the lot into `Typography.swift` once section 8 lands across the app; they are named for
-//  their role rather than for this feature so the move is a rename of nothing.
-//
-//  On the serif: the design asks for Newsreader, which is not bundled and cannot be without
-//  touching the project file. `IntakeTitle` draws these headings in the platform's own serif —
-//  New York — which is the same transitional shape at the same weight, ships on every device,
-//  and carries Dynamic Type without a fallback path. See the PR body.
+//  Three are not, and they are the three the design genuinely draws only here: the two serif
+//  heading sizes, which fall between `display` (35) and `title1` (31), and `8u`'s invite-code
+//  field. Those stay spelled out.
 //
 
 import SwiftUI
@@ -25,10 +20,13 @@ import SwiftUI
 
 extension TypeStyle {
 
-    /// `400 33/1.05`, `-.022em`, serif — "Shape the camp" (`8b`), "Your camps" (`8u`).
-    static let intakeTitle = TypeStyle(size: 33, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.05)
-    /// `400 32/1.02`, `-.022em`, serif — "Players" (`8c`), "42 players" (`8d`), "New player" (`8e`).
-    static let intakeTitleSm = TypeStyle(size: 32, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.02)
+    /// `400 33/1.05 Newsreader`, `-.022em` — "Shape the camp" (`8b`), "Your camps" (`8u`).
+    static let intakeTitle = TypeStyle(size: 33, weight: .regular, trackingEm: -0.022,
+                                       lineHeightMultiple: 1.05, isSerif: true)
+    /// `400 32/1.02 Newsreader`, `-.022em` — "Players" (`8c`), "42 players" (`8d`), "New player"
+    /// (`8e`). Section 8's most-used heading: twelve of its twenty-one screens open with it.
+    static let intakeTitleSm = TypeStyle(size: 32, weight: .regular, trackingEm: -0.022,
+                                         lineHeightMultiple: 1.02, isSerif: true)
 }
 
 // MARK: - Copy
@@ -36,21 +34,22 @@ extension TypeStyle {
 extension TypeStyle {
 
     /// `400 13.5/1.55` — `8b`'s header explainer, which runs to two lines.
-    static let intakeLead = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.55)
+    static let intakeLead = TypeStyle.subtitle.lineHeight(1.55)
     /// `400 13.5` — the one grey line under a title on `8c`, `8d` and `8e`.
-    static let intakeSubtitle = TypeStyle(size: 13.5, weight: .regular)
+    static let intakeSubtitle = TypeStyle.subtitle
     /// `400 13` — `8u`'s header line, and the "Players" beside a back caret.
-    static let intakeSubtitleSm = TypeStyle(size: 13, weight: .regular)
+    static let intakeSubtitleSm = TypeStyle.sheetSubtitle
     /// `400 12.5/1.5` — the copy inside `8e`'s venue note.
-    static let intakeNote = TypeStyle(size: 12.5, weight: .regular, lineHeightMultiple: 1.5)
-    /// `400 13.5/1.55` — a row of `8c`'s "what a file needs" checklist.
-    static let intakeChecklist = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.55)
+    static let intakeNote = TypeStyle.footnote
+    /// `400 13.5/1.55` — a row of `8c`'s "what a file needs" checklist. The same shorthand as
+    /// `intakeLead`; two names because they are two roles, one value because the design draws one.
+    static let intakeChecklist = intakeLead
     /// `400 12` — a venue's second line on `8b`, "You become its first admin" on `8u`.
-    static let intakeRowMeta = TypeStyle(size: 12, weight: .regular)
+    static let intakeRowMeta = TypeStyle.meta
     /// `400 12.5` — the grey or amber line under a name on `8c`, `8d` and `8u`.
-    static let intakeRowDetail = TypeStyle(size: 12.5, weight: .regular)
+    static let intakeRowDetail = TypeStyle.rowDetail
     /// `400 12` — the centred line under `8b`'s call to action.
-    static let intakeFootnote = TypeStyle(size: 12, weight: .regular)
+    static let intakeFootnote = TypeStyle.meta
 }
 
 // MARK: - Overlines
@@ -58,12 +57,12 @@ extension TypeStyle {
 extension TypeStyle {
 
     /// `600 10.5`, `+.15em`, uppercase — a section header. `8c` and `8d` set the same style a
-    /// hair tighter at `+.14em`; reach that with `.tracking(em: 0.14)`.
-    static let intakeOverline = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.15, isUppercased: true)
+    /// hair tighter at `+.14em`, which is what `overlineSmall` itself carries.
+    static let intakeOverline = TypeStyle.overlineSmall.tracking(em: 0.15)
     /// `600 10`, `+.14em`, uppercase — `8d`'s NEW / RETURNING / RANKED labels.
-    static let intakeStatLabel = TypeStyle(size: 10, weight: .semibold, trackingEm: 0.14, isUppercased: true)
+    static let intakeStatLabel = TypeStyle.statLabel.tracking(em: 0.14)
     /// `600 10`, `+.12em`, uppercase — the OPEN badge on `8u`.
-    static let intakeBadge = TypeStyle(size: 10, weight: .semibold, trackingEm: 0.12, isUppercased: true)
+    static let intakeBadge = TypeStyle.statLabel.tracking(em: 0.12)
 }
 
 // MARK: - Rows
@@ -71,36 +70,35 @@ extension TypeStyle {
 extension TypeStyle {
 
     /// `600 17`, `-.03em` — `8d`'s counts and `8c`'s import heading.
-    static let intakeStatValue = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.03)
+    static let intakeStatValue = TypeStyle.venueHeading
     /// `600 15.5`, `-.025em` — the camp you are signed in to on `8u`.
-    static let intakeCampName = TypeStyle(size: 15.5, weight: .semibold, trackingEm: -0.025)
+    static let intakeCampName = TypeStyle.rowTitle.size(15.5)
     /// `600 15`, `-.025em` — the other camps on `8u`, and "Start a camp".
-    static let intakeCampNameSm = TypeStyle(size: 15, weight: .semibold, trackingEm: -0.025)
+    static let intakeCampNameSm = TypeStyle.bodyStrong.tracking(em: -0.025)
     /// `600 14.5`, `-.025em` — a venue's name on `8b`, an action row's title on `8c`.
-    static let intakeRowTitle = TypeStyle(size: 14.5, weight: .semibold, trackingEm: -0.025)
+    static let intakeRowTitle = TypeStyle.rowLabel.tracking(em: -0.025)
     /// `600 14`, `-.02em` — a per-court row on `8b`, a kid's name on `8d`.
-    static let intakeRowTitleSm = TypeStyle(size: 14, weight: .semibold, trackingEm: -0.02)
-    /// `500 14.5` — the value a field holds on `8e`.
-    static let intakeFieldValue = TypeStyle(size: 14.5, weight: .medium)
+    static let intakeRowTitleSm = TypeStyle.rowTitleSm
+    /// `500 14.5` — the value a field holds on `8e`. `body` without its paragraph leading.
+    static let intakeFieldValue = TypeStyle.body.lineHeight(nil)
     /// `400 13` — a field's label on `8e`.
-    static let intakeFieldLabel = TypeStyle(size: 13, weight: .regular)
-    /// `600 17`, `-.025em` — the camp-name field `8b` needs and the design does not draw. Set in
-    /// section 8's weight rather than `fieldTitle`'s 800 so it sits with the rest of the screen.
-    static let intakeFieldTitle = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.025)
+    static let intakeFieldLabel = TypeStyle.sheetSubtitle
+    /// `600 17`, `-.025em` — the camp-name field `8b` needs and the design does not draw.
+    static let intakeFieldTitle = TypeStyle.fieldTitle
     /// `600 13` — the letter standing in for the design's gender glyph on `8d`.
-    static let intakeGlyphLetter = TypeStyle(size: 13, weight: .semibold)
+    static let intakeGlyphLetter = TypeStyle.chip
 }
 
 // MARK: - Controls
 
 extension TypeStyle {
 
-    /// `600 15.5`, `-.02em` — "Save the shape" (`8b`).
+    /// `600 15.5`, `-.02em` — "Save the shape" (`8b`). The design's one button at this size.
     static let intakeButton = TypeStyle(size: 15.5, weight: .semibold, trackingEm: -0.02)
     /// `600 16`, `-.015em` — the pinned call to action on `8d` and `8e`.
-    static let intakeButtonLg = TypeStyle(size: 16, weight: .semibold, trackingEm: -0.015)
+    static let intakeButtonLg = TypeStyle.button
     /// `600 15` — "Join" (`8u`).
-    static let intakeJoin = TypeStyle(size: 15, weight: .semibold)
+    static let intakeJoin = TypeStyle.buttonSmall
     /// `600 16`, `+.18em` — `8u`'s invite-code field.
     ///
     /// Monospaced, which the design is not: it sets the field in the body face. A code is read
@@ -108,13 +106,13 @@ extension TypeStyle {
     /// `SYC-1181` and `SYC-4821` different widths. Same size, weight and tracking as drawn.
     static let intakeJoinCode = TypeStyle(size: 16, weight: .semibold, trackingEm: 0.18, isMonospaced: true)
     /// `600 13.5` — `8c`'s two file pills.
-    static let intakePill = TypeStyle(size: 13.5, weight: .semibold)
+    static let intakePill = TypeStyle.timelineTitle
     /// `600 12.5` — `8e`'s answer chips, `8u`'s Switch, `8d`'s "See all".
-    static let intakeChip = TypeStyle(size: 12.5, weight: .semibold)
+    static let intakeChip = TypeStyle.chipSoft
     /// `600 11.5` — `8d`'s "Fix" chip.
-    static let intakeChipSm = TypeStyle(size: 11.5, weight: .semibold)
+    static let intakeChipSm = TypeStyle.dividerLabel
     /// `600 14` — the number between a stepper's two buttons on `8b`.
-    static let intakeStepperValue = TypeStyle(size: 14, weight: .semibold)
+    static let intakeStepperValue = TypeStyle.stepperValue.size(14)
 }
 
 // MARK: - Previews

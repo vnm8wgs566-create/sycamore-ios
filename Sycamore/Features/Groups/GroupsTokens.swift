@@ -9,9 +9,9 @@
 //  ever wanted. Each one below says what would earn it a place in `Theme`.
 //
 //  Every number here was read off the CSS in `Sycamore 3a System.dc.html`, not off the render.
-//  Section 8 sets this screen considerably lighter than the transcription it replaces — names
-//  at `400 14` rather than `700 15`, headings at `600` rather than `800` — so most of what
-//  follows is a weight the shared type table has no row for.
+//  Section 8 sets this screen considerably lighter than the transcription it replaces — names at
+//  `400 14` rather than `700 15`, headings at `600` rather than `800`. That correction used to be
+//  made here, privately; the shared type table makes it now, for the whole app.
 //
 
 import SwiftUI
@@ -42,72 +42,69 @@ enum GroupsPalette {
 
 // MARK: - Type
 //
-// Section 8's own weights. The shared table was transcribed from the design's earlier, heavier
-// screens; these are the rows it has no equivalent for. Each is derived from the nearest table
-// entry where one exists, so a change to the family still reaches them.
+// These were the rows the shared table had no equivalent for, because it was transcribed from the
+// design's earlier, heavier screens. It carries section 8's weights itself now, so what is left is
+// a set of aliases: the call sites keep saying `playerName` and `lockedHeading`, and the numbers
+// behind them are the same ones every other screen draws from.
 
 enum GroupsType {
 
-    /// `600 17`, `-.03em` — "Group 1". Two steps lighter than `.venueHeading`'s 800.
-    static let groupTitle = TypeStyle.venueHeading.weight(.semibold)
+    /// `600 17`, `-.03em` — "Group 1".
+    static let groupTitle = TypeStyle.venueHeading
 
     /// `400 13` — "8 players · ranked 1–8", and the rank numeral beside a name. The design sets
     /// the band and the numeral in exactly the same face; only their colours differ.
-    static let rowMeta = TypeStyle(size: 13, weight: .regular)
+    static let rowMeta = TypeStyle.sheetSubtitle
 
-    /// `400 14` — a kid's name in a group card. Regular, not bold: eight of these in a card is
-    /// a list to scan, and the design lets the numerals and the marks carry the emphasis.
-    static let playerName = TypeStyle(size: 14, weight: .regular)
+    /// `400 14` — a kid's name in a group card.
+    static let playerName = TypeStyle.rowValue
 
     /// `400 13.5` — "+3 more".
-    static let moreRow = TypeStyle(size: 13.5, weight: .regular)
+    static let moreRow = TypeStyle.subtitle
 
     /// `400 12.5` — "Hold the handle to move a kid between groups".
-    static let hint = TypeStyle(size: 12.5, weight: .regular)
+    static let hint = TypeStyle.rowDetail
 
     /// `600 15.5`, `-.025em` — "Add a group".
-    static let addGroup = TypeStyle.rowTitle.size(15.5).weight(.semibold)
+    static let addGroup = TypeStyle.rowTitle.size(15.5)
 
     /// `600 14.5`, `-.02em` — the name on the card carrying a kid mid-move. Half a step bigger
-    /// and two weights heavier than the row it came out of, which is what makes it read as
-    /// lifted rather than as a duplicate.
-    static let liftedName = TypeStyle.rowLabel.weight(.semibold)
+    /// and a weight heavier than the row it came out of, which is what makes it read as lifted
+    /// rather than as a duplicate.
+    static let liftedName = TypeStyle.rowLabel
 
     /// `600 13.5` — `Cancel` / `Drop here`.
-    static let moveBarButton = TypeStyle.tabLabel.weight(.semibold)
+    static let moveBarButton = TypeStyle.tabLabel
 
     /// `600 13` — a venue chip.
-    static let venueChip = TypeStyle.chip.weight(.semibold)
+    static let venueChip = TypeStyle.chip
 
     // MARK: `8g`
 
-    /// `400 24/1.15`, `-.02em`, Newsreader — "Groups open at eight kids."
-    ///
-    /// `.profileName` is already the right face, size and leading; only the tracking is the
-    /// design's own here, so it is nudged at this one call site rather than pressed onto every
-    /// other screen that sets a serif heading at 24.
-    static let lockedHeading = TypeStyle.profileName.tracking(em: -0.02)
+    /// `400 24/1.15 Newsreader`, `-.02em` — "Groups open at eight kids." The same heading `8f`
+    /// and `8h` open their empty states with.
+    static let lockedHeading = TypeStyle.profileName
 
     /// `400 13.5/1.6` — the locked card's paragraph.
-    static let lockedBody = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.6)
+    static let lockedBody = TypeStyle.emptyBody
 
     /// `600 15`, `-.02em` — "Add three more kids".
-    static let lockedAction = TypeStyle.buttonSmall.weight(.semibold).tracking(em: -0.02)
+    static let lockedAction = TypeStyle.bodyStrong
 
-    /// `600 10.5`, `+.15em`, uppercase — "ADDED SO FAR". Half a step smaller and a step lighter
-    /// than `.sectionHeader`, and tracked wider.
-    static let lockedSection = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.15, isUppercased: true)
+    /// `600 10.5`, `+.15em`, uppercase — "ADDED SO FAR", a hair wider than the `+.14em` the
+    /// overline carries.
+    static let lockedSection = TypeStyle.overlineSmall.tracking(em: 0.15)
 
     /// `600 14`, `-.02em` — a kid's name under "Added so far". `8g` is a list of five people
     /// rather than a rank band, so the design does set these bolder.
-    static let lockedName = TypeStyle.rowLabel.size(14).weight(.semibold)
+    static let lockedName = TypeStyle.rowTitleSm
 
     /// `400 12` — "13 · F · returning".
-    static let lockedMeta = TypeStyle.meta.weight(.regular)
+    static let lockedMeta = TypeStyle.meta
 
     /// `600 11.5` — the initials in `8g`'s 32pt disc. Half a step under what
-    /// `TypeStyle.initials(forAvatarSize:)` picks for that diameter, and a weight lighter.
-    static let lockedInitials = TypeStyle(size: 11.5, weight: .semibold)
+    /// `TypeStyle.initials(forAvatarSize:)` picks for that diameter.
+    static let lockedInitials = TypeStyle.dividerLabel
 }
 
 // MARK: - Geometry

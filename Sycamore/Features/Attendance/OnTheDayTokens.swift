@@ -5,15 +5,13 @@
 //  The values `8m Attendance`, `8n Leaving early` and `8q A kid` draw that `Theme`, `Radius`,
 //  `Spacing` and `TypeStyle` do not carry yet.
 //
-//  They live here rather than in the design system because section 8 is being built one unit at
-//  a time and a shared file is a shared merge conflict. Every one of them is transcribed from the
-//  design's inline CSS; none is invented. When the rest of section 8 lands, these belong in
-//  `Theme.swift` and `Typography.swift` — see the PR body.
+//  The geometry lives here rather than in the design system because section 8 is being built one
+//  unit at a time and a shared file is a shared merge conflict. Every one of these numbers is
+//  transcribed from the design's inline CSS; none is invented.
 //
-//  Section 8 sets its type a half-step lighter than the rest of the app almost everywhere: 600
-//  where stage 1 used 700, 400 where it used 500. That is not noise — the screens are denser and
-//  a coach reads them at arm's length in daylight, so the design leans on size and colour for
-//  hierarchy rather than on weight. The styles below spell each `font:` shorthand exactly.
+//  The type no longer does. Section 8 sets its type a half-step lighter than the screens this app
+//  shipped with — 600 where they used 700, 400 where they used 500 — and this file used to carry
+//  its own copy of that correction. `Typography.swift` now makes it once, for every screen.
 //
 
 import SwiftUI
@@ -120,55 +118,58 @@ enum OnTheDayTokens {
 
 // MARK: - Type
 
-/// Section 8's own `font:` shorthands. Prefixed rather than given plain role names because
-/// `TypeStyle` is shared and the rest of section 8 is landing in parallel — two agents adding
-/// `.overlineSmall` in different files is a build break, not a merge conflict.
+/// What `8m`, `8n` and `8q` need beyond the shared table.
+///
+/// Almost nothing, now. These were fourteen spelled-out `font:` shorthands written while the
+/// shared table was still a step or two heavier than section 8; the table carries those weights
+/// itself, so all but two of the names below are one-line aliases kept so no call site moves.
 extension TypeStyle {
 
     /// `600 10.5`, `+.14em`, uppercase — "STILL TO MARK · 2", "THIS WEEK · 2", "NEW PICK-UP".
-    /// Lighter, smaller and wider than `.sectionHeader` (`700 11`, `+.1em`), which is stage 1's.
-    static let onTheDayOverline = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.14, isUppercased: true)
+    static let onTheDayOverline = TypeStyle.overlineSmall
 
     /// `400 13` — the breadcrumb above a screen title ("Skills rotation · 9:00–10:30").
-    static let onTheDayCrumb = TypeStyle(size: 13, weight: .regular)
+    static let onTheDayCrumb = TypeStyle.sheetSubtitle
 
     /// `400 13.5` — the explainer under a screen title.
-    static let onTheDayLede = TypeStyle(size: 13.5, weight: .regular)
+    static let onTheDayLede = TypeStyle.subtitle
 
     /// `600 15`, `-.025em` — a name at the head of a card still asking something.
-    static let onTheDayName = TypeStyle(size: 15, weight: .semibold, trackingEm: -0.025)
+    static let onTheDayName = TypeStyle.bodyStrong.tracking(em: -0.025)
 
     /// `400 14` — a name that has been answered, and every value in a quiet row.
-    static let onTheDayRowName = TypeStyle(size: 14, weight: .regular)
+    static let onTheDayRowName = TypeStyle.rowValue
 
-    /// `500 14` — a field's value, and a row the design wants a shade firmer.
+    /// `500 14` — a field's value, and a row the design wants a shade firmer. One of the two
+    /// dozen places section 8 still reaches for 500, so it stays spelled out.
     static let onTheDayValue = TypeStyle(size: 14, weight: .medium)
 
     /// `400 14` — a field's placeholder.
-    static let onTheDayPlaceholder = TypeStyle(size: 14, weight: .regular)
+    static let onTheDayPlaceholder = TypeStyle.rowValue
 
     /// `400 12.5` — a subtitle under a name, and the note under a pick-up.
-    static let onTheDaySubtitle = TypeStyle(size: 12.5, weight: .regular)
+    static let onTheDaySubtitle = TypeStyle.rowDetail
 
     /// `400 11.5` — the amber pick-up line on a marked row.
-    static let onTheDayFootnote = TypeStyle(size: 11.5, weight: .regular)
+    static let onTheDayFootnote = TypeStyle.rowSubtitleSmall
 
     /// `600 14` — `Here` / `Away`.
-    static let onTheDayAnswer = TypeStyle(size: 14, weight: .semibold)
+    static let onTheDayAnswer = TypeStyle.buttonCompact
 
-    /// `600 14.5` — `Add pick-up`.
+    /// `600 14.5` — `Add pick-up`. The one button in section 8 the design sets untracked, which
+    /// is why it is not `rowLabel`.
     static let onTheDayAdd = TypeStyle(size: 14.5, weight: .semibold)
 
     /// `600 16`, `-.015em` — the pinned `Finish · 2 left` / `Done` bar.
-    static let onTheDayBar = TypeStyle(size: 16, weight: .semibold, trackingEm: -0.015)
+    static let onTheDayBar = TypeStyle.button
 
     /// `600 15.5` — the pinned bar in its outlined form ("Move to another group").
     static let onTheDayBarLight = TypeStyle(size: 15.5, weight: .semibold)
 
     /// `600 10`, `+.14em`, uppercase — a stat cell's label. Half a point under
     /// `onTheDayOverline`, which is the design's own distinction between a section and a stat.
-    static let onTheDayStatLabel = TypeStyle(size: 10, weight: .semibold, trackingEm: 0.14, isUppercased: true)
+    static let onTheDayStatLabel = TypeStyle.statLabel.tracking(em: 0.14)
 
     /// `600 17`, `-.03em` — a stat cell's value.
-    static let onTheDayStatValue = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.03)
+    static let onTheDayStatValue = TypeStyle.venueHeading
 }
