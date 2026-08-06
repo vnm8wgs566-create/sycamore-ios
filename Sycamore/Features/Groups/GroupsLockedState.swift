@@ -95,7 +95,7 @@ struct GroupsLockedState: View {
                     .accessibilityHidden(true)
 
                 Text("Groups open at eight kids.")
-                    .typeStyle(.profileName, color: Theme.ink)
+                    .typeStyle(GroupsType.lockedHeading, color: Theme.ink)
                     .multilineTextAlignment(.center)
                     .padding(.top, Spacing.large)
                     .accessibilityAddTraits(.isHeader)

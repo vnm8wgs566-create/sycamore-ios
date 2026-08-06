@@ -81,6 +81,13 @@ enum GroupsType {
 
     // MARK: `8g`
 
+    /// `400 24/1.15`, `-.02em`, Newsreader — "Groups open at eight kids."
+    ///
+    /// `.profileName` is already the right face, size and leading; only the tracking is the
+    /// design's own here, so it is nudged at this one call site rather than pressed onto every
+    /// other screen that sets a serif heading at 24.
+    static let lockedHeading = TypeStyle.profileName.tracking(em: -0.02)
+
     /// `400 13.5/1.6` — the locked card's paragraph.
     static let lockedBody = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.6)
 
