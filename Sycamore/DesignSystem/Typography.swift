@@ -195,6 +195,14 @@ struct TypeStyle: Sendable, Equatable {
         copy.isUppercased = flag
         return copy
     }
+
+    /// Draws this style in Newsreader. For the section 8 headings a feature declares itself
+    /// rather than taking from the shared table.
+    func serif(_ flag: Bool = true) -> TypeStyle {
+        var copy = self
+        copy.isSerif = flag
+        return copy
+    }
 }
 
 // MARK: - The type table

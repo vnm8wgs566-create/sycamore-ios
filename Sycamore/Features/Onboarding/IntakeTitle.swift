@@ -4,43 +4,37 @@
 //
 //  A section 8 heading, in the serif the design sets them in.
 //
-//  The design asks for Newsreader, which is not bundled and cannot be without touching the
-//  project file. This draws the heading in the platform's own serif — New York — which is the
-//  same transitional shape at the same weight, ships on every device, and carries Dynamic Type
-//  without a fallback path. See the PR body.
+//  Newsreader *is* bundled now — it landed while this screen was being written, so the platform
+//  serif this originally drew was correct at the time and stale by the time it merged. Left New
+//  York in place, Onboarding would have been the one corner of the app in a different serif from
+//  every other screen, which is worse than being in no serif at all.
+//
+//  The heading now goes through `.typeStyle(_:color:)` like everything else; `TypeStyle.isSerif`
+//  is the third case this file's original comment said did not exist.
 //
 
 import SwiftUI
 
-/// Not `.typeStyle(_:color:)`: `TypeStyle` can pick the bundled face or the system one, but has
-/// no third case for a serif, and teaching it one means editing the file every feature reads.
-/// Everything else about the style is honoured the same way `TypeStyleModifier` honours it —
-/// tracking and line spacing come from the design's unscaled size, and the size itself grows with
-/// Dynamic Type along the ramp `TypeStyle` picks.
+/// Still its own view rather than a bare `Text`, for the `.isHeader` trait — a title is what the
+/// screen *is*, and it is what VoiceOver should reach first.
 struct IntakeTitle: View {
 
     let text: String
     var style: TypeStyle = .intakeTitle
     var color: Color = Theme.ink
 
-    /// The design's point size, grown by whatever the reader has asked for.
-    @ScaledMetric private var scaledSize: CGFloat
-
     init(_ text: String, style: TypeStyle = .intakeTitle, color: Color = Theme.ink) {
         self.text = text
         self.style = style
         self.color = color
-        self._scaledSize = ScaledMetric(wrappedValue: style.size, relativeTo: style.textStyle)
     }
 
     var body: some View {
         Text(text)
-            .font(.system(size: scaledSize, weight: style.weight.fontWeight, design: .serif))
-            .tracking(style.tracking)
-            .lineSpacing(style.lineSpacing)
-            .foregroundStyle(color)
+            // `serif: true` on the style, so the Dynamic Type scaling, tracking and line spacing
+            // are the same code path every other line of type in the app runs through.
+            .typeStyle(style.serif(), color: color)
             .fixedSize(horizontal: false, vertical: true)
-            // A title is what the screen is, so it is what VoiceOver should reach first.
             .accessibilityAddTraits(.isHeader)
     }
 }
