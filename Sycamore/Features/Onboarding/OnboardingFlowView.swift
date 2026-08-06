@@ -20,10 +20,11 @@
 //  first would mean `8c` never appeared. Committing at the end also makes the button on `8d`
 //  honest: nothing has been written until you agree to the count.
 //
-//  What this flow cannot yet do: keep the kids. `SycamoreRepository` has no player-creation
-//  call — no `importPlayers`, no `addPlayer` — so the roster is read, checked and corrected in
-//  local state, and the camp it lands in is created without it. Everything above the repository
-//  is here and takes a `[IntakePlayer]` unchanged the day that call exists.
+//  The kids are written in the same breath, and in the order the repository names them: the ones
+//  typed in on `8e` go through `addPlayer`, one at a time, because one at a time is what that
+//  screen produces; the file goes through `importPlayers`, which is one round trip for forty kids
+//  and either lands whole or not at all. Both put a kid at the back of their venue with no court,
+//  so `Groups`' unassigned band is where somebody decides where they belong.
 //
 
 import SwiftUI
@@ -107,20 +108,21 @@ struct OnboardingFlowView: View {
 
     // MARK: Ending the flow
 
-    /// Writes the camp and lands in the app. `RootView` swaps the picker for the tabs the moment
-    /// `store.camp` is set, which is what dismisses this flow — there is nothing to dismiss by
-    /// hand, and a failure leaves the flow standing with the banner over it.
+    /// Writes the camp and the week's kids, then lands in the app. `RootView` swaps the picker
+    /// for the tabs the moment `store.camp` is set, which is what dismisses this flow — there is
+    /// nothing to dismiss by hand, and a failure leaves the flow standing with the banner over it.
     private func finish() {
         guard !store.isWorking else { return }
 
         store.campDraft = shape.applied(to: store.campDraft)
 
         // Unstructured on purpose: this view is torn down by the success of its own first
-        // await, and the venue writes after it have to survive that.
+        // await, and the venue and roster writes after it have to survive that.
         Task { @MainActor in
             await store.createCamp()
             guard store.camp != nil else { return }
             await applyShape()
+            await saveRoster()
         }
     }
 
@@ -131,6 +133,42 @@ struct OnboardingFlowView: View {
         for (index, venue) in (store.camp?.orderedVenues ?? []).enumerated() {
             guard let updated = shape.venue(applying: index, to: venue) else { continue }
             await store.updateVenue(updated)
+        }
+    }
+
+    /// Everyone `8c`, `8d` and `8e` gathered, into the venue each was answered into.
+    ///
+    /// Straight to the repository rather than through an intent, because `AppStore` has no
+    /// vocabulary for enrolment yet and this branch does not own it — `store.perform` still
+    /// carries the in-flight flag and the failure banner, so a network that drops half way
+    /// through says so in the one place every other write says it. See the PR body for the two
+    /// intents this should become.
+    private func saveRoster() async {
+        guard let campID = store.camp?.id else { return }
+        let venueIDs = (store.camp?.orderedVenues ?? []).map(\.id)
+        guard !venueIDs.isEmpty else { return }
+
+        let handAdded = self.handAdded
+        let imported = file?.players ?? []
+        guard !handAdded.isEmpty || !imported.isEmpty else { return }
+
+        await store.perform {
+            // One at a time, because one at a time is how they were typed in.
+            for kid in handAdded {
+                let venueID = venueIDs[min(kid.venueIndex, venueIDs.count - 1)]
+                store.camp = try await store.repository.addPlayer(
+                    kid.asPlayer(), toVenue: venueID, campID: campID
+                )
+            }
+
+            // One round trip per venue for the file. Almost always exactly one: a sign-up list
+            // carries no venue column, so everybody lands in the first.
+            for (index, kids) in Dictionary(grouping: imported, by: \.venueIndex).sorted(by: { $0.key < $1.key }) {
+                let venueID = venueIDs[min(index, venueIDs.count - 1)]
+                store.camp = try await store.repository.importPlayers(
+                    kids.map { $0.asPlayer() }, toVenue: venueID, campID: campID
+                )
+            }
         }
     }
 }

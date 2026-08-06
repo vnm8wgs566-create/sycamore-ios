@@ -26,6 +26,13 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
     var age: Int?
     var gender: Gender?
     var isReturning: Bool = false
+    /// Which of `8b`'s venues this kid was answered into, by position.
+    ///
+    /// A position rather than a `Venue.ID` because the venues do not exist yet — the camp is
+    /// written at the end of the flow, and until then a venue is a row somebody drew. A file's
+    /// rows keep the default: "Venue — optional, ask later" is what `8c` promises, and the first
+    /// venue is where the design puts everyone who has not been asked.
+    var venueIndex: Int = 0
 
     /// `Priya Nandan`, and just the first name when the file gave no surname.
     var displayName: String {
@@ -44,6 +51,31 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
     var detail: String {
         guard let age else { return "Age unknown" }
         return "\(age) year\(age == 1 ? "" : "s")"
+    }
+
+    /// The kid the camp keeps.
+    ///
+    /// Two gaps have to be closed here, because `Player` cannot hold either of them open:
+    ///
+    /// - No gender reads as `.x`, which is the case the app already means by "not said". The
+    ///   file left the column blank; nobody is being assigned one.
+    /// - No age reads as `0`. `Player.age` is an `Int`, so there is no way to say "unknown", and
+    ///   inventing a plausible number would be worse — a 0 is visibly a gap, and `8d` puts the
+    ///   row in front of somebody before it ever gets here. `Player.age` wants to be `Int?`; see
+    ///   the PR body.
+    ///
+    /// Venue, court and rank are the repository's to set — a kid joins the back of a venue's
+    /// ladder with no court, which is what `Groups`' unassigned band is for.
+    func asPlayer() -> Player {
+        Player(
+            firstName: firstName,
+            lastInitial: lastName.first.map { String($0).uppercased() } ?? "",
+            age: age ?? 0,
+            gender: gender ?? .x,
+            isReturning: isReturning,
+            overallRank: 0,
+            courtRank: 0
+        )
     }
 }
 
