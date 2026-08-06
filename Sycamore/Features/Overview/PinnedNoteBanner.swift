@@ -20,6 +20,11 @@ struct PinnedNoteBanner: View {
     var actionTitle: String = "Open"
     let action: () -> Void
 
+    /// A glyph rides the ramp its own point size sits on in the type table — 14 is the body
+    /// band — so it grows in step with the copy beside it rather than staying pinned while the
+    /// line around it doubles.
+    @ScaledMetric(relativeTo: .body) private var pinSize = OverviewTheme.bannerGlyph
+
     var body: some View {
         Button(action: action) {
             // The plate keeps the height the design draws; the frame around it only carries
@@ -40,11 +45,11 @@ struct PinnedNoteBanner: View {
 
         return HStack(spacing: OverviewTheme.bannerGap) {
             Image(systemName: "pin.fill")
-                .font(.system(size: OverviewTheme.bannerGlyph, weight: .regular))
+                .font(.system(size: pinSize, weight: .regular))
                 .foregroundStyle(Theme.accent)
 
             Text(text)
-                .typeStyle(.caption, color: Theme.inkSecondary)
+                .typeStyle(.caption, color: Theme.inkWarm)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -53,8 +58,11 @@ struct PinnedNoteBanner: View {
         }
         .padding(.horizontal, OverviewTheme.bannerHorizontal)
         .padding(.vertical, OverviewTheme.bannerVertical)
-        .background(Theme.accentTint, in: shape)
-        .overlay { shape.strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.hairline) }
+        // `accentSurface` / `accentSurfaceBorder`, not `accentTint` / `accentBorder`. The design
+        // draws two different green plates and this is the paler pair: a surface that happens to
+        // be warm, rather than the fill that sits under accent-coloured copy.
+        .background(Theme.accentSurface, in: shape)
+        .overlay { shape.strokeBorder(Theme.accentSurfaceBorder, lineWidth: BorderWidth.hairline) }
     }
 }
 
@@ -66,5 +74,5 @@ struct PinnedNoteBanner: View {
         PinnedNoteBanner(text: "Shade tent is up on the lawn.") {}
     }
     .padding(Spacing.gutter)
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }

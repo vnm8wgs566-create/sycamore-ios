@@ -10,10 +10,9 @@
 //  the rest below under "Other courts".
 //
 //  This half loads; `OverviewScreen` draws. The three reads it needs are the three the section
-//  8 repository offers, and all three come back empty today because nothing on the device
-//  talks to Postgres yet:
+//  8 repository offers:
 //
-//      courts          -> `today_courts`, stood in for by `TodayCourts.derive` over the camp
+//      courts          -> `today_courts`, which the offline repository derives from the camp
 //                         graph the app has already loaded. Every column that view selects is
 //                         in the graph; none of it is invented.
 //      schedule blocks -> the activity on each court, and "Skills rotation · until 10:30".
