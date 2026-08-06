@@ -56,7 +56,8 @@ struct SignInView: View {
     private var actions: some View {
         VStack(alignment: .leading, spacing: 0) {
             PrimaryButton("Continue with Apple", tone: .dark, systemImage: "apple.logo") {
-                Task { await store.continueWithApple() }
+                isEmailFocused = false
+                Task { await signInWithApple() }
             }
 
             divider
@@ -96,6 +97,21 @@ struct SignInView: View {
         }
         .padding(.horizontal, Spacing.hero)
         .padding(.bottom, 48)
+    }
+
+    /// The system sheet, then the exchange. `nil` is a person who backed out of the sheet, and
+    /// they are left exactly where they were — no banner, nothing to dismiss. Only Apple failing
+    /// on its own account reaches the store, because everything after the token has its own
+    /// error path through `perform`.
+    private func signInWithApple() async {
+        do {
+            guard let identity = try await AppleSignIn.authorize() else { return }
+            await store.continueWithApple(
+                identityToken: identity.identityToken, fullName: identity.fullName
+            )
+        } catch {
+            store.signInFailed(error)
+        }
     }
 
     private var divider: some View {

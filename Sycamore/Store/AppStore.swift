@@ -611,11 +611,33 @@ extension AppStore {
         }
     }
 
-    func continueWithApple(identityToken: String = "") async {
+    /// Screen 1's "Continue with Apple". `SignInView` runs the system sheet and arrives here with
+    /// what Apple signed. No default token any more: a caller holding nothing has nothing to sign
+    /// in with, and the empty string only ever reached GoTrue to be told `id_token required`.
+    ///
+    /// `fullName` is a one-shot. Apple releases the name on the first authorisation this Apple ID
+    /// ever gives the app and never again, so it is written the moment it lands rather than left
+    /// for a settings screen to ask for later. Only into an empty `displayName`, though — a second
+    /// sign-in cannot carry a name, so anything already there was typed on Profile by the person
+    /// whose name it is, and Apple's version of it is not an improvement.
+    func continueWithApple(identityToken: String, fullName: String?) async {
         await perform {
-            let account = try await self.repository.signInWithApple(identityToken: identityToken)
+            var account = try await self.repository.signInWithApple(identityToken: identityToken)
+            if let fullName, account.displayName.isEmpty {
+                account.displayName = fullName
+                account = try await self.repository.updateAccount(account)
+            }
             try await self.finishSignIn(account)
         }
+    }
+
+    /// The Apple sheet failing before there is a token to send.
+    ///
+    /// `perform` cannot wrap that work — it happens out in `SignInView`, which is where
+    /// `ASAuthorizationController` and its window live — so the one place screen 1 has to say
+    /// anything is filled in by hand. A cancelled sheet never gets here; see `AppleSignIn`.
+    func signInFailed(_ error: any Error) {
+        errorMessage = error.localizedDescription
     }
 
     func resendCode() async {
