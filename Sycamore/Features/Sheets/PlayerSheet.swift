@@ -2,8 +2,17 @@
 //  PlayerSheet.swift
 //  Sycamore
 //
-//  Screen 9 — tap a kid. Three stat tiles, three things you can do about them, and the history
-//  of how they got where they are.
+//  `8q` — a kid. Where they sit, what is already booked for them, and the history of how they
+//  got there.
+//
+//  Drawn to `8q`'s content, not its chrome. The design has this as a pushed screen with a serif
+//  title, a back caret and a pinned bar; the app presents it as a sheet, which is how every other
+//  secondary screen here arrives and is the presentation `store.activeSheet` and `SheetChrome`
+//  are built around. See the PR body — the disagreement is presentation only.
+//
+//  Two of `8q`'s blocks have nothing to draw from. There is no match model, so `RESULTS` and the
+//  `Record 6–2` stat cell have no source; and a pick-up carries a day and a time but no collector,
+//  so the "Mum" / "Dad" column is not there. Both are noted rather than faked.
 //
 
 import SwiftUI
@@ -19,15 +28,20 @@ struct PlayerSheet: View {
             detentFraction: ActiveSheet.player(playerID).detentFraction,
             onClose: { store.dismissSheet() }
         ) {
-            statTiles
+            genderAndAge
+
+            statCard
                 .padding(.bottom, Spacing.large)
+
+            leavingEarly
 
             actionRows
 
             // The design only ever draws this section populated. A kid nobody has moved or
             // ranked yet has no events, and a bare "History" header over an empty sheet
             // reads as something that failed to load — so say what it means instead.
-            SheetSectionHeader("History", topPadding: Spacing.large, bottomPadding: Spacing.small)
+            AttendanceOverline(title: "History", inset: 0)
+                .padding(.top, Spacing.large)
             if store.history(for: playerID).isEmpty {
                 Text("Nothing yet — moves and rankings show up here.")
                     .typeStyle(.meta, color: Theme.inkFaint)
@@ -40,14 +54,115 @@ struct PlayerSheet: View {
 
     private var player: Player? { store.player(playerID) }
 
+    // MARK: - Who they are
+
+    /// `Boy · 13 years`, under the name.
+    ///
+    /// The design sets a gender glyph beside it (`ph-gender-male` at `#A2A6AE`). SF Symbols has
+    /// no gender set, and the nearest candidates encode the distinction as a dress, so the line
+    /// stands on its own words instead. See the PR body.
+    /// Each block carries its own trailing gap rather than taking one from the caller: a block
+    /// that has nothing to draw resolves to `EmptyView`, and padding hung on the outside of that
+    /// leaves a hole where the block would have been.
+    @ViewBuilder
+    private var genderAndAge: some View {
+        if let player {
+            Text("\(genderNoun(player.gender)) · \(player.age) years")
+                .typeStyle(.onTheDayLede, color: Theme.inkMuted)
+                .padding(.bottom, OnTheDayTokens.contentGap)
+        }
+    }
+
+    /// `.x` gets a noun of its own rather than a default — a camp that recorded "x" did so
+    /// deliberately, and rounding it to one of the other two would be the app overruling them.
+    private func genderNoun(_ gender: Gender) -> String {
+        switch gender {
+        case .m: "Boy"
+        case .f: "Girl"
+        case .x: "Kid"
+        }
+    }
+
     // MARK: - Stats
 
-    private var statTiles: some View {
-        HStack(spacing: Spacing.small) {
-            StatTile(label: "On court", value: "#\(player?.courtRank ?? 0)")
-            StatTile(label: "Overall", value: "#\(player?.overallRank ?? 0)")
-            StatTile(label: "Age", value: "\(player?.age ?? 0)")
+    /// One card of three cells, not three cards. `8q` draws a single `16`-radius plate with
+    /// `padding:14` and `gap:12`, where this sheet had three separate `grouped` tiles.
+    ///
+    /// The design's third cell is `RECORD 6–2`. There is no match model, so the cell carries the
+    /// court rank instead — real data in the shape the design asks for, rather than a dash.
+    private var statCard: some View {
+        let shape = RoundedRectangle(cornerRadius: OnTheDayTokens.card, style: .continuous)
+
+        return HStack(alignment: .top, spacing: Spacing.medium) {
+            StatCell(label: "Groups", value: "#\(player?.overallRank ?? 0)")
+            StatCell(label: "Group", value: courtNumber)
+            StatCell(label: "On court", value: "#\(player?.courtRank ?? 0)")
         }
+        .padding(OnTheDayTokens.cardInsetWide)
+        .background(Theme.surface, in: shape)
+        .overlay { shape.strokeBorder(Theme.hairline, lineWidth: BorderWidth.hairline) }
+    }
+
+    /// The bare numeral the design shows — "1", not "Court 1", because the cell is labelled.
+    private var courtNumber: String {
+        guard let groupID = player?.groupID, let group = store.group(groupID) else { return "—" }
+        return "\(group.number)"
+    }
+
+    // MARK: - Leaving early
+
+    /// Every pick-up on the books this week, which is what `8q` lists rather than the single
+    /// "today" reading the action row below still gives.
+    private var weekPickups: [Attendance] {
+        (store.camp?.attendance ?? [])
+            .filter { $0.playerID == playerID && $0.leavesAt != nil }
+            .sorted { $0.day.rawValue < $1.day.rawValue }
+    }
+
+    @ViewBuilder
+    private var leavingEarly: some View {
+        let pickups = weekPickups
+
+        if !pickups.isEmpty {
+            AttendanceOverline(
+                title: "Leaving early",
+                count: pickups.count,
+                actionTitle: "Add",
+                action: { store.beginEarlyPickup(for: playerID) },
+                inset: 0
+            )
+
+            Card(radius: OnTheDayTokens.card) {
+                ForEach(pickups) { record in
+                    pickupRow(record)
+                }
+            }
+            .padding(.bottom, Spacing.large)
+        }
+    }
+
+    private func pickupRow(_ record: Attendance) -> some View {
+        HStack(spacing: Spacing.row) {
+            Image(systemName: "clock")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(OnTheDayTokens.warning)
+                .accessibilityHidden(true)
+
+            Text(pickupLabel(record))
+                .typeStyle(.onTheDayValue, color: Theme.ink)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, OnTheDayTokens.cardInset)
+        .padding(.vertical, Spacing.row)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "Tuesday · 2:30pm"
+    private func pickupLabel(_ record: Attendance) -> String {
+        guard let leavesAt = record.leavesAt else { return record.day.fullName }
+        return "\(record.day.fullName) · \(leavesAt.clockLabel)"
     }
 
     // MARK: - Actions
@@ -108,23 +223,23 @@ struct PlayerSheet: View {
     }
 }
 
-// MARK: - Stat tile
+// MARK: - Stat cell
 
-/// `grouped` plate at radius 13 — "ON COURT #3".
-private struct StatTile: View {
+/// One third of `8q`'s stat card: `600 10 / +.14em / uppercase` over `600 17 / -.03em`, with the
+/// design's 5pt between them. No plate of its own — the card behind all three is the plate.
+private struct StatCell: View {
     let label: String
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(label)
-                .typeStyle(.statLabel, color: Theme.inkFaint)
+                .typeStyle(.onTheDayStatLabel, color: Theme.inkFaint)
             Text(value)
-                .typeStyle(.statValue, color: Theme.ink)
+                .typeStyle(.onTheDayStatValue, color: Theme.ink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Spacing.medium)
-        .background(Theme.grouped, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -161,10 +276,11 @@ private struct ActionRow: View {
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
-            .overlay(
+            .overlay {
                 RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
                     .strokeBorder(Theme.strokeAlt, lineWidth: BorderWidth.hairline)
-            )
+            }
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
     }
