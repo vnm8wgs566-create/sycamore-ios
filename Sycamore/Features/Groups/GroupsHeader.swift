@@ -28,12 +28,16 @@ struct GroupsHeader: View {
     var movingName: String?
     /// `8g`. The chips and the field are pointless below eight kids.
     var isLocked: Bool = false
-    /// The grey figure beside the title — `8g` writes "5 kids added · Sycamore" there.
+    /// The grey line under the title — `8g` writes "5 kids added · Sycamore" there.
+    ///
+    /// Named `count` because `GroupsView` still calls it that, and that file is another pair of
+    /// hands this week. It is a sentence, not a figure, and it goes to `ScreenHeader`'s
+    /// `subtitle` slot accordingly; the name follows when the call site is next open.
     var count: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader(title: "Groups", count: count, initials: store.avatarInitials) {
+            ScreenHeader(title: "Groups", subtitle: count, initials: store.avatarInitials) {
                 store.pushedScreen = .profile
             }
 
@@ -49,23 +53,25 @@ struct GroupsHeader: View {
 
     // MARK: Ordinary state
 
-    /// Everything below the title is inset by `Spacing.bar`, not by the design's 22.
+    /// Everything below the title is inset by `Spacing.header`, the design's 22 — and so is the
+    /// title now.
     ///
-    /// The design sets the whole white block — title included — at 22, but the title belongs to
-    /// `ScreenHeader`, which draws all four tabs at 16. Moving only the half of the block this
-    /// file owns would leave the chips hanging 6pt outside the heading above them, which is a
-    /// worse wrong than being 6pt narrow. It is one change to `ScreenHeader`; see the PR.
+    /// This used to read 16 with a note saying it could not be fixed alone: the design sets the
+    /// whole white block at 22, but the title belongs to `ScreenHeader`, which drew all four tabs
+    /// at 16, and moving only the half of the block this file owns would have left the chips
+    /// hanging 6pt outside the heading above them. That was the right call and this is the other
+    /// half of it — the two moved together.
     private var controls: some View {
         VStack(spacing: 0) {
             venueChips
                 .padding(.bottom, Spacing.gutterWide)
 
             SearchField(text: $store.searchText, placeholder: "Find a player")
-                .padding(.horizontal, Spacing.bar)
+                .padding(.horizontal, Spacing.header)
                 .padding(.bottom, Spacing.medium)
 
             hint
-                .padding(.horizontal, Spacing.bar)
+                .padding(.horizontal, Spacing.header)
                 .padding(.bottom, Spacing.large)
         }
     }
@@ -90,7 +96,7 @@ struct GroupsHeader: View {
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 }
             }
-            .padding(.horizontal, Spacing.bar)
+            .padding(.horizontal, Spacing.header)
         }
         .scrollIndicators(.hidden)
     }
@@ -125,7 +131,7 @@ struct GroupsHeader: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, Spacing.bar)
+        .padding(.horizontal, Spacing.header)
         .padding(.bottom, Spacing.large)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isSummaryElement)

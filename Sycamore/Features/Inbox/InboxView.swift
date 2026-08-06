@@ -48,14 +48,16 @@ struct InboxView: View {
 
                 ScreenHeader(
                     title: "Inbox",
-                    count: contents.headerSubtitle,
+                    subtitle: contents.headerSubtitle,
                     initials: store.avatarInitials
                 ) {
                     store.pushedScreen = .profile
                 }
 
                 InboxFilterChips(selection: $filter)
-                    .padding(.horizontal, Spacing.bar)
+                    // `Spacing.header`, so the chips start under the "I" of the title. Both are
+                    // inside the one white block `8r` insets by 22.
+                    .padding(.horizontal, Spacing.header)
                     .padding(.bottom, InboxMetrics.chipRowBottom)
             }
             .background(Theme.surface)

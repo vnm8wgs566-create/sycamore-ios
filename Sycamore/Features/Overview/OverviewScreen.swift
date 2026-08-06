@@ -32,7 +32,7 @@ struct OverviewScreen: View {
             VStack(spacing: 0) {
                 StatusBarMock()
 
-                ScreenHeader(title: "Overview", count: nowLine, initials: store.avatarInitials) {
+                ScreenHeader(title: "Overview", subtitle: nowLine, initials: store.avatarInitials) {
                     store.pushedScreen = .profile
                 }
             }

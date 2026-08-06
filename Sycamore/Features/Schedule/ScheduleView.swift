@@ -130,7 +130,9 @@ struct ScheduleView: View {
                 .accessibilityAddTraits(day == selectedDay ? .isSelected : [])
             }
         }
-        .padding(.horizontal, Spacing.bar)
+        // `Spacing.header`, so the picker keeps its edges under the title's. Both are inside the
+        // one white block `8k` insets by 22.
+        .padding(.horizontal, Spacing.header)
     }
 
     // MARK: The day
