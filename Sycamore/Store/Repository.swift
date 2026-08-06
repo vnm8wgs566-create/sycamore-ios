@@ -125,6 +125,27 @@ protocol SycamoreRepository: SectionEightData {
     func updateVenue(_ venue: Venue, campID: Camp.ID) async throws -> Camp
     /// Setup's "Add" beside the VENUES header.
     func addVenue(campID: Camp.ID) async throws -> Camp
+
+    // MARK: Enrolment
+
+    /// `8e` — Add a player, one at a time.
+    ///
+    /// The kid joins the back of the venue's ladder. Section 8 has no screen that asks where a
+    /// new kid ranks, and it would be the wrong question to ask on the way in: rank is what the
+    /// camp works out about them over a morning, not something typed at a gate.
+    func addPlayer(
+        _ player: Player, toVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp
+
+    /// `8c` / `8d` — Bring in the week, then check the import.
+    ///
+    /// A batch rather than a loop over `addPlayer`: a roster is forty-odd kids, and forty
+    /// sequential round-trips is the difference between an import that feels instant and one
+    /// somebody watches. It is also the only way the whole import can fail as one thing —
+    /// half a roster is worse than none, because nobody can tell which half.
+    func importPlayers(
+        _ players: [Player], toVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp
     /// Screen 12's role chips.
     func updateStaffRole(_ staffID: StaffMember.ID, role: Role, campID: Camp.ID) async throws -> Camp
     /// Screen 12's court chips. `nil` means "No court".
@@ -422,6 +443,40 @@ actor InMemoryRepository: SycamoreRepository {
         try mutate(campID) { camp in
             guard camp.staff(staffID) != nil else { throw SycamoreError.unknownStaff }
             camp.removeStaff(staffID)
+        }
+    }
+
+    // MARK: Enrolment
+
+    func addPlayer(
+        _ player: Player, toVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp {
+        try await importPlayers([player], toVenue: venueID, campID: campID)
+    }
+
+    func importPlayers(
+        _ players: [Player], toVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard camp.venues.contains(where: { $0.id == venueID }) else {
+                throw SycamoreError.unknownVenue
+            }
+
+            // The back of the venue's ladder, in the order they were given. `reindex()` in
+            // `mutate` assigns the real ranks afterwards — setting them here would be guessing
+            // at numbers it is about to overwrite.
+            let tail = camp.players.filter { $0.venueID == venueID }.count
+            for (offset, player) in players.enumerated() {
+                var joined = player
+                joined.venueID = venueID
+                // Deliberately no group. A kid with no court shows up in Groups' unassigned
+                // band, which is where somebody decides where they belong — as opposed to being
+                // dropped into court 1 by an import and quietly outranking kids already there.
+                joined.groupID = nil
+                joined.overallRank = tail + offset
+                joined.courtRank = 0
+                camp.players.append(joined)
+            }
         }
     }
 

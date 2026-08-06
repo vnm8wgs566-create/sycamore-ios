@@ -149,3 +149,63 @@ extension SupabaseRepository {
             : "CMP-\(String(format: "%04d", Int.random(in: 0...9999)))"
     }
 }
+
+// MARK: - Enrolment
+
+extension SupabaseRepository {
+
+    func addPlayer(
+        _ player: Player, toVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp {
+        try await importPlayers([player], toVenue: venueID, campID: campID)
+    }
+
+    /// One insert for the whole roster.
+    ///
+    /// Not a loop over `addPlayer`: a week's intake is forty-odd kids, and forty sequential
+    /// round-trips is the difference between an import that feels instant and one somebody
+    /// watches happen. It also makes the import atomic — PostgREST rejects the whole array if any
+    /// row fails a CHECK, and half a roster is worse than none because nobody can tell which half
+    /// arrived.
+    ///
+    /// No `ratings` rows are written here. The `seed_rating` trigger on `players` creates one per
+    /// kid at the default 1500, which is exactly right for somebody nobody has assessed yet — and
+    /// `overallRank` is read from `ratings.rating`, so a new arrival sorts among the unplaced
+    /// rather than landing at a rank the camp never gave them.
+    func importPlayers(
+        _ players: [Player], toVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp {
+        guard !players.isEmpty else { return try await camp(id: campID) }
+
+        return try await serialised(campID) {
+            let before = try await camp(id: campID)
+            guard before.venues.contains(where: { $0.id == venueID }) else {
+                throw SycamoreError.unknownVenue
+            }
+
+            try await db.insert(
+                Relation.players,
+                players.map { Self.playerRow($0, venueID: venueID) }
+            )
+            return try await camp(id: campID)
+        }
+    }
+
+    /// `gender` takes `Gender.symbol`, not `rawValue`. The enum's raw values are lowercase and
+    /// the column's CHECK demands `'M','F','X'` — sending the raw value fails every insert.
+    ///
+    /// `group_id` is deliberately absent. A new kid has no court until somebody puts them on one,
+    /// which is what Groups' unassigned band is for; defaulting them onto court 1 would quietly
+    /// outrank kids already standing there.
+    static func playerRow(_ player: Player, venueID: Venue.ID) -> RowValues {
+        [
+            "id": .uuid(player.id),
+            "first_name": .text(player.firstName),
+            "last_initial": .text(player.lastInitial),
+            "age": .int(player.age),
+            "gender": .text(player.gender.symbol),
+            "is_returning": .bool(player.isReturning),
+            "site_id": .uuid(venueID),
+        ]
+    }
+}

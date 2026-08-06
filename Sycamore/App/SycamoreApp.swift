@@ -16,7 +16,15 @@ struct SycamoreApp: App {
 
     /// One store for the whole process. `@State` gives it the lifetime of the scene and,
     /// because `AppStore` is `@Observable`, every view that reads it re-renders on its own.
-    @State private var store = AppStore()
+    ///
+    /// This is the single line that decides whether the app talks to Postgres or to nothing.
+    /// `SycamoreRepository` was written `async throws` from the start so that swapping the
+    /// implementation here would need no other change anywhere — not a view, not the store. It
+    /// held: this is the whole switch.
+    ///
+    /// `InMemoryRepository()` is still what every `#Preview` and the `AppStore.preview` family
+    /// construct, so previews keep rendering without a network.
+    @State private var store = AppStore(repository: SupabaseRepository())
 
     /// Cleared once the opening beat has played. Scene-scoped, so it happens on a cold launch
     /// and not every time the app returns from the background.
