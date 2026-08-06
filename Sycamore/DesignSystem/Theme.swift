@@ -111,12 +111,21 @@ enum Theme {
     // only way to know: a screen transcribed by eye reaches for the nearest existing token and
     // the drift is invisible one screen at a time.
 
-    /// `#3F4A44` — the design's warm ink, and the biggest single gap: 73 uses against `ink`'s
-    /// 144. Field labels and names are set in it, not in near-black.
+    /// `#3F4A44` — the design's warm ink. 73 uses against `ink`'s 144.
+    ///
+    /// **Body and detail copy, not titles or names.** Measured across the document it is set at
+    /// `400 14px` (26×), `400 13.5px` (23×) and `600 12.5px` (12×) — never above 15pt. And it is
+    /// absent from about half of section 8 entirely: `8a`, `8b`, `8d`, `8f`, `8g`, `8h`, `8n`,
+    /// `8q`, `8r`, `8s` and `8t` set every line in the inherited `ink`.
+    ///
+    /// Spelled out because the first description of this token said "field labels and names",
+    /// which was generalised from three samples and was wrong. Two screens were audited against
+    /// it and correctly refused to apply it. Reach for it only where the screen's own CSS says
+    /// so — substituting it is the same class of error as substituting `ink` for it.
     ///
     /// A step *between* `ink` and `inkSecondary` in weight but green-tinted rather than neutral,
-    /// which is what makes it warm — it is the green in the brand showing through the type
-    /// rather than a second grey. Rendering these in `ink` is not merely darker, it is colder.
+    /// which is what makes it warm — the brand's green showing through the type rather than a
+    /// second grey. Where the design does use it, `ink` is not merely darker but colder.
     static let inkWarm = Color(light: "3F4A44", dark: "C8D2CC")
 
     /// `#B3B7BE` — a glyph on a plate. The design's icons are a step lighter than its text.
@@ -210,6 +219,10 @@ enum Theme {
     /// Label on `warningTint`. The dark end of the family.
     static let warningDark = Color(light: "8A6416", dark: "F0C97A")
     /// The pill fill behind `warningDark`.
+    ///
+    /// The design also contains a single `#FBF2E2` / `#8A5E0F` pair, one use each, against these
+    /// nine and eleven. Treated as a stray rather than a second amber — a palette with two
+    /// warnings is a palette with none.
     static let warningTint = Color(light: "FAF6EC", dark: "2A2213")
     /// `#F0E3C6` — the border around a card of rows that still need a detail. Rarer than the
     /// other three, and here rather than in a feature so the family cannot be split up again.
