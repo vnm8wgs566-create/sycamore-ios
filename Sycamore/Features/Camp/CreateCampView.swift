@@ -50,7 +50,9 @@ struct CreateCampView: View {
             Hairline(color: Theme.hairline)
             content
         }
-        .background(Theme.grouped)
+        // `#F8F9F8`, which section 8 puts behind every screen in it — warmer than the `#F6F7F9`
+        // the design this app shipped with used, and the reason its white cards read as paper.
+        .background(Theme.surfaceWarm)
         .navigationBarBackButtonHidden(true)
     }
 
@@ -77,13 +79,16 @@ struct CreateCampView: View {
                 // The shared control draws a glyph and nothing else, so the label belongs to
                 // whoever knows where the button goes.
                 .accessibilityLabel("Back to your camps")
+                // The disc is 36 and the button around it is 44, which would otherwise push the
+                // title 4pt down and the disc 4pt right of where the design puts them. Saying
+                // how big the row is leaves the touch overflowing and nothing moved.
+                .frame(width: 36, height: 36)
                 .padding(.bottom, Spacing.large)
 
-                Text("Shape the camp")
-                    .typeStyle(.title2, color: Theme.ink)
+                IntakeTitle("Shape the camp")
 
                 Text("How many places you run, and how many \(courtNoun)s inside each. Both change any day from Camp settings.")
-                    .typeStyle(.bodySmall, color: Theme.inkTertiary)
+                    .typeStyle(.intakeLead, color: Theme.inkTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 9)
             }
@@ -99,41 +104,51 @@ struct CreateCampView: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                SectionHeader("Name")
-                nameField
-                    .padding(.bottom, Spacing.medium)
+            // `gap:13px` between blocks, which is what the design's flex column runs on.
+            VStack(alignment: .leading, spacing: OnboardingMetrics.blockGap) {
+                block("Name") { nameField }
+                block("Sport") { sportChips }
+                block("Venues") { venuesCard }
+                block("Per \(courtNoun)") { perCourtCard }
 
-                SectionHeader("Sport")
-                sportChips
-                    .padding(.bottom, Spacing.medium)
-
-                SectionHeader("Venues")
-                venuesCard
-                    .padding(.bottom, Spacing.medium)
-
-                SectionHeader("Per \(courtNoun)")
-                perCourtCard
-                    .padding(.bottom, Spacing.gutterWide)
-
-                PrimaryButton("Save the shape", height: 52, font: .button) {
+                PrimaryButton(
+                    "Save the shape",
+                    height: OnboardingMetrics.ctaHeight,
+                    radius: OnboardingMetrics.cardRadius,
+                    font: .intakeButton
+                ) {
                     saveTheShape()
                 }
                 .opacity(store.campDraft.isValid ? 1 : 0.45)
                 .disabled(!store.campDraft.isValid)
+                // `margin:2px 2px 0` — the button is inset a touch from the cards above it.
+                .padding(.horizontal, Spacing.hairGap)
+                .padding(.top, Spacing.hairGap)
 
                 // No failure line here any more. This screen calls nothing that can fail —
                 // creating the camp moved to the end of the flow, and the flow carries the
                 // banner for it.
                 Text("Next: add kids, then hand out the code.")
-                    .typeStyle(.footnote, color: Theme.inkGhost)
+                    .typeStyle(.intakeFootnote, color: Theme.inkGhost)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, Spacing.medium)
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.large)
-            .padding(.bottom, Spacing.hero)
+            .padding(.bottom, OnboardingMetrics.contentBottom)
+        }
+        // The name field has a return key, but a thumb already on the list is the faster way out.
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// A header and the card under it — one child of the design's 13pt column.
+    private func block<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            IntakeSectionHeader(title)
+            content()
         }
     }
 
@@ -153,11 +168,11 @@ struct CreateCampView: View {
         return ZStack(alignment: .leading) {
             if store.campDraft.name.isEmpty {
                 Text("UCLA Tennis Camp")
-                    .typeStyle(.fieldTitle, color: Theme.inkFaint)
+                    .typeStyle(.intakeFieldTitle, color: Theme.inkFaint)
             }
             textField($store.campDraft.name)
         }
-        .padding(15)
+        .padding(Spacing.gutterWide)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.input, style: .continuous))
         .overlay {
@@ -171,12 +186,14 @@ struct CreateCampView: View {
     private func textField(_ text: Binding<String>) -> some View {
         let base = TextField("", text: text)
             .textFieldStyle(.plain)
-            .typeStyle(.fieldTitle, color: Theme.ink)
+            .typeStyle(.intakeFieldTitle, color: Theme.ink)
             .focused($isNameFocused)
             .autocorrectionDisabled()
+            .accessibilityLabel("Camp name")
 
         #if os(iOS)
         return base
+            .textContentType(.organizationName)
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
         #else
@@ -188,22 +205,23 @@ struct CreateCampView: View {
 
     private var sportChips: some View {
         WrappingRow(spacing: 7) {
-            ForEach(Array(Sport.selectable.enumerated()), id: \.offset) { _, sport in
-                Chip(
-                    sport.chipTitle,
-                    isSelected: store.campDraft.sport.matchesChip(sport),
-                    metrics: .sport
-                ) {
+            ForEach(Sport.selectable, id: \.self) { sport in
+                let isSelected = store.campDraft.sport.matchesChip(sport)
+                Chip(sport.chipTitle, isSelected: isSelected, metrics: .sport) {
                     store.campDraft.sport = sport
                 }
+                // The shared chip draws the selection but does not say so, and "which sport"
+                // is unanswerable by ear without it.
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }
+        .sensoryFeedback(.selection, trigger: store.campDraft.sport)
     }
 
     // MARK: Venues
 
     private var venuesCard: some View {
-        Card {
+        Card(radius: OnboardingMetrics.cardRadius) {
             ForEach($shape.venues) { venue in
                 venueRow(venue)
             }
@@ -214,27 +232,29 @@ struct CreateCampView: View {
 
     private func venueRow(_ venue: Binding<VenueShape>) -> some View {
         CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: Spacing.medium) {
-            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                .fill(Theme.color(for: venue.wrappedValue.tint))
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Image(systemName: "mappin")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary)
-                }
-                // The tile says "a place"; the row's own name says which one.
-                .accessibilityHidden(true)
+            // The tile says "a place"; the row's own name says which one.
+            IntakeIconTile(
+                "mappin",
+                size: 40,
+                glyphSize: 17,
+                fill: Theme.color(for: venue.wrappedValue.tint)
+            )
 
             VStack(alignment: .leading, spacing: Spacing.hairGap) {
                 Text(venue.wrappedValue.name)
-                    .typeStyle(.rowLabel, color: Theme.ink)
+                    .typeStyle(.intakeRowTitle, color: Theme.ink)
                 Text(venue.wrappedValue.subtitle ?? "Name it later")
-                    .typeStyle(.meta, color: Theme.inkMuted)
+                    .typeStyle(.intakeRowMeta, color: Theme.inkMuted)
             }
 
             Spacer(minLength: 0)
 
-            StepperControl(value: venue.courts, range: CampShape.courtRange, valueWidth: 28)
+            IntakeStepper(
+                value: venue.courts,
+                range: CampShape.courtRange,
+                label: "\(courtNoun)s at \(venue.wrappedValue.name)",
+                valueWidth: 28
+            )
         }
         // The design draws no way to take a venue back off the list — Camp settings owns that
         // once the camp exists. But nothing exists yet here, so an accidental "Add a venue"
@@ -256,24 +276,18 @@ struct CreateCampView: View {
             shape.addVenue()
         } label: {
             CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: Spacing.medium) {
-                RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                    .fill(Theme.accentTint)
-                    .frame(width: 40, height: 40)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                            .strokeBorder(
-                                Theme.accentBorder,
-                                style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: [4, 3])
-                            )
-                    }
-                    .overlay {
-                        Image(systemName: "plus")
-                            .font(.system(size: 17, weight: .regular))
-                            .foregroundStyle(Theme.accent)
-                    }
+                IntakeIconTile(
+                    "plus",
+                    size: 40,
+                    glyphSize: 17,
+                    fill: Theme.accentSurface,
+                    border: Theme.accentBorder,
+                    isDashed: true,
+                    glyphColor: Theme.accent
+                )
 
                 Text("Add a venue")
-                    .typeStyle(.rowLabel, color: Theme.accent)
+                    .typeStyle(.intakeRowTitle, color: Theme.accent)
 
                 Spacer(minLength: 0)
             }
@@ -287,18 +301,20 @@ struct CreateCampView: View {
     private var summaryRow: some View {
         CardRow(spacing: 9, horizontalPadding: 13, verticalPadding: Spacing.row) {
             Text(shape.summaryLine(noun: courtNoun))
-                .typeStyle(.sectionHeader, color: Theme.inkMuted)
+                .typeStyle(.intakeOverline, color: Theme.inkMuted)
             Spacer(minLength: 0)
             Text("no kids yet")
-                .typeStyle(.meta, color: Theme.inkFaint)
+                .typeStyle(.intakeRowMeta, color: Theme.inkFaint)
         }
-        .background(Theme.grouped)
+        // A row inside the card, one step warmer than the white above it.
+        .background(Theme.surfaceRaised)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Per court
 
     private var perCourtCard: some View {
-        Card {
+        Card(radius: OnboardingMetrics.cardRadius) {
             perCourtRow(
                 "Kids per \(courtNoun)",
                 detail: "Auto-partition keeps inside this",
@@ -323,14 +339,14 @@ struct CreateCampView: View {
         CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: Spacing.medium) {
             VStack(alignment: .leading, spacing: Spacing.hairGap) {
                 Text(title)
-                    .typeStyle(.bodyStrong, color: Theme.ink)
+                    .typeStyle(.intakeRowTitleSm, color: Theme.ink)
                 Text(detail)
-                    .typeStyle(.meta, color: Theme.inkMuted)
+                    .typeStyle(.intakeRowMeta, color: Theme.inkMuted)
             }
 
             Spacer(minLength: 0)
 
-            StepperControl(value: value, range: range, valueWidth: 34)
+            IntakeStepper(value: value, range: range, label: title, valueWidth: 34)
         }
     }
 }

@@ -40,7 +40,7 @@ struct BringInTheWeekView: View {
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        .background(Theme.surfaceWarm)
         // Cross-platform: `fileImporter` is the SwiftUI wrapper over the document browser and
         // exists on macOS too, so the whole intake path builds for both without a shim.
         //
@@ -63,11 +63,12 @@ struct BringInTheWeekView: View {
             // "open" is literal: this is the tap that writes the camp and lands in the app.
             Button(action: onOpenCamp) {
                 Text("Open the camp")
-                    .typeStyle(.chipMedium, color: Theme.accent)
-                    .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum, alignment: .trailing)
-                    .contentShape(.rect)
+                    .typeStyle(.intakeChip, color: Theme.accent)
+                    // A 12.5pt line draws about 15pt tall; 16 either side of it clears 44.
+                    .intakeTouchTarget(inset: Spacing.large)
             }
             .buttonStyle(.plain)
+            .accessibilityHint("Creates the camp and lands in it")
         }
     }
 
@@ -80,20 +81,27 @@ struct BringInTheWeekView: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: OnboardingMetrics.cardGap) {
                 importCard
 
                 if let readError {
                     Text(readError)
-                        .typeStyle(.footnote, color: Theme.danger)
+                        .typeStyle(.intakeNote, color: Theme.danger)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 4)
                 }
 
                 addByHandRow
 
-                SectionHeader("What a file needs")
-                    .padding(.top, Spacing.small)
+                // The 9pt gap this column already runs on is the space under the header, so it
+                // carries none of its own.
+                IntakeSectionHeader(
+                    "What a file needs",
+                    trackingEm: 0.14,
+                    horizontalPadding: 4,
+                    bottomPadding: 0
+                )
+                .padding(.top, Spacing.small)
 
                 requirementsCard
             }
@@ -106,37 +114,33 @@ struct BringInTheWeekView: View {
     // MARK: The file
 
     private var importCard: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: OnboardingMetrics.cardRadius, style: .continuous)
 
         return VStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
-                .fill(Theme.accentTint)
-                .frame(width: 48, height: 48)
-                .overlay {
-                    RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
-                        .strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.hairline)
-                }
-                .overlay {
-                    Image(systemName: "arrow.up.doc")
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundStyle(Theme.accent)
-                }
-                // Decoration above a heading that already says what this is.
-                .accessibilityHidden(true)
+            // Decoration above a heading that already says what this is.
+            IntakeIconTile(
+                "arrow.up.doc",
+                size: 48,
+                glyphSize: 22,
+                radius: OnboardingMetrics.cardRadius,
+                fill: Theme.accentSurface,
+                border: Theme.accentSurfaceBorder,
+                glyphColor: Theme.accent
+            )
 
             Text("Import the sign-up list")
-                .typeStyle(.venueHeading, color: Theme.ink)
+                .typeStyle(.intakeStatValue, color: Theme.ink)
                 .padding(.top, Spacing.gutterWide)
 
             Text("A CSV or a PDF from the office. Names, ages and genders come across — nobody is ranked yet.")
-                .typeStyle(.bodySmall, color: Theme.inkMuted)
+                .typeStyle(.intakeLead, color: Theme.inkMuted)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 260)
                 .padding(.top, 7)
 
             HStack(spacing: Spacing.small) {
-                Pill("Choose a file", tone: .accent, font: .chip, horizontalPadding: 16, verticalPadding: 10) {
+                IntakePillButton(title: "Choose a file", isProminent: true) {
                     readError = nil
                     isChoosingFile = true
                 }
@@ -144,7 +148,7 @@ struct BringInTheWeekView: View {
                 // attachment, and every mail attachment is reachable through the document
                 // browser — so this is the honest version of "from email" until there is a
                 // camp address to forward it to.
-                Pill("From email", tone: .outline, font: .chip, horizontalPadding: 16, verticalPadding: 10) {
+                IntakePillButton(title: "From email") {
                     readError = nil
                     isChoosingFile = true
                 }
@@ -156,9 +160,10 @@ struct BringInTheWeekView: View {
         .padding(.horizontal, Spacing.sheet)
         .background(Theme.surface, in: shape)
         .overlay {
+            // CSS draws a dashed 1.5px border at roughly three times its width per dash and gap.
             shape.strokeBorder(
                 Theme.accentBorder,
-                style: StrokeStyle(lineWidth: BorderWidth.input, dash: [6, 4])
+                style: StrokeStyle(lineWidth: BorderWidth.input, dash: [4.5, 4.5])
             )
         }
     }
@@ -184,28 +189,28 @@ struct BringInTheWeekView: View {
     // MARK: By hand
 
     private var addByHandRow: some View {
-        Card {
+        Card(radius: OnboardingMetrics.cardRadius) {
             Button(action: onAddByHand) {
-                CardRow(spacing: Spacing.row) {
-                    RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                        .fill(Theme.fill)
-                        .frame(width: 34, height: 34)
-                        .overlay {
-                            Image(systemName: "person.badge.plus")
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundStyle(Theme.inkSecondary)
-                        }
+                CardRow(spacing: Spacing.row, horizontalPadding: Spacing.gutterWide, verticalPadding: 13) {
+                    IntakeIconTile(
+                        "person.badge.plus",
+                        size: 34,
+                        glyphSize: 17,
+                        radius: Radius.control,
+                        fill: OnboardingTheme.iconPlate
+                    )
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Add a player by hand")
-                            .typeStyle(.rowLabel, color: Theme.ink)
+                            .typeStyle(.intakeRowTitle, color: Theme.ink)
                         Text("Walk-ins and under-11s at \(venueName)")
-                            .typeStyle(.rowSubtitle, color: Theme.inkMuted)
+                            .typeStyle(.intakeRowDetail, color: Theme.inkMuted)
                     }
 
                     Spacer(minLength: 0)
 
                     DisclosureChevron(size: 15)
+                        .accessibilityHidden(true)
                 }
             }
             .buttonStyle(.plain)
@@ -215,7 +220,7 @@ struct BringInTheWeekView: View {
     // MARK: What a file needs
 
     private var requirementsCard: some View {
-        Card {
+        Card(radius: OnboardingMetrics.cardRadius) {
             requirement("First name, last name")
             requirement("Age")
             requirement("Gender")
@@ -225,16 +230,19 @@ struct BringInTheWeekView: View {
 
     private func requirement(_ text: String, isRequired: Bool = true) -> some View {
         CardRow(spacing: 10, horizontalPadding: 13, verticalPadding: 11) {
-            // Hidden rather than labelled: the optional row says "optional" in its own copy, so
-            // a spoken "dashed circle" would be the only thing on this card that means nothing.
             Image(systemName: isRequired ? "checkmark.circle.fill" : "circle.dashed")
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(isRequired ? Theme.accent : Theme.inkFaint)
-                .accessibilityHidden(true)
             Text(text)
-                .typeStyle(.bodySmall, color: isRequired ? Theme.inkSecondary : Theme.inkMuted)
+                .typeStyle(.intakeChecklist, color: isRequired ? Theme.inkWarm : Theme.inkMuted)
             Spacer(minLength: 0)
         }
+        // One element per line, and the tick spoken as what it means. Left to itself VoiceOver
+        // reads "check circle fill, First name last name", which is a glyph name and a shrug —
+        // this reads "First name, last name. Required."
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+        .accessibilityValue(isRequired ? "Required" : "")
     }
 }
 

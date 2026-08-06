@@ -25,6 +25,7 @@ struct ImportReviewView: View {
     var isCommitting: Bool = false
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The design folds the clean list to four rows behind "See all". Forty names is not a list
     /// anybody reads — it is a number, and the number is already at the top.
     @State private var showsEveryCleanRow = false
@@ -53,7 +54,7 @@ struct ImportReviewView: View {
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { commitButton }
         .navigationBarBackButtonHidden(true)
 
@@ -68,20 +69,29 @@ struct ImportReviewView: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: OnboardingMetrics.cardGap) {
                 countsCard
 
                 if !file.needsDetail.isEmpty {
-                    SectionHeader("Needs a detail · \(file.needsDetail.count)")
-                        .padding(.top, 4)
+                    IntakeSectionHeader(
+                        "Needs a detail · \(file.needsDetail.count)",
+                        trackingEm: 0.14,
+                        horizontalPadding: 4,
+                        bottomPadding: 0
+                    )
+                    .padding(.top, 4)
+
                     needsDetailCard
                 }
 
                 if !file.readCleanly.isEmpty {
-                    SectionHeader(
+                    IntakeSectionHeader(
                         "Read cleanly · \(file.readCleanly.count)",
+                        trackingEm: 0.14,
                         actionTitle: seeAllTitle,
-                        action: seeAllTitle == nil ? nil : { showsEveryCleanRow.toggle() }
+                        horizontalPadding: 4,
+                        bottomPadding: 0,
+                        action: toggleCleanRows
                     )
                     .padding(.top, Spacing.tight)
 
@@ -91,7 +101,15 @@ struct ImportReviewView: View {
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.gutterWide)
             // Clears the pinned button, which floats over this rather than sitting under it.
-            .padding(.bottom, Spacing.tabBarClearance)
+            .padding(.bottom, OnboardingMetrics.ctaClearance)
+        }
+    }
+
+    /// Thirty-six rows arriving at once is a jump wherever it happens; the fade is what says they
+    /// were already there. Off when the reader has asked for less movement.
+    private func toggleCleanRows() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            showsEveryCleanRow.toggle()
         }
     }
 
@@ -105,7 +123,7 @@ struct ImportReviewView: View {
     // MARK: Counts
 
     private var countsCard: some View {
-        Card(isDivided: false) {
+        Card(radius: OnboardingMetrics.cardRadius, isDivided: false) {
             HStack(alignment: .top, spacing: Spacing.medium) {
                 count("New", file.newCount)
                 count("Returning", file.returningCount)
@@ -119,35 +137,40 @@ struct ImportReviewView: View {
     private func count(_ label: String, _ value: Int, color: Color = Theme.ink) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label)
-                .typeStyle(.statLabel, color: Theme.inkFaint)
+                .typeStyle(.intakeStatLabel, color: Theme.inkFaint)
             Text("\(value)")
-                .typeStyle(.venueHeading, color: color)
+                .typeStyle(.intakeStatValue, color: color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(value)")
     }
 
     // MARK: Gaps
 
     private var needsDetailCard: some View {
-        Card(borderColor: OnboardingTheme.warningBorder) {
+        Card(radius: OnboardingMetrics.cardRadius, borderColor: Theme.warningBorder) {
             ForEach(file.needsDetail) { player in
                 Button { onFix(player) } label: {
                     CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 11) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(player.displayName)
-                                .typeStyle(.bodyStrong, color: Theme.ink)
+                                .typeStyle(.intakeRowTitleSm, color: Theme.ink)
                             Text(player.issue?.label ?? "")
-                                .typeStyle(.rowSubtitle, color: OnboardingTheme.warning)
+                                .typeStyle(.intakeRowDetail, color: Theme.warning)
                         }
 
                         Spacer(minLength: 0)
 
+                        // The chip is the affordance the design draws, but the whole row is what
+                        // takes the tap — a 24pt chip is not something to aim at on a court.
                         Text("Fix")
-                            .typeStyle(.chipCompact, color: OnboardingTheme.warningStrong)
+                            .typeStyle(.intakeChipSm, color: Theme.warningDark)
                             .padding(.horizontal, Spacing.row)
                             .padding(.vertical, Spacing.tight)
-                            .background(OnboardingTheme.warningTint, in: Capsule(style: .continuous))
+                            .background(Theme.warningTint, in: Capsule(style: .continuous))
+                            .accessibilityHidden(true)
                     }
                 }
                 .buttonStyle(.plain)
@@ -159,27 +182,30 @@ struct ImportReviewView: View {
     // MARK: Clean
 
     private var cleanCard: some View {
-        Card {
+        Card(radius: OnboardingMetrics.cardRadius) {
             ForEach(cleanRows) { player in
                 CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 11) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(player.displayName)
-                            .typeStyle(.bodyStrong, color: Theme.ink)
+                            .typeStyle(.intakeRowTitleSm, color: Theme.ink)
                         Text(player.detail)
-                            .typeStyle(.rowSubtitle, color: Theme.inkMuted)
+                            .typeStyle(.intakeRowDetail, color: Theme.inkMuted)
                     }
 
                     Spacer(minLength: 0)
 
                     // SF Symbols has no gender glyph to stand in for the design's, and the app
                     // already writes gender as the single letter `Player.metaLine` uses. Same
-                    // letter, same grey.
+                    // letter, and `glyph` — the grey the design gives its icons, a step lighter
+                    // than its text.
                     if let gender = player.gender {
                         Text(gender.symbol)
-                            .typeStyle(.metaSmall, color: Theme.inkGhost)
+                            .typeStyle(.intakeGlyphLetter, color: Theme.glyph)
                             .accessibilityLabel(gender.intakeLabel)
                     }
                 }
+                // Name, age and gender are one kid, not three announcements.
+                .accessibilityElement(children: .combine)
             }
         }
     }
@@ -187,12 +213,18 @@ struct ImportReviewView: View {
     // MARK: Commit
 
     private var commitButton: some View {
-        PrimaryButton("Import \(file.title)", height: 52, font: .button, action: onCommit)
-            .opacity(isCommitting ? 0.45 : 1)
-            .disabled(isCommitting)
-            .shadow(OnboardingShadows.pinnedCTA)
-            .padding(.horizontal, Spacing.gutter)
-            .padding(.bottom, 20)
+        PrimaryButton(
+            "Import \(file.title)",
+            height: OnboardingMetrics.ctaHeight,
+            radius: OnboardingMetrics.cardRadius,
+            font: .intakeButtonLg,
+            action: onCommit
+        )
+        .opacity(isCommitting ? 0.45 : 1)
+        .disabled(isCommitting)
+        .shadow(OnboardingShadows.pinnedCTA)
+        .padding(.horizontal, Spacing.gutter)
+        .padding(.bottom, OnboardingMetrics.ctaInset)
     }
 }
 

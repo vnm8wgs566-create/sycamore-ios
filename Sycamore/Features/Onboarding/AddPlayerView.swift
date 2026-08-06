@@ -35,7 +35,8 @@ struct AddPlayerView: View {
     /// an age the screen believes in.
     @State private var age = ""
     @State private var gender: Gender?
-    @State private var venueIndex = 0
+    /// Nil until one is picked, which reads as the first — see `chosenVenueID`.
+    @State private var venueID: VenueShape.ID?
     @FocusState private var focus: Field?
     /// The design's 88pt label column. Scaled, because at the larger type sizes "First name"
     /// needs three lines inside 88 and the field beside it ends up taller than the row.
@@ -53,6 +54,9 @@ struct AddPlayerView: View {
             _lastName = State(initialValue: player.lastName)
             _age = State(initialValue: player.age.map(String.init) ?? "")
             _gender = State(initialValue: player.gender)
+            if venues.indices.contains(player.venueIndex) {
+                _venueID = State(initialValue: venues[player.venueIndex].id)
+            }
         }
     }
 
@@ -72,12 +76,21 @@ struct AddPlayerView: View {
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.grouped)
+        .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { saveButton }
         .navigationBarBackButtonHidden(true)
 
         #if os(iOS)
-        return screen.toolbar(.hidden, for: .navigationBar)
+        return screen
+            .toolbar(.hidden, for: .navigationBar)
+            // The number pad has no return key, and the pinned "Add" sits under the keyboard
+            // while it is up. This is the way out that does not need a free hand for a drag.
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focus = nil }
+                }
+            }
         #else
         return screen
         #endif
@@ -111,26 +124,26 @@ struct AddPlayerView: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: OnboardingMetrics.cardGap) {
                 namesCard
                 genderCard
                 if !venues.isEmpty { venueCard }
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.gutterWide)
-            .padding(.bottom, Spacing.tabBarClearance)
+            .padding(.bottom, OnboardingMetrics.ctaClearance)
         }
         // The age field runs a number pad, which has no return key to put away. Dragging the
-        // form is the way out of it.
+        // form is the second way out of it, beside the keyboard bar's Done.
         .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: Name and age
 
     private var namesCard: some View {
-        Card {
-            field("First name", text: $firstName, focus: .first, submit: .next)
-            field("Last name", text: $lastName, focus: .last, submit: .next)
+        Card(radius: OnboardingMetrics.cardRadius) {
+            field("First name", text: $firstName, focus: .first, submit: .next, content: .givenName)
+            field("Last name", text: $lastName, focus: .last, submit: .next, content: .familyName)
             field("Age", text: $age, focus: .age, submit: .done, isNumeric: true)
         }
     }
@@ -140,35 +153,54 @@ struct AddPlayerView: View {
         text: Binding<String>,
         focus target: Field,
         submit: SubmitLabel,
-        isNumeric: Bool = false
+        isNumeric: Bool = false,
+        content: TextContentKind? = nil
     ) -> some View {
         CardRow(spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: Spacing.medium) {
             Text(label)
-                .typeStyle(.sheetSubtitle, color: Theme.inkFaint)
-                .frame(width: labelWidth, alignment: .leading)
+                .typeStyle(.intakeFieldLabel, color: Theme.inkFaint)
+                // `minWidth`, not `width`: the design's 88pt column is a floor once the label
+                // itself has grown, and a fixed one breaks "First name" over three lines.
+                .frame(minWidth: labelWidth, alignment: .leading)
+                .accessibilityHidden(true)
 
-            textField(text, focus: target, submit: submit, isNumeric: isNumeric)
+            textField(text, label: label, focus: target, submit: submit, isNumeric: isNumeric, content: content)
         }
         // The label is part of the field's target: tapping the word "Age" puts the caret in it.
         .onTapGesture { focus = target }
     }
 
+    /// `UITextContentType` by another name, so the signature above stays free of UIKit and the
+    /// file still builds for the Mac.
+    private enum TextContentKind { case givenName, familyName }
+
     private func textField(
         _ text: Binding<String>,
+        label: String,
         focus target: Field,
         submit: SubmitLabel,
-        isNumeric: Bool
+        isNumeric: Bool,
+        content: TextContentKind?
     ) -> some View {
         let base = TextField("", text: text)
             .textFieldStyle(.plain)
-            .typeStyle(.body, color: Theme.ink)
+            .typeStyle(.intakeFieldValue, color: Theme.ink)
             .focused($focus, equals: target)
             .autocorrectionDisabled()
+            // The row's grey word is the field's name; hidden above so it is not read twice.
+            .accessibilityLabel(label)
 
         #if os(iOS)
+        let contentType: UITextContentType? = switch content {
+        case .givenName: .givenName
+        case .familyName: .familyName
+        case nil: nil
+        }
+
         return base
             .keyboardType(isNumeric ? .numberPad : .default)
             .textInputAutocapitalization(isNumeric ? .never : .words)
+            .textContentType(contentType)
             .submitLabel(submit)
         #else
         return base
@@ -178,82 +210,93 @@ struct AddPlayerView: View {
     // MARK: Gender
 
     private var genderCard: some View {
-        Card(isDivided: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Gender")
-                    .typeStyle(.sheetSubtitle, color: Theme.inkFaint)
-
-                HStack(spacing: Spacing.tight) {
-                    ForEach(Gender.intakeOptions, id: \.self) { option in
-                        Chip(
-                            option.intakeLabel,
-                            isSelected: gender == option,
-                            metrics: .intake,
-                            fillsWidth: true
-                        ) {
-                            gender = option
-                        }
+        answerCard("Gender") {
+            HStack(spacing: Spacing.tight) {
+                ForEach(Gender.intakeOptions, id: \.self) { option in
+                    IntakeChoiceChip(title: option.intakeLabel, isSelected: gender == option) {
+                        gender = option
                     }
                 }
-                .padding(.top, 10)
             }
-            .padding(Spacing.gutterWide)
+            .sensoryFeedback(.selection, trigger: gender)
         }
     }
 
     // MARK: Venue
 
     private var venueCard: some View {
-        Card(isDivided: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Venue")
-                    .typeStyle(.sheetSubtitle, color: Theme.inkFaint)
-
-                HStack(spacing: Spacing.tight) {
-                    ForEach(Array(venues.enumerated()), id: \.element.id) { index, venue in
-                        Chip(
-                            venue.name,
-                            isSelected: index == venueIndex,
-                            metrics: .intake,
-                            fillsWidth: true
-                        ) {
-                            venueIndex = index
-                        }
+        answerCard("Venue") {
+            HStack(spacing: Spacing.tight) {
+                ForEach(venues) { venue in
+                    IntakeChoiceChip(title: venue.name, isSelected: venue.id == chosenVenueID) {
+                        venueID = venue.id
                     }
                 }
-                .padding(.top, 10)
+            }
+            .sensoryFeedback(.selection, trigger: chosenVenueID)
 
-                if let note = venueNote {
-                    InfoBanner(note, tone: .accent, font: .caption, radius: Radius.chipSquare,
-                               horizontalPadding: Spacing.row, verticalPadding: 10, spacing: 9,
-                               iconSize: 15, alignment: .top)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: Radius.chipSquare, style: .continuous)
-                                .strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.hairline)
-                        }
-                        .padding(.top, Spacing.medium)
-                }
+            if let note = venueNote {
+                IntakeNote(note)
+                    .padding(.top, Spacing.medium)
+            }
+        }
+    }
+
+    /// The venue answered, or the first one — which is where `8c` says the walk-ins go.
+    private var chosenVenueID: VenueShape.ID? {
+        venueID ?? venues.first?.id
+    }
+
+    /// Its position, which is the only thing an `IntakePlayer` can carry: the camp does not exist
+    /// yet, so neither do the venues these rows will become.
+    private var chosenVenueIndex: Int {
+        venues.firstIndex { $0.id == chosenVenueID } ?? 0
+    }
+
+    /// A label over a row of answers — the shape both of `8e`'s lower cards take.
+    private func answerCard<Content: View>(
+        _ label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Card(radius: OnboardingMetrics.cardRadius, isDivided: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(label)
+                    .typeStyle(.intakeFieldLabel, color: Theme.inkFaint)
+                    .padding(.bottom, 10)
+
+                content()
             }
             .padding(Spacing.gutterWide)
         }
+        // The grey word above the chips is what they are all answers to, so it is what VoiceOver
+        // should say before reaching them.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
     }
 
     /// The design's line about the under-11s. Shown only when it is true — an explanation of a
     /// default that was not applied is just noise on the screen.
     private var venueNote: String? {
-        guard let years = Int(age), years < 11, venueIndex == 0, let first = venues.first else { return nil }
+        guard let years = Int(age), years < 11, chosenVenueIndex == 0, let first = venues.first else { return nil }
         return "Under 11, so \(first.name) by default. Coaches can still move them once they are ranked."
     }
 
     // MARK: Save
 
     private var saveButton: some View {
-        PrimaryButton(saveTitle, height: 52, font: .button) { save() }
-            .opacity(canSave ? 1 : 0.45)
-            .disabled(!canSave)
-            .shadow(OnboardingShadows.pinnedCTA)
-            .padding(.horizontal, Spacing.gutter)
-            .padding(.bottom, 20)
+        PrimaryButton(
+            saveTitle,
+            height: OnboardingMetrics.ctaHeight,
+            radius: OnboardingMetrics.cardRadius,
+            font: .intakeButtonLg
+        ) {
+            save()
+        }
+        .opacity(canSave ? 1 : 0.45)
+        .disabled(!canSave)
+        .shadow(OnboardingShadows.pinnedCTA)
+        .padding(.horizontal, Spacing.gutter)
+        .padding(.bottom, OnboardingMetrics.ctaInset)
     }
 
     /// A first name is the one thing a kid cannot be added without — everything else can be
@@ -275,6 +318,7 @@ struct AddPlayerView: View {
         player.lastName = lastName.trimmingCharacters(in: .whitespaces)
         player.age = Int(age)
         player.gender = gender
+        player.venueIndex = chosenVenueIndex
 
         onSave(player)
     }
@@ -285,23 +329,6 @@ private extension AddPlayerView.Mode {
         if case .fix = self { return true }
         return false
     }
-}
-
-// MARK: - Chip metrics
-
-private extension ChipMetrics {
-    /// `8e`'s equal-width answer chips: `600 12.5`, 9pt tall, radius 11, grey border when they
-    /// are not the answer. A point tighter than the staff sheet's `.role`, which is the same
-    /// control drawn on a sheet rather than on a card.
-    static let intake = ChipMetrics(
-        font: .chipMedium,
-        horizontalPadding: 0,
-        verticalPadding: 9,
-        radius: Radius.control,
-        spacing: 6,
-        unselectedBorder: Theme.strokeChip,
-        emojiSize: 12.5
-    )
 }
 
 // MARK: - Previews
