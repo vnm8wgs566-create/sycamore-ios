@@ -193,7 +193,7 @@ struct RankView: View {
             .opacity(drag?.row.id == row.id ? 0 : 1)
             .background(frameReader(for: row.id))
             .contentShape(Rectangle())
-            .onTapGesture { store.present(.player(row.id)) }
+            .onTapGesture { store.pushedScreen = .player(row.id) }
     }
 
     /// Shared by the in-flow row and the lifted card, which differ only in tint.

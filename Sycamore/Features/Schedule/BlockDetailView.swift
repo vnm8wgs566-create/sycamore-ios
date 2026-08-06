@@ -208,11 +208,19 @@ struct BlockDetailView: View {
 
     // MARK: Actions
 
-    /// Attendance is Groups' job — marking a kid away is the swipe on a coach card — so the
-    /// design's call to action goes there rather than to a screen section 8 does not draw.
+    /// `8m`, for every court this block covers.
+    ///
+    /// The courts come from the camp graph rather than off the block: `ScheduleBlock.detail` is
+    /// one free-text line ("Courts 1–3 · 22 players") the design composes differently on every
+    /// row, so the venue's own groups are the only answer that cannot drift from it.
+    ///
+    /// `8l` closes on the way. Both screens are covers, and a cover cannot be presented over a
+    /// cover — but more than that, `8m` is where this block's work now happens, and stacking the
+    /// two would leave a "Take attendance" button live underneath the screen it opened.
     private func openAttendance() {
-        store.selectedTab = .groups
+        let groupIDs = store.camp?.groups(in: block.venueID).map(\.id) ?? []
         onClose()
+        store.pushedScreen = .attendance(groupIDs, block)
     }
 
     private func markDone() {

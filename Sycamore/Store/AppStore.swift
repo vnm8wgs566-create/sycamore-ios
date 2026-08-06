@@ -65,10 +65,18 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 /// the avatar in the header, which is also what finally gives that header control a
 /// destination. The old bell had none.
 ///
-/// Presented as sheets rather than pushed inside a tab: the design draws no tab bar on any of
-/// them, and none of these screens draws a back control either — they never needed one as tabs.
-/// The sheet is what supplies the way out. See `RootView.pushedView(for:)`.
-enum PushedScreen: String, Identifiable, Hashable, Sendable, CaseIterable {
+/// The first three are presented as sheets rather than pushed inside a tab: the design draws no
+/// tab bar on any of them, and none of them draws a back control either — they never needed one
+/// as tabs. The sheet is what supplies the way out.
+///
+/// The last two are the opposite case and arrive as covers. See `isFullScreen`, and
+/// `RootView.pushedView(for:)` for both.
+///
+/// No longer `String`-backed, and no longer `CaseIterable`: `8m` needs the courts it is marking
+/// and `8q` needs the kid, so two of these five carry a payload and neither a raw value nor
+/// `allCases` can survive that. Nothing asked for either — the raw value existed only to spell
+/// `id`, which is now written out below.
+enum PushedScreen: Identifiable, Hashable, Sendable {
     /// `8s` — the avatar's destination.
     case profile
     /// `8t` — admin only, reached from Profile.
@@ -77,20 +85,57 @@ enum PushedScreen: String, Identifiable, Hashable, Sendable, CaseIterable {
     /// screen has no home in the new navigation. It stays reachable so the reorder logic keeps
     /// running and keeps being testable until Groups absorbs it.
     case rank
+    /// `8m` — attendance for one session, reached from a block on `8l`.
+    ///
+    /// A block runs across courts ("Courts 1–3"), so this carries the whole list rather than one,
+    /// and the block itself so the header can name the session. The block is optional because the
+    /// screen is legible without one: a coach marking their own court off the clock has courts but
+    /// no session.
+    case attendance([Group.ID], ScheduleBlock?)
+    /// `8q` — a kid.
+    case player(Player.ID)
 
-    var id: String { rawValue }
+    /// Written out rather than derived, because two of these cases carry a payload and the
+    /// payload is what makes them different screens. An `id` that ignored it would leave `8q`
+    /// showing the first kid when a second was asked for — SwiftUI reads `.sheet(item:)` as
+    /// "still the same presentation" and never rebuilds the content.
+    var id: String {
+        switch self {
+        case .profile: return "profile"
+        case .campSettings: return "camp-settings"
+        case .rank: return "rank"
+        case .attendance(let groupIDs, let block):
+            let courts = groupIDs.map(\.uuidString).joined(separator: "+")
+            return "attendance-\(courts)-\(block?.id.uuidString ?? "no-block")"
+        case .player(let id): return "player-\(id.uuidString)"
+        }
+    }
+
+    /// Whether the screen supplies its own way out, and so wants the whole frame.
+    ///
+    /// `8m` draws a ✕ and `8q` a back caret; both run a white header up under the status bar and
+    /// pin a bar to the bottom edge. A sheet would inset the header behind rounded corners, put
+    /// its own dismissal chrome beside a control that already exists, and float a grabber over a
+    /// screen that draws a mock status bar. The other three have none of that and stay sheets.
+    var isFullScreen: Bool {
+        switch self {
+        case .attendance, .player: true
+        case .profile, .campSettings, .rank: false
+        }
+    }
 }
 
-/// Everything in stage 3. All four slide up over whichever tab is showing.
+/// Everything in stage 3. All three slide up over whichever tab is showing.
+///
+/// `8q` used to be the fourth. It is a pushed screen in the design — serif title, back caret,
+/// pinned bar — and it now arrives that way through `PushedScreen.player`.
 enum ActiveSheet: Identifiable, Hashable, Sendable {
-    case player(Player.ID)
     case earlyPickup(Player.ID)
     case venue(Venue.ID)
     case staff(StaffMember.ID)
 
     var id: String {
         switch self {
-        case .player(let id): "player-\(id.uuidString)"
         case .earlyPickup(let id): "pickup-\(id.uuidString)"
         case .venue(let id): "venue-\(id.uuidString)"
         case .staff(let id): "staff-\(id.uuidString)"
@@ -100,7 +145,6 @@ enum ActiveSheet: Identifiable, Hashable, Sendable {
     /// The detent fractions transcribed from the design's sheet heights over 700pt.
     var detentFraction: Double {
         switch self {
-        case .player: 0.80
         case .earlyPickup: 0.67
         case .venue: 0.87
         case .staff: 0.73
@@ -746,6 +790,9 @@ extension AppStore {
         selectedMembership = nil
         camp = nil
         activeSheet = nil
+        // Signing out from Profile leaves Profile itself on screen otherwise — a pushed screen
+        // full of a camp that is no longer loaded, sitting over the sign-in form.
+        pushedScreen = nil
         emailInput = ""
         codeInput = ""
         resetFilters()

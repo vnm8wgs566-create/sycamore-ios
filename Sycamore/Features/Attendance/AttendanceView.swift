@@ -280,11 +280,6 @@ private struct AttendanceMark: Hashable, Sendable {
     let wasMarked: Bool
 }
 
-/// `Player.ID` is a `UUID`, and `.sheet(item:)` wants something `Identifiable`.
-private struct PickupTarget: Identifiable, Hashable {
-    let id: Player.ID
-}
-
 // MARK: - Previews
 
 /// The design's own state: a session part-way through, two kids left.
