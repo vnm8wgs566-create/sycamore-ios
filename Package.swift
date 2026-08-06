@@ -40,7 +40,10 @@ let package = Package(
         .target(
             name: "Sycamore",
             path: "Sycamore",
-            exclude: ["Resources/Info.plist"]
+            // Both are consumed by the Xcode target's build settings — `INFOPLIST_FILE` and
+            // `CODE_SIGN_ENTITLEMENTS` — not by SwiftPM, which would otherwise treat them as
+            // unhandled resources and warn on every build.
+            exclude: ["Resources/Info.plist", "Resources/Sycamore.entitlements"]
         )
     ],
     // Matches SWIFT_VERSION = 6.0 in the Xcode target. The module typechecks clean in this

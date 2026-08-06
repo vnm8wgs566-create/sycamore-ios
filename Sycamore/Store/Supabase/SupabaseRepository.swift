@@ -120,17 +120,15 @@ actor SupabaseRepository: SycamoreRepository {
     /// token surfaces as what it is.
     /// Refuses before the network when there is no token to send.
     ///
-    /// `AppStore.continueWithApple` defaults its token to `""`, because nothing in this app has
-    /// ever produced a real one — there is no `ASAuthorization` anywhere in it. Against
-    /// `InMemoryRepository` that was invisible: the offline build ignores the token, so the
-    /// button appeared to work. Against GoTrue the empty string came back as
-    /// `id_token required`, which is an internal detail of an endpoint the reader never asked
-    /// about and gives them nothing to act on.
+    /// `AppleSignIn` produces a real token now, and `continueWithApple` no longer defaults it to
+    /// `""` — the compiler enforces one. The guard stays as a backstop for the empty-string case
+    /// the type system cannot rule out, because what GoTrue answers to an empty token is
+    /// `id_token required`: an internal detail of an endpoint the reader never asked about.
     ///
-    /// This project also has `external_apple_enabled = false`, so the provider is switched off
-    /// server-side as well. Both have to change before the button can work: the Apple provider
-    /// enabled in the dashboard, and `ASAuthorizationAppleIDProvider` wired into `SignInView` to
-    /// produce the token.
+    /// It is also the honest error while the provider is off. Apple sign-in needs two switches
+    /// the app cannot throw for itself — the provider enabled in the Supabase dashboard with the
+    /// bundle id as its Client ID, and "Sign In with Apple" ticked on the App ID in the Apple
+    /// developer portal. Until both are on, this is what a person sees.
     func signInWithApple(identityToken: String) async throws -> Account {
         guard !identityToken.isEmpty else { throw SycamoreError.appleSignInUnavailable }
         let session = try await auth.signInWithApple(identityToken: identityToken)
