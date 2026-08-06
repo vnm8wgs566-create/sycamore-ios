@@ -6,10 +6,12 @@
 //  ramp for the row glyphs, the metrics the design writes in the Inbox and nowhere else, and
 //  section 8's own type scale.
 //
-//  Local rather than added to `Theme` / `Radius` / `TypeStyle` on purpose. Every screen in
-//  section 8 is being built at once and a token added to a shared file is a merge conflict for
-//  all of them — `ScheduleTokens` and `OnTheDayTokens` carry their own copies of the same idea
-//  for the same reason. All of it belongs upstairs once the section lands; see the pull request.
+//  The colour and the metrics are local rather than added to `Theme` / `Radius` on purpose. Every
+//  screen in section 8 is being built at once and a token added to a shared file is a merge
+//  conflict for all of them — `ScheduleTokens` and `OnTheDayTokens` carry their own copies of the
+//  same idea for the same reason. Both belong upstairs once the section lands.
+//
+//  The type already went. `InboxType` is now a set of names onto `TypeStyle`, not a scale.
 //
 //  Not one number here is invented. Each is transcribed from the inline CSS of `8r` / `8h` in
 //  `Sycamore 3a System.dc.html`, and the reference is quoted beside it.
@@ -144,37 +146,42 @@ enum InboxMetrics {
 
 // MARK: - Type
 
-/// Section 8's own type scale, for the Inbox's share of it.
+/// What `8r` and `8h` need beyond the shared table.
 ///
-/// It runs a weight lighter than the rest of the app — row titles are 600 where `Sycamore Flow`
-/// sets them at 700 — so these are separate styles rather than tweaks to the shared table, which
-/// every screen outside section 8 is still drawn from.
+/// This used to be a parallel type scale, written when the shared table still ran a weight or two
+/// heavier than section 8 — row titles at 700 where the design sets 600. The table carries the
+/// design's weights now, so these are aliases: the names stay so the rows keep reading in the
+/// Inbox's own vocabulary, and the numbers behind them are shared.
 enum InboxType {
     /// `600 14.5`, `-.025em` — a row's title.
-    static let rowTitle = TypeStyle(size: 14.5, weight: .semibold, trackingEm: -0.025)
+    static let rowTitle = TypeStyle.rowLabel.tracking(em: -0.025)
     /// `400 12.5` — its grey second line.
-    static let rowDetail = TypeStyle(size: 12.5, weight: .regular)
+    static let rowDetail = TypeStyle.rowDetail
     /// `600 10.5`, `+.14em`, uppercase — "NEEDS YOU · 2", "THIS MORNING".
-    static let overline = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.14, isUppercased: true)
+    static let overline = TypeStyle.overlineSmall
     /// `600 10.5`, `+.15em`, uppercase — "CLEARED TODAY · 4", a hair wider than `8r`'s.
-    static let clearedOverline = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.15, isUppercased: true)
+    static let clearedOverline = TypeStyle.overlineSmall.tracking(em: 0.15)
     /// `600 14`, `-.02em` — a cleared row's title, half a point down from a live one.
-    static let clearedTitle = TypeStyle(size: 14, weight: .semibold, trackingEm: -0.02)
+    static let clearedTitle = TypeStyle.rowTitleSm
     /// `400 12` — its second line.
-    static let clearedDetail = TypeStyle(size: 12, weight: .regular)
+    static let clearedDetail = TypeStyle.meta
     /// `600 13` — a filter chip.
-    static let filterChip = TypeStyle(size: 13, weight: .semibold)
+    static let filterChip = TypeStyle.chip
     /// `600 12.5` — "2 more".
-    static let moreLabel = TypeStyle(size: 12.5, weight: .semibold)
-    /// `24/1.15`, `-.02em` — "All clear.".
+    static let moreLabel = TypeStyle.chipSoft
+    /// `400 24/1.15 Newsreader`, `-.02em` — "All clear.".
     ///
-    /// The design sets this in Newsreader at 400 and the app has no serif; the app-wide
-    /// translation of a design heading is Instrument Sans at its heaviest, which is what this is.
-    /// Size, tracking and leading are the design's.
-    static let allClearTitle = TypeStyle(size: 24, weight: .extraBold, trackingEm: -0.02, lineHeightMultiple: 1.15)
+    /// `8h` sets this `font:400 24px/1.15 Newsreader,Georgia,serif`, which is `profileName`
+    /// exactly. It was drawn here at 800 in the sans on the reasoning that "the app has no serif,
+    /// and the app-wide translation of a design heading is Instrument Sans at its heaviest" —
+    /// true when it was written, wrong twice over now. Newsreader is bundled, and a heading the
+    /// design sets at its *lightest* weight is not one to translate to the heaviest: it was the
+    /// only style in section 8 pointing the opposite way to every other display line.
+    static let allClearTitle = TypeStyle.profileName
     /// `400 13.5/1.6` — the sentence under it.
-    static let allClearBody = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.6)
-    /// `600 17`, `-.02em` — the heading of the filtered-empty state, which the design never
-    /// draws. Sized to `ContentUnavailableView`'s own proportions rather than to a CSS rule.
-    static let narrowedTitle = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.02)
+    static let allClearBody = TypeStyle.emptyBody
+    /// `600 17`, `-.03em` — the heading of the filtered-empty state, which the design never
+    /// draws. It takes the shared 17 rather than an invented tracking of its own, precisely
+    /// because there is no CSS to be exact against.
+    static let narrowedTitle = TypeStyle.venueHeading
 }

@@ -5,13 +5,13 @@
 //  The serif line at the top of a section-8 screen.
 //
 //  `8m` sets its title `font: 400 30px/1.05 Newsreader, Georgia, serif` with
-//  `letter-spacing:-.022em`. `.tabTitle` is the nearest existing style and is drawn at 28/1.02
-//  with no tracking, so it is neither this screen's size nor its leading nor its fit — a title
-//  two points short and a hair loose across the whole line.
+//  `letter-spacing:-.022em`. `.tabTitle` is the nearest existing style and agrees on the family,
+//  the weight and the fit, but it is drawn at 28/1.02 — two points short, and set a little
+//  tighter down the line than a heading with this much air wants.
 //
-//  This exists rather than being spelled inline because it is a `TypeStyle`, and the two
-//  numbers in it are the ones the design measures per screen. When the rest of section 8 lands
-//  and the sizes agree, this belongs in `Typography.swift` beside `.tabTitle`. See the PR body.
+//  It is no longer only `8m`'s: `8l` opens with the same heading, so `ScheduleType.blockHeading`
+//  takes this style rather than restating it. Four of section 8's screens now draw from it, which
+//  is what would earn it a place in `Typography.swift` beside `.tabTitle`.
 //
 
 import SwiftUI

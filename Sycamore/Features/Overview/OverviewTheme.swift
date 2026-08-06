@@ -6,10 +6,12 @@
 //  lift under your own court, the seven type styles the design sets Overview in, and the handful
 //  of metrics it draws the screen with.
 //
-//  Local to this folder on purpose. `Theme` and `Typography` are the files every feature touches
-//  and section 8 is being built by several hands at once, so a new token there is a merge
-//  conflict for all of them. Several of these belong upstairs once the section lands — the PR
-//  says which.
+//  The colour and the metrics are local to this folder on purpose. `Theme` is the file every
+//  feature touches and section 8 is being built by several hands at once, so a new token there is
+//  a merge conflict for all of them. Several belong upstairs once the section lands.
+//
+//  The type went upstairs already: the shared table now draws section 8's weights, so the seven
+//  styles below are aliases onto it rather than a private copy of the scale.
 //
 //  Nothing here is invented. Every number is transcribed from the design's own CSS and the
 //  shorthand it came from is quoted beside it.
@@ -47,41 +49,34 @@ enum OverviewTheme {
 
     // MARK: Type
     //
-    // Seven styles the design sets Overview in that the type table has no row for. They are
-    // written out rather than derived from a nearby style because deriving two properties off a
-    // third style documents nothing — the CSS is the source, so the CSS is what is quoted.
+    // Seven styles the type table had no row for when these screens were written, because it was
+    // still transcribed from the design's earlier and heavier ones. It carries section 8's weights
+    // now, so all seven are names onto it rather than a scale of their own.
 
     /// `600 10.5`, `+.14em`, uppercase — "YOUR COURT" and "OTHER COURTS".
-    ///
-    /// Lighter, smaller and wider than `.sectionHeader` (`700 11 / +.1em`), which is what these
-    /// overlines were set in. All three differences are legible side by side at 10.5pt.
-    static let overline = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.14, isUppercased: true)
+    static let overline = TypeStyle.overlineSmall
 
     /// `600 17`, `-.03em` — a court card's big line.
-    ///
-    /// Semibold, not the 800 of `.venueHeading`. Overview's cards are a list to read down, and
-    /// the design sets them two weights lighter than Rank's venue headings for that.
-    static let cardTitle = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.03)
+    static let cardTitle = TypeStyle.venueHeading
 
     /// `400 13` — "Court 1 – 8 players" under it.
-    static let cardSubtitle = TypeStyle(size: 13, weight: .regular)
+    static let cardSubtitle = TypeStyle.sheetSubtitle
 
     /// `400 13.5/1.55` — the note hanging off the block on your own court.
-    static let cardNote = TypeStyle(size: 13.5, weight: .regular, lineHeightMultiple: 1.55)
+    static let cardNote = TypeStyle.subtitle.lineHeight(1.55)
 
     /// `400 13.5` — a name in a court's list, and the `+3 more` under it.
     ///
     /// The design's `/1.65` is carried by `rosterRowPadding` instead: each name is its own
     /// single-line `Text`, and SwiftUI's `lineSpacing` only ever falls *between* lines, so a
     /// line-height here would be inert and misleading.
-    static let rosterName = TypeStyle(size: 13.5, weight: .regular)
+    static let rosterName = TypeStyle.subtitle
 
-    /// `400 13` — the rank numeral beside it. Regular, not the 700 of `.rankNumeral`: Rank's
-    /// numerals are a column you drag rows through, these are a quiet index.
-    static let rosterRank = TypeStyle(size: 13, weight: .regular)
+    /// `400 13` — the rank numeral beside it.
+    static let rosterRank = TypeStyle.rankNumeral
 
     /// `600 13` — the filled `Open` pill your own court carries.
-    static let statusPill = TypeStyle(size: 13, weight: .semibold)
+    static let statusPill = TypeStyle.chip
 
     // MARK: Metrics
     //
