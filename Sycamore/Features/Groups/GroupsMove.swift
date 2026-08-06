@@ -135,59 +135,35 @@ struct GroupsMoveBar: View {
     let onDrop: () -> Void
 
     var body: some View {
-        HStack(spacing: Spacing.small) {
+        HStack(spacing: GroupsMetrics.moveBarGap) {
             Button(action: onCancel) {
                 Text("Cancel")
-                    .typeStyle(.chip, color: Theme.inkMuted)
-                    .padding(.horizontal, Spacing.large)
-                    .padding(.vertical, Spacing.small)
+                    .typeStyle(GroupsType.moveBarButton, color: Theme.inkMuted)
+                    .padding(.horizontal, GroupsMetrics.cancelPadding)
+                    .padding(.vertical, GroupsMetrics.moveBarButtonPadding)
                     .frame(minHeight: HitTarget.minimum)
                     .contentShape(Capsule(style: .continuous))
             }
             .buttonStyle(.plain)
 
-            Pill("Drop here", tone: .accent, font: .chip, action: onDrop)
-                .frame(minHeight: HitTarget.minimum)
-                .opacity(canDrop ? 1 : GroupsMetrics.bystanderOpacity)
-                .disabled(!canDrop)
-        }
-        .padding(.horizontal, Spacing.small)
-        .padding(.vertical, Spacing.tight)
-        .background(plate)
-        .overlay { ring }
-        .overlay { lip }
-        .shadow(Shadows.tabBar)
-    }
-
-    // The tab bar's three layers, restated so the two pills read as one piece of furniture while
-    // they are on screen together. They are a copy — `FloatingTabBar` owns the original in
-    // `TabBar.swift` — and want hoisting into a shared `floatingPlate()` modifier.
-
-    /// `rgba(250,250,251,.82)` over a blur.
-    private var plate: some View {
-        Capsule(style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay { Capsule(style: .continuous).fill(Theme.tabBarPlate) }
-    }
-
-    /// `0 0 0 .5px rgba(11,11,12,.07)`.
-    private var ring: some View {
-        Capsule(style: .continuous)
-            .strokeBorder(Theme.ink.opacity(0.07), lineWidth: BorderWidth.ring)
-    }
-
-    /// `inset 0 1px 0 rgba(255,255,255,.95)` — a catch of light along the top edge only.
-    private var lip: some View {
-        Capsule(style: .continuous)
-            .strokeBorder(
-                LinearGradient(
-                    colors: [Theme.tabBarLip, Theme.tabBarLip.opacity(0)],
-                    startPoint: .top,
-                    endPoint: .center
-                ),
-                lineWidth: BorderWidth.hairline
+            Pill(
+                "Drop here",
+                tone: .accent,
+                font: GroupsType.moveBarButton,
+                horizontalPadding: GroupsMetrics.dropPadding,
+                verticalPadding: GroupsMetrics.moveBarButtonPadding,
+                action: onDrop
             )
-            .allowsHitTesting(false)
+            .frame(minHeight: HitTarget.minimum)
+            .opacity(canDrop ? 1 : GroupsMetrics.bystanderOpacity)
+            .disabled(!canDrop)
+        }
+        .padding(.horizontal, GroupsMetrics.moveBarPadding)
+        .padding(.vertical, GroupsMetrics.moveBarPaddingVertical)
+        // The tab bar's own plate, so the two pills read as one piece of furniture while they
+        // are on screen together. See `GroupsFloatingPlate` — it is a copy awaiting a hoist.
+        .groupsFloatingPlate()
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -200,5 +176,5 @@ struct GroupsMoveBar: View {
     }
     .padding(Spacing.section)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Theme.grouped)
+    .background(Theme.surfaceWarm)
 }
