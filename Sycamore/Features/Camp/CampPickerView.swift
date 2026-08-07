@@ -33,6 +33,7 @@ struct CampPickerView: View {
     let isManagingCamps: Bool
 
     @State private var isCreating = false
+    @FocusState private var isCodeFocused: Bool
     /// The design's 44pt camp tile and 42pt "Start a camp" tile. Scaled, because a row whose copy
     /// has grown half again leaves a fixed tile looking stuck to the top of it.
     @ScaledMetric(relativeTo: .body) private var tileSize: CGFloat = 44
@@ -316,20 +317,7 @@ struct CampPickerView: View {
         @Bindable var store = store
 
         return HStack(spacing: Spacing.small) {
-            ZStack(alignment: .leading) {
-                if store.joinCodeInput.isEmpty {
-                    Text("SYC-••••")
-                        .typeStyle(.intakeJoinCode, color: Theme.inkFaint)
-                }
-                codeField($store.joinCodeInput)
-            }
-            .padding(Spacing.gutterWide)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.input, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: BorderWidth.input)
-            }
+            codeField($store.joinCodeInput)
 
             Button {
                 Task { await store.joinCamp() }
@@ -357,15 +345,26 @@ struct CampPickerView: View {
         }
     }
 
+    /// The same `.intakeCard` box "Shape the camp" draws its name field in — one component now,
+    /// rather than the two hand-rolled copies this and `CreateCampView` had each grown.
+    ///
+    /// The two matched on chrome and not on behaviour: the name field carried a `.contentShape`
+    /// and a tap-to-focus, this one never had either, so the 14pt of gutter around the code did
+    /// nothing when you put a finger on it. `FormField` gives both the whole box.
     private func codeField(_ text: Binding<String>) -> some View {
-        let base = TextField("", text: text)
-            .textFieldStyle(.plain)
-            .typeStyle(.intakeJoinCode, color: Theme.ink)
-            .autocorrectionDisabled()
-            .accessibilityLabel("Invite code")
+        let field = FormField(
+            "SYC-••••",
+            text: text,
+            label: "Invite code",
+            metrics: .intakeCard,
+            type: .intakeJoinCode,
+            focus: $isCodeFocused
+        )
+        .autocorrectionDisabled()
 
+        // Every one of these travels down the environment to the `TextField` inside `FormField`.
         #if os(iOS)
-        return base
+        return field
             // A code is read off a flyer, not remembered — the one-time-code type is what puts a
             // pasted or messaged one on the keyboard bar.
             .textContentType(.oneTimeCode)
@@ -373,7 +372,7 @@ struct CampPickerView: View {
             .submitLabel(.join)
             .onSubmit { Task { await store.joinCamp() } }
         #else
-        return base
+        return field
         #endif
     }
 

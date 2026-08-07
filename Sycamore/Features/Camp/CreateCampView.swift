@@ -165,39 +165,24 @@ struct CreateCampView: View {
     private var nameField: some View {
         @Bindable var store = store
 
-        return ZStack(alignment: .leading) {
-            if store.campDraft.name.isEmpty {
-                Text("UCLA Tennis Camp")
-                    .typeStyle(.intakeFieldTitle, color: Theme.inkFaint)
-            }
-            textField($store.campDraft.name)
-        }
-        .padding(Spacing.gutterWide)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.input, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
-                .strokeBorder(Theme.stroke, lineWidth: BorderWidth.input)
-        }
-        .contentShape(.rect)
-        .onTapGesture { isNameFocused = true }
-    }
+        let field = FormField(
+            "UCLA Tennis Camp",
+            text: $store.campDraft.name,
+            label: "Camp name",
+            metrics: .intakeCard,
+            type: .intakeFieldTitle,
+            focus: $isNameFocused
+        )
+        .autocorrectionDisabled()
 
-    private func textField(_ text: Binding<String>) -> some View {
-        let base = TextField("", text: text)
-            .textFieldStyle(.plain)
-            .typeStyle(.intakeFieldTitle, color: Theme.ink)
-            .focused($isNameFocused)
-            .autocorrectionDisabled()
-            .accessibilityLabel("Camp name")
-
+        // Every one of these travels down the environment to the `TextField` inside `FormField`.
         #if os(iOS)
-        return base
+        return field
             .textContentType(.organizationName)
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
         #else
-        return base
+        return field
         #endif
     }
 
