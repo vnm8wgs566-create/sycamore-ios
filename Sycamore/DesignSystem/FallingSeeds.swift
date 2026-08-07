@@ -152,42 +152,45 @@ struct SeedLoadingView: View {
 
 // MARK: - Entrance
 
-/// The lockup: the mark, and the wordmark sliding out from behind it to the right.
+/// The lockup: the mark, and the wordmark typing itself in beside it.
 ///
-/// The whole thing is centred, and that is what produces the movement. The word starts at zero
-/// width — clipped to nothing behind the mark — and grows to its natural width. Because the
-/// row is centred, the mark is pushed left by exactly half the word's width as it emerges, so
-/// the two settle as a balanced lockup without either being positioned by hand.
+/// The row holds the finished word's width from the first frame. A copy of the whole word is
+/// laid out and `.hidden()`, and the characters written so far are drawn over it, leading
+/// aligned. So the lockup is centred where it will settle before a single letter exists, and no
+/// letter already on screen ever moves again — which is what typing means.
+///
+/// Deliberately not the growing frame this used to be. That version measured the word and
+/// animated `.frame(width:)` up from zero; because the row is centred, the mark was pushed left
+/// as the word emerged. That is a fine reading of a continuous wipe and the wrong one for
+/// typing, where eight discrete characters would have shoved the mark sideways eight times.
+/// Running both together is worse again: a clip that does not land exactly on a glyph boundary
+/// shows a letter cut down the middle, which is the wipe this is replacing.
 ///
 /// The word is one `Text`, never one per letter: splitting it would let each letter animate
-/// alone but would throw away kerning and the design's `-.042em` tracking, and "Sycamore" with
-/// the pairs pulled apart is a different wordmark. Clipping leaves the type exactly as
-/// `.display` sets it — the same style the sign-in screen uses — and only uncovers it.
+/// alone but would throw away kerning and the design's `-.022em` tracking, and "Sycamore" with
+/// the pairs pulled apart is a different wordmark. A prefix of the string is still a single run,
+/// so what is on screen is set exactly as `.display` sets it — the same style the sign-in screen
+/// uses — with only its last character's advance in question rather than all eight.
 private struct EntranceLockup: View {
-    var isRevealed: Bool
-    var reduceMotion: Bool
-
-    /// The word's natural width, measured once from its own layout. The reveal animates to
-    /// this rather than to `nil`, which cannot be animated.
-    @State private var wordWidth: CGFloat = 0
+    /// How many characters of the wordmark are written. Owned by `SeedEntrance`, which holds the
+    /// whole of the entrance's clock in one place rather than splitting it across two views.
+    var typedCount: Int
 
     var body: some View {
         HStack(spacing: 0) {
             SycamoreAppMark(size: 72)
                 .shadow(Shadows.tabItem)
 
-            Text("Sycamore")
+            Text(Motion.Entrance.wordmark)
                 .typeStyle(.display, color: Theme.ink)
-                // Ideal width regardless of what the collapsing frame proposes, so the
-                // measurement below is the word's real width and not the clipped one.
-                .fixedSize()
+                // Drawn nowhere, measured everywhere: this copy is what sets the row's width.
+                // `.hidden()` rather than `.opacity(0)` so it leaves the accessibility tree too.
+                .hidden()
+                .overlay(alignment: .leading) {
+                    Text(Motion.Entrance.wordmark.prefix(typedCount))
+                        .typeStyle(.display, color: Theme.ink)
+                }
                 .padding(.leading, Spacing.large)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { wordWidth = $0 }
-                .frame(width: isRevealed ? wordWidth : 0, alignment: .leading)
-                // Leading alignment plus the clip is what makes it read as sliding out from
-                // behind the mark rather than fading up in place.
-                .clipped()
-                .opacity(isRevealed ? 1 : 0)
         }
     }
 }
@@ -197,11 +200,14 @@ private struct EntranceLockup: View {
 ///
 /// Held to about two seconds. Long enough to read as intentional, short enough that somebody
 /// opening the app to mark a kid away twenty times a day never waits on it. The seeds and the
-/// sweep are both skipped when Reduce Motion is on; the mark and the word still arrive.
+/// typing are both skipped when Reduce Motion is on; the mark and the word still arrive.
 struct SeedEntrance: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasLanded = false
-    @State private var wordRevealed = false
+    /// Characters of the wordmark written so far. A count rather than a fraction, because the
+    /// word arrives in whole letters: there is no state between two of them for a curve to
+    /// interpolate, which is also why nothing below animates it.
+    @State private var typedCount = 0
 
     var body: some View {
         ZStack {
@@ -212,21 +218,56 @@ struct SeedEntrance: View {
 
             // Tiled for the same reason as `SeedLoadingView` — a bare pair mark is lost among
             // the seeds falling past it.
-            EntranceLockup(isRevealed: wordRevealed, reduceMotion: reduceMotion)
+            EntranceLockup(typedCount: typedCount)
                 .scaleEffect(hasLanded ? 1 : 0.92)
                 .opacity(hasLanded ? 1 : 0)
                 // The mark and word are one announcement, not two; VoiceOver should not read
-                // the splash as separate elements while the app is still opening.
+                // the splash as separate elements while the app is still opening, and it must
+                // certainly not read it a character at a time as the word arrives.
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Sycamore")
         }
         .ignoresSafeArea()
         .task {
-            withAnimation(.smooth(duration: 0.42)) { hasLanded = true }
-            // The word follows the mark rather than arriving with it — the mark lands, then
-            // the name is written beside it.
-            try? await Task.sleep(for: .milliseconds(220))
-            withAnimation(.smooth(duration: 0.56)) { wordRevealed = true }
+            // The landing stays here, in the synchronous head of the task, rather than moving
+            // into `typeWordmark()` with the rest. `SycamoreApp` records — off screen captures,
+            // twice — that a `withAnimation` reached after an `await` is not reliably picked up
+            // as a view-update transaction and simply snaps. Nothing has been awaited yet at
+            // this line, and that is the only reason this one animates.
+            withAnimation(.smooth(duration: Motion.Entrance.land)) { hasLanded = true }
+            await typeWordmark()
+        }
+    }
+
+    /// Writes the word beside the mark, a character at a time.
+    ///
+    /// A plain sleep loop rather than an animation. Each step is a whole character appearing,
+    /// not a value travelling between two states, so there is nothing for a curve to
+    /// interpolate; `phaseAnimator` would want nine phases and still need the same interval
+    /// between them. Nothing here animates, and nothing here needs to.
+    private func typeWordmark() async {
+        // Reduce Motion gets the finished word rather than a quicker one. The writing *is* the
+        // motion being asked about; the name is not, so the name still arrives — it is simply
+        // already there. Nothing at all rather than a near-zero interval, for the reason
+        // `GroupsMetrics.fold(reduceMotion:)` gives: that is the real "do not animate this".
+        guard !reduceMotion else {
+            typedCount = Motion.Entrance.wordmark.count
+            return
+        }
+
+        do {
+            // The word follows the mark rather than arriving with it — the mark lands, then the
+            // name is written beside it.
+            try await Task.sleep(for: .seconds(Motion.Entrance.markToWord))
+            for count in 1...Motion.Entrance.wordmark.count {
+                try await Task.sleep(for: .seconds(Motion.Entrance.keystroke))
+                typedCount = count
+            }
+        } catch {
+            // Cancelled: the entrance is already being torn down, so the half-written word is
+            // never seen. Caught rather than swallowed per-sleep with `try?` on purpose —
+            // `try?` would let every remaining sleep return instantly and spin the rest of the
+            // word out inside a single frame.
         }
     }
 }
