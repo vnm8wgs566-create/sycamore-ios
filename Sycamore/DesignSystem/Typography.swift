@@ -540,23 +540,44 @@ private struct TypeStyleModifier: ViewModifier {
 
 extension View {
     /// Applies size, weight, tracking, line spacing and casing in one go.
+    ///
+    /// The way to set type in this app, `Text` receivers included. `Text.typeStyleRun(_:color:)`
+    /// below is the narrow exception, and it says why.
     func typeStyle(_ style: TypeStyle, color: Color? = nil) -> some View {
         modifier(TypeStyleModifier(style: style, color: color))
     }
 }
 
 extension Text {
-    /// `Text`-flavoured variant, for the places that need a `Text` rather than a `View` — a
-    /// field `prompt:`, or a styled run interpolated into another string:
+    /// Size, weight and tracking on a single *run*, for the few places that need a `Text` back
+    /// rather than a view — a field `prompt:`, or a styled fragment interpolated into a longer
+    /// string:
     ///
-    ///     let code = Text(camp.inviteCode).typeStyle(.monoInline)
+    ///     let code = Text(camp.inviteCode).typeStyleRun(.monoInline)
     ///     Text("Share \(code) with your staff")
     ///
     /// Interpolate them like that rather than joining runs with `+`.
     ///
-    /// Line spacing and casing have no `Text` equivalent — reach for `View.typeStyle(_:)` when
-    /// the copy is multi-line, and uppercase the string yourself for `.sectionHeader`/`.badge`.
-    func typeStyle(_ style: TypeStyle, color: Color? = nil) -> Text {
+    /// **Deliberately not called `typeStyle`.** It was, and sharing the name was the bug. Swift
+    /// resolves a member on the concrete type ahead of one reached through a protocol extension,
+    /// so on a `Text` receiver — which is what nearly every call site in this app is — this
+    /// overload won and `View.typeStyle(_:color:)` never ran. That quietly dropped the two
+    /// modifiers `Text` has no equivalent for: `.lineSpacing` and `.textCase`.
+    ///
+    /// Casing was the visible loss. All 29 call sites on an `isUppercased` style sit on a
+    /// `Text(…)` and not one uppercases its own string, so `.textCase(.uppercase)` in
+    /// `TypeStyleModifier` was unreachable and every eyebrow in the app — `sectionHeader`,
+    /// `badge`, `overline`, `overlineSmall`, `statLabel` — drew in sentence case. The design is
+    /// unambiguous the other way: all 39 of its `text-transform` declarations are `uppercase`,
+    /// each wrapping a sentence-case literal (`letter-spacing:.1em;text-transform:uppercase`
+    /// around "Your camps"). The Swift literals were already right; only the plumbing was wrong.
+    ///
+    /// A distinct spelling cannot shadow anything, so taking the `Text` flavour is now a choice
+    /// at the call site rather than an accident of resolution. Reach for it only when the result
+    /// has to be a `Text` — `View.typeStyle(_:color:)` is the default everywhere else — and if
+    /// you need a run in an uppercase style, uppercase the string yourself, because that
+    /// limitation has not moved.
+    func typeStyleRun(_ style: TypeStyle, color: Color? = nil) -> Text {
         var text = self
             .font(.sycamore(style, scaledRelativeTo: style.textStyle))
             .tracking(style.tracking)

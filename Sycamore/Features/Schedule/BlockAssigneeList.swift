@@ -68,7 +68,7 @@ struct BlockAssigneeList: View {
     private func name(for member: StaffMember) -> Text {
         guard member.id == myID else { return Text(member.name) }
         let you = Text(" · you")
-            .typeStyle(ScheduleType.assigneeName.weight(.regular), color: Theme.accent)
+            .typeStyleRun(ScheduleType.assigneeName.weight(.regular), color: Theme.accent)
         return Text("\(member.name)\(you)")
     }
 }
