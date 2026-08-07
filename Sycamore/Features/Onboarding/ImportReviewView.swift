@@ -194,14 +194,17 @@ struct ImportReviewView: View {
 
                     Spacer(minLength: 0)
 
-                    // SF Symbols has no gender glyph to stand in for the design's, and the app
-                    // already writes gender as the single letter `Player.metaLine` uses. Same
-                    // letter, and `glyph` — the grey the design gives its icons, a step lighter
-                    // than its text.
+                    // The design's own glyph, drawn rather than lettered. SF Symbols still has no
+                    // gender set — that has not changed — but the letter that stood in for it
+                    // read as a redaction on the one row it mattered most on, `X` beside a name
+                    // the file already failed to describe. `GenderMark` draws all three, `.x`
+                    // included, and takes `glyph` — the grey the design gives its icons, a step
+                    // lighter than its text.
+                    //
+                    // `alongside: .intakeGlyphLetter` so the mark grows at the rate the letter
+                    // did: this row sets it at 13, not the 12 the rest of the app draws marks at.
                     if let gender = player.gender {
-                        Text(gender.symbol)
-                            .typeStyle(.intakeGlyphLetter, color: Theme.glyph)
-                            .accessibilityLabel(gender.intakeLabel)
+                        GenderMark(gender, alongside: .intakeGlyphLetter)
                     }
                 }
                 // Name, age and gender are one kid, not three announcements.

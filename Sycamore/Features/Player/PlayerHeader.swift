@@ -18,6 +18,9 @@ struct PlayerHeader: View {
     /// coach cannot infer from the court number alone.
     let placement: String
     let name: String
+    /// The mark the design draws in front of the line below (`ph-gender-male` at `#A2A6AE`).
+    /// Nil alongside a nil `whoTheyAre`, and for the same reason.
+    let gender: Gender?
     /// `Boy · 13 years`. Nil for a kid the camp has since dropped, which is the only way the name
     /// above is empty too.
     let whoTheyAre: String?
@@ -46,10 +49,24 @@ struct PlayerHeader: View {
                 .padding(.top, OnTheDayTokens.headerTop)
 
             if let whoTheyAre {
-                Text(whoTheyAre)
-                    .typeStyle(.onTheDayLede, color: Theme.inkMuted)
-                    .padding(.horizontal, Spacing.header)
-                    .padding(.top, Spacing.small)
+                HStack(spacing: Spacing.tight) {
+                    if let gender {
+                        // Decorative here, and only here. The mark carries `Gender.label` at the
+                        // three sites that draw it *instead of* a word; this line writes the word
+                        // out beside it, so announcing both reads "Other. Kid · 13 years".
+                        GenderMark(
+                            gender,
+                            size: GenderMark.ledeGlyph,
+                            alongside: .onTheDayLede,
+                            tint: Theme.inkFaint
+                        )
+                        .accessibilityHidden(true)
+                    }
+                    Text(whoTheyAre)
+                        .typeStyle(.onTheDayLede, color: Theme.inkMuted)
+                }
+                .padding(.horizontal, Spacing.header)
+                .padding(.top, Spacing.small)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,6 +91,7 @@ struct PlayerHeader: View {
         PlayerHeader(
             placement: "Sycamore · Court 1 · Nass",
             name: "Austin Z",
+            gender: .m,
             whoTheyAre: "Boy · 13 years",
             onBack: {}
         )

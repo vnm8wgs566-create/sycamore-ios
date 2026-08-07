@@ -310,16 +310,15 @@ private struct GroupPlayerRow: View {
     /// Gender first, then whatever else is true today. The design draws all three at 13 before
     /// the handle; a kid with nothing unusual about them shows only the first.
     ///
-    /// Gender is a letter rather than a glyph. The design draws Phosphor's Venus and Mars marks,
-    /// which SF Symbols has no equivalent of at all — the app's own `figure.stand.dress` stood
-    /// in for them, and it both collapsed `.x` onto the male figure and disagreed with every
-    /// other screen, `8a`'s roster row included. `M` / `F` / `X` is what the rest of the app
-    /// writes, down to the meta line under a name, and it is the only spelling that can say `X`.
+    /// Gender is the mark the design draws, Phosphor's Venus and Mars. SF Symbols has no
+    /// equivalent — that is why this row carried a letter for so long, and why the
+    /// `figure.stand.dress` before the letter was removed: it encoded the distinction as a dress
+    /// and collapsed `.x` onto the male figure. `GenderMark` draws all three from scratch, so
+    /// the third answer finally has a glyph of its own rather than somebody else's, and `8a`'s
+    /// roster row draws exactly the same one.
     private var marks: some View {
         HStack(spacing: GroupsMetrics.markGap) {
-            Text(row.player.gender.symbol)
-                .typeStyle(.metaSmall, color: Theme.glyph)
-                .accessibilityLabel(row.player.gender.spoken)
+            GenderMark(row.player.gender)
 
             if row.isAway {
                 Image(systemName: "person.badge.minus")
@@ -372,23 +371,6 @@ private struct GroupPlayerRow: View {
             }
             // The kid stays in the air when the finger leaves; this only stops the tracking.
             .onEnded { _ in onMoveEnded() }
-    }
-}
-
-// MARK: - Spoken gender
-
-/// File-scoped rather than hoisted: several features draw this letter and any of them could
-/// want the word, but the first one to need it does not get to name it for everybody.
-private extension Gender {
-    /// What VoiceOver says where the screen draws a letter. `Gender.symbol` is `M` / `F` / `X`,
-    /// which reads aloud as an initial dropped into the middle of a name — and `8q` already
-    /// gives the words: "Boy · 13 years".
-    var spoken: String {
-        switch self {
-        case .m: "Boy"
-        case .f: "Girl"
-        case .x: "Gender not recorded"
-        }
     }
 }
 
