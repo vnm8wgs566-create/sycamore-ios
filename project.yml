@@ -11,7 +11,7 @@
 name: Sycamore
 
 options:
-  bundleIdPrefix: org.sycamore
+  bundleIdPrefix: com.cjgimena
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
@@ -49,7 +49,10 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Sycamore
-        PRODUCT_BUNDLE_IDENTIFIER: org.sycamore.app
+        # Must match the App ID registered under DEVELOPMENT_TEAM below, the App ID that has
+        # Sign In with Apple ticked, and the Apple provider's Client ID in Supabase. All four
+        # are the same string; a mismatch in any of them is rejected at a different layer.
+        PRODUCT_BUNDLE_IDENTIFIER: com.cjgimena.app
         INFOPLIST_FILE: Sycamore/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         # 1 = iPhone. The design is portrait phone only.

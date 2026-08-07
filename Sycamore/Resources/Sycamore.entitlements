@@ -8,8 +8,13 @@
 	  ASAuthorizationController answers .unknown before it draws anything.
 
 	  "Default" means this app's own App ID is the audience — a native iOS client, so no Services
-	  ID and no client secret. `org.sycamore.app` goes in the Supabase dashboard as the Apple
+	  ID and no client secret. `com.cjgimena.app` goes in the Supabase dashboard as the Apple
 	  provider's Client ID and that is the whole server side of it.
+
+	  It was `org.sycamore.app` up to 2026-08-06, from the original scaffold. That identifier was
+	  never registered with Apple — the scaffold set no DEVELOPMENT_TEAM, so it only ever built
+	  for the simulator, which signs ad-hoc and registers nothing. Nothing was claimed and
+	  nothing had to be released.
 	-->
 	<key>com.apple.developer.applesignin</key>
 	<array>

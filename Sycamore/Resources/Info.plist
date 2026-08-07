@@ -20,48 +20,25 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-
-	<!-- SwiftUI lifecycle: one scene, never more. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pick a photo for your profile so the people you work with can put a face to your name.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>InstrumentSans[wdth,wght].ttf</string>
+		<string>Newsreader[opsz,wght].ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
-
-	<!-- An empty launch screen is a plain white plate, which is what the design opens on. -->
 	<key>UILaunchScreen</key>
 	<dict/>
-
-	<!-- Portrait only. Every frame in the design is a phone held upright. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-
-	<!-- No UIUserInterfaceStyle key: the app follows the reader's choice. Every token in
-	     Theme.swift now resolves per scheme, so forcing Light here would override a palette
-	     that already knows what to do in the dark. -->
-
-	<!-- The one system resource the app touches: the profile avatar's photo well. -->
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Pick a photo for your profile so the people you work with can put a face to your name.</string>
-
-	<!--
-	  The design is set in Manrope, and every type token in Typography.swift — the negative
-	  tracking, the 800 weights — was measured against its metrics.
-
-	  One file, not five: Google Fonts ships Manrope as a variable font whose weight axis
-	  runs 200–800, and CoreText exposes its named instances individually, so
-	  Manrope-Regular / -Medium / -SemiBold / -Bold / -ExtraBold all resolve from this
-	  single registration — which is exactly what FontFamily probes for.
-	-->
-	<key>UIAppFonts</key>
-	<array>
-		<string>InstrumentSans[wdth,wght].ttf</string>
-		<string>Newsreader[opsz,wght].ttf</string>
 	</array>
 </dict>
 </plist>
