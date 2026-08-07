@@ -103,9 +103,14 @@ enum ScheduleMetrics {
     /// `26` / `20` — `padding:26px 20px` inside the empty-day hero.
     static let emptyPaddingVertical: CGFloat = 26
     static let emptyPaddingHorizontal: CGFloat = 20
-    /// `52` — the watermark on an empty day.
+    /// `52` / `24` — the disc on an empty day, and the glyph inside it.
+    ///
+    /// Only the 52 is transcribed. The design drew a logo in that space rather than a glyph, so
+    /// there is no second number in the CSS to take; the 24 is `8g`'s padlock, which the design
+    /// does draw, and draws in a disc of this same 52.
     static let emptyMark: CGFloat = 52
-    /// `16` — the drop from the watermark to "Friday is empty."
+    static let emptyMarkGlyph: CGFloat = 24
+    /// `16` — the drop from the disc to "Friday is empty."
     static let emptyTitleGap: CGFloat = 16
     /// `250` — how wide the sentence under it may run before it wraps. The design caps it well
     /// short of the card so the copy stays a paragraph rather than a banner.
