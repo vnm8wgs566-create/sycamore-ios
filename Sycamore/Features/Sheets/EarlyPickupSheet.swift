@@ -189,6 +189,9 @@ struct EarlyPickupSheet: View {
         }
     }
 
+    /// A menu wearing the same box as the field beside it. `.sheetBox` is where that box lives
+    /// now — this one is not a `TextField`, so it borrows the chrome rather than the component,
+    /// and the two stop being two drawings of the same thing that have to be kept in step.
     private var timeField: some View {
         Menu {
             Picker("Leaves at", selection: $store.pickupTime) {
@@ -197,70 +200,42 @@ struct EarlyPickupSheet: View {
                 }
             }
         } label: {
-            field(systemImage: "clock") {
-                Text(store.pickupTime.clockLabel)
-                    .typeStyle(.onTheDayValue, color: Theme.ink)
-            }
-            .contentShape(.rect)
+            Text(store.pickupTime.clockLabel)
+                .typeStyle(.onTheDayValue, color: Theme.ink)
+                .formFieldChrome(.sheetBox, icon: "clock")
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Leaves at")
         .accessibilityValue(store.pickupTime.clockLabel)
     }
 
+    /// No `.autocorrectionDisabled()`, unlike every other field in the app. This one is a
+    /// person's name typed one-handed at the side of a court, and the four screens that switch
+    /// autocorrect off are typing an address, an org name or a printed code — none of which the
+    /// dictionary can help with. A name it can.
     private var collectorField: some View {
-        field(systemImage: "person") {
-            ZStack(alignment: .leading) {
-                if collector.isEmpty {
-                    // A placeholder is one weight lighter than a value in this design — `400`
-                    // against the time field's `500` — so the two read apart before the colour
-                    // difference lands.
-                    Text("Who collects")
-                        .typeStyle(.onTheDayPlaceholder, color: Theme.inkFaint)
-                }
-                collectorInput
-            }
-        }
-        // A `TextField` only takes a tap on the glyphs it has drawn, which on an empty field is
-        // none of it. The box is the target.
-        .contentShape(.rect)
-        .onTapGesture { isCollectorFocused = true }
-    }
+        let field = FormField(
+            "Who collects",
+            text: $collector,
+            label: "Who collects",
+            metrics: .sheetBox,
+            type: .onTheDayValue,
+            // A placeholder is one weight lighter than a value in this design — `400` against
+            // the time field's `500` — so the two read apart before the colour difference lands.
+            promptType: .onTheDayPlaceholder,
+            icon: "person",
+            focus: $isCollectorFocused
+        )
 
-    private var collectorInput: some View {
-        let base = TextField("", text: $collector)
-            .textFieldStyle(.plain)
-            .typeStyle(.onTheDayValue, color: Theme.ink)
-            .focused($isCollectorFocused)
-            .accessibilityLabel("Who collects")
-
+        // Both travel down the environment to the `TextField` inside `FormField`.
         #if os(iOS)
-        return base
+        return field
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
         #else
-        return base
+        return field
         #endif
-    }
-
-    /// The design's bordered field: an icon, a value, and 13pt of gutter either side.
-    private func field(systemImage: String, @ViewBuilder content: () -> some View) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-
-        return HStack(spacing: 9) {
-            Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(Theme.inkFaint)
-                .accessibilityHidden(true)
-            content()
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, OnTheDayTokens.cardInset)
-        .padding(.vertical, Spacing.row)
-        .background(Theme.surface, in: shape)
-        .overlay { shape.strokeBorder(Theme.stroke, lineWidth: BorderWidth.hairline) }
-        // The box keeps the height the design draws it at; only the touch reaches 44.
-        .frame(minHeight: HitTarget.minimum)
     }
 
     /// A day that already has a pick-up is edited, not doubled — `setEarlyPickup` upserts one

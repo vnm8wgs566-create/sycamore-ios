@@ -135,55 +135,34 @@ struct SignInView: View {
 
     // MARK: Email
 
+    /// The shared field in its `.outlined` box. The placeholder is still `verbatim:` — see
+    /// `FormField`, which carries the reasoning now, and the bug it came from: a bare literal is
+    /// a `LocalizedStringKey`, SwiftUI parses those as Markdown, and Markdown autolinks a bare
+    /// email address. This exact string once rendered as a tinted link that ignored every
+    /// foreground colour set on it.
     private var emailField: some View {
         @Bindable var store = store
 
-        return HStack(spacing: Spacing.row) {
-            Image(systemName: "envelope")
-                .font(.system(size: 19, weight: .regular))
-                .foregroundStyle(Theme.inkFaint)
+        let field = FormField(
+            "you@yourcamp.org",
+            text: $store.emailInput,
+            // The "Email" header above says what it is on screen; VoiceOver reads the field on
+            // its own, and without this it would fall back to reading out the example address.
+            label: "Email address",
+            icon: "envelope",
+            focus: $isEmailFocused
+        )
+        .autocorrectionDisabled()
 
-            ZStack(alignment: .leading) {
-                if store.emailInput.isEmpty {
-                    // `foregroundStyle` rather than the colour argument: the `Text` overload
-                    // of `typeStyle` resolves to the deprecated `Text.foregroundColor`, which
-                    // the app's `.tint(Theme.accent)` was overriding — the placeholder came
-                    // out accent blue instead of #A2A6AE.
-                    // `verbatim:` matters here. A plain string literal becomes a
-                    // LocalizedStringKey, which SwiftUI parses as Markdown — and Markdown
-                    // autolinks bare email addresses. The placeholder was rendering as a
-                    // tinted link (#1568F0) and ignoring every foreground colour we set.
-                    Text(verbatim: "you@yourcamp.org")
-                        .typeStyle(.fieldValue, color: Theme.inkFaint)
-                }
-                textField($store.emailInput)
-            }
-            .padding(.vertical, Spacing.large)
-        }
-        .padding(.horizontal, 15)
-        .overlay {
-            RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
-                .strokeBorder(Theme.stroke, lineWidth: BorderWidth.input)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture { isEmailFocused = true }
-    }
-
-    private func textField(_ text: Binding<String>) -> some View {
-        let base = TextField("", text: text)
-            .textFieldStyle(.plain)
-            .typeStyle(.fieldValue, color: Theme.ink)
-            .focused($isEmailFocused)
-            .autocorrectionDisabled()
-
+        // Every one of these travels down the environment to the `TextField` inside `FormField`.
         #if os(iOS)
-        return base
+        return field
             .keyboardType(.emailAddress)
             .textContentType(.emailAddress)
             .textInputAutocapitalization(.never)
             .submitLabel(.go)
         #else
-        return base
+        return field
         #endif
     }
 }
