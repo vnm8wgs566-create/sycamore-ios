@@ -24,6 +24,11 @@ struct IntakeChoiceChip: View {
         Button(action: action) {
             Text(title)
                 .typeStyle(.intakeChip, color: isSelected ? Theme.onAccent : Theme.inkMuted)
+                // Kept, though the answer that needed it is gone. "Prefer not to say" wrapped to
+                // two lines at every type size and is now "Other", which does not — but the
+                // gender row is not this chip's only caller: `8e`'s venue row puts whatever the
+                // camp named its venues through the same control, at a third of the width each.
+                // Left-ragged second lines in an equal-width row is the state this prevents.
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
@@ -48,7 +53,7 @@ struct IntakeChoiceChip: View {
 
 #Preview("Answer chips") {
     @Previewable @State var choice = 0
-    let answers = ["Girl", "Boy", "Prefer not to say"]
+    let answers = Gender.intakeOptions.map(\.label)
 
     HStack(spacing: Spacing.tight) {
         ForEach(answers.indices, id: \.self) { index in

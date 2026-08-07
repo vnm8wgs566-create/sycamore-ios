@@ -296,16 +296,9 @@ extension Gender {
         }
     }
 
-    /// How `8e` offers the three answers.
-    var intakeLabel: String {
-        switch self {
-        case .f: "Girl"
-        case .m: "Boy"
-        case .x: "Prefer not to say"
-        }
-    }
-
-    /// The order the chips run in on `8e`.
+    /// The order the chips run in on `8e`. The words themselves are `Gender.label`, hoisted to
+    /// the model: they are read back by every screen that draws a mark instead of a word, and
+    /// the chip and the readback disagreeing is what sent them there.
     static let intakeOptions: [Gender] = [.f, .m, .x]
 }
 

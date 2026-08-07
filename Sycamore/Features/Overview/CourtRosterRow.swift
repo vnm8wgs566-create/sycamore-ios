@@ -37,10 +37,9 @@ struct CourtRosterRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: Spacing.tight) {
-                // The design's gender glyph, in the app's own vocabulary — `M` / `F` / `X` is
-                // what every other screen writes it as, down to the meta line under a name.
-                Text(row.player.gender.symbol)
-                    .typeStyle(.metaSmall, color: Theme.glyph)
+                // The design's gender glyph, drawn — see `GenderMark`, which sizes and scales
+                // itself, so nothing here has to match it to the clock beside it by hand.
+                GenderMark(row.player.gender)
 
                 if row.leavesAt != nil {
                     Image(systemName: "clock.fill")
@@ -50,28 +49,25 @@ struct CourtRosterRow: View {
             }
         }
         .padding(.vertical, OverviewTheme.rosterRowPadding)
-        // One element, said in words. Combining the children reads the row out as "1, Serene
-        // Chu, F" and then a clock with no meaning attached; the marks are only shorthand for
-        // a reader who can see them.
+        // One element, said in words. `GenderMark` carries its own label and the clock carries
+        // none, so combining reads this row out as "1, Serene Chu, Girl" and then stops short of
+        // the one fact a coach came to the row for. `spokenRow` says all of it, in order.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenRow)
     }
 
-    /// "1. Serene Chu. Female. Leaves at 12:30."
+    /// "1. Serene Chu. Girl. Leaves at 12:30."
+    ///
+    /// `Gender.label`, not the `Female` / `Male` / `Unspecified` this row used to say on its own.
+    /// Three screens each had a private spelling of the same three cases and the third one
+    /// disagreed with itself everywhere — "Unspecified" here, "Gender not recorded" on Groups,
+    /// and a chip on `8e` that had just accepted the answer as a choice.
     private var spokenRow: String {
-        var parts = ["\(row.rank). \(row.player.displayName)", spokenGender]
+        var parts = ["\(row.rank). \(row.player.displayName)", row.player.gender.label]
         if let leavesAt = row.leavesAt {
             parts.append("Leaves at \(leavesAt.formatted)")
         }
         return parts.joined(separator: ". ")
-    }
-
-    private var spokenGender: String {
-        switch row.player.gender {
-        case .m: "Male"
-        case .f: "Female"
-        case .x: "Unspecified"
-        }
     }
 }
 

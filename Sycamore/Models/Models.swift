@@ -25,15 +25,71 @@ enum Initials {
     }
 }
 
+/// A kid's gender, and the three ways the app says it.
+///
+/// The raw values are load-bearing and must not be renamed: Postgres stores `M` / `F` / `X`,
+/// the write path sends `symbol`, the read path upper- and lower-cases its way back, and
+/// `Codable` rides the same raw values. Only the display strings below are free to change.
+///
+/// **What `.x` means, and why the strings pick a side.** It is two things at once and this type
+/// cannot tell them apart: a camp that chose the third answer on `8e`, and a row whose gender
+/// column was blank — `IntakePlayer.asPlayer()` coerces `gender ?? .x` because `Player.gender`
+/// cannot be nil. The strings below say the *answer*, not the absence, for two reasons:
+///
+/// - The absence is already modelled properly one layer up. `IntakePlayer.gender` is optional,
+///   a nil raises `IntakeIssue.noGender`, and `8d` asks about it by name. The coercion only
+///   happens after somebody has been shown that gap and imported the row anyway.
+/// - The input claims a choice. `8e` offers "Other" as a chip you tap, so reading it back as
+///   "gender not recorded" tells a user their answer did not land — which is what the roster
+///   row used to do, in the same breath as the chip that had just accepted it.
+///
+/// Both readings cannot be right, so this is a choice about which mistake to make. Calling a
+/// blank column "Other" under-claims; calling a deliberate answer "not recorded" contradicts
+/// the person who gave it. The first is the cheaper of the two.
 enum Gender: String, Codable, Hashable, CaseIterable, Sendable {
     case m, f, x
 
     /// The middle field of a player's meta line: `13 · F · returning`.
+    ///
+    /// Deliberately still a letter, and deliberately the only display string that is. Every
+    /// screen that draws gender now draws `GenderMark` instead — but `Player.metaLine` is a
+    /// `String`, interpolated into one run of text by `GroupsLockedState`, and a `Shape` cannot
+    /// go in a `String`. Contorting the model into returning a view for the sake of one line
+    /// would cost more than the divergence does; this is the divergence, written down.
     var symbol: String {
         switch self {
         case .m: "M"
         case .f: "F"
         case .x: "X"
+        }
+    }
+
+    /// The answer, as `8e` offers it and as VoiceOver reads it back wherever the app draws a
+    /// mark instead of a word: `Girl` / `Boy` / `Other`.
+    ///
+    /// One string serving both directions on purpose. It was five strings across four files —
+    /// `Girl`/`Boy`/`Prefer not to say` on the chip, `Girl`/`Boy`/`Gender not recorded` on
+    /// Groups, `Female`/`Male`/`Unspecified` on Overview — and the third column disagreed with
+    /// itself three ways. A reader who taps "Other" and then hears "gender not recorded" has
+    /// been told their answer was a gap.
+    var label: String {
+        switch self {
+        case .m: "Boy"
+        case .f: "Girl"
+        case .x: "Other"
+        }
+    }
+
+    /// The kid, in prose: `Girl · 13 years` under a name on `8q`.
+    ///
+    /// Deliberately not `label`. "Other · 13 years" categorises a child where the sentence is
+    /// meant to describe one, and `8q` is a page about that single kid. `Kid` makes the same
+    /// refusal to gender them that `Other` does, in the register the line is written in.
+    var noun: String {
+        switch self {
+        case .m: "Boy"
+        case .f: "Girl"
+        case .x: "Kid"
         }
     }
 }
