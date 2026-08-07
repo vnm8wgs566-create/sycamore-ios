@@ -63,7 +63,7 @@ struct SycamoreApp: App {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Shared by the modifier and the teardown, so the wait cannot drift from the animation.
-    private var fadeDuration: Double { reduceMotion ? 0.4 : 0.6 }
+    private var fadeDuration: Double { Motion.Entrance.fade(reduceMotion: reduceMotion) }
 
     var body: some Scene {
         WindowGroup {
@@ -90,8 +90,9 @@ struct SycamoreApp: App {
                     // The choreography, end to end:
                     //
                     //   0.00  the mark lands       (0.42s)
-                    //   0.22  the word writes in   (0.56s, done at 0.78)
-                    //   0.78  — held, so the name is read rather than glimpsed —
+                    //   0.22  the word types in    (eight keystrokes at 0.07s — the first
+                    //         letter at 0.29, the last at 0.78)
+                    //   0.78  — held 0.47s, so the name is read rather than glimpsed —
                     //   1.25  the whole entrance — mark, word, seeds and ground — fades to
                     //         nothing over the page (0.6s, done at 1.85)
                     //
@@ -99,10 +100,17 @@ struct SycamoreApp: App {
                     // court, and a second of that was the splash being admired rather than
                     // read. 1.85s still lands every beat.
                     //
+                    // Those numbers are `Motion.Entrance`'s, not this comment's. The 1.25 below
+                    // is the sum of beats that `FallingSeeds` plays, so it is computed from them
+                    // rather than typed out here — a comment in this file cannot stop the hold
+                    // going stale when the typing rate changes in that one, and a hold that has
+                    // gone stale means the fade starting over a half-written word.
+                    //
                     // Under Reduce Motion the hold is shorter still: the seeds are gone and the
-                    // word arrives without its sweep, so there is materially less to watch and
-                    // holding the same beat would just be a wait.
-                    try? await Task.sleep(for: .milliseconds(reduceMotion ? 900 : 1250))
+                    // word is simply already there, so the same 0.47s dwell measured from the
+                    // mark landing puts the fade at 0.89 and the entrance away by 1.29. There is
+                    // materially less to watch and holding the same beat would just be a wait.
+                    try? await Task.sleep(for: .seconds(Motion.Entrance.hold(reduceMotion: reduceMotion)))
                     entranceOpacity = 0
 
                     // Torn down only once it is already invisible. Removing it while it is
