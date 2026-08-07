@@ -203,7 +203,6 @@ struct EarlyPickupSheet: View {
             Text(store.pickupTime.clockLabel)
                 .typeStyle(.onTheDayValue, color: Theme.ink)
                 .formFieldChrome(.sheetBox, icon: "clock")
-                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Leaves at")

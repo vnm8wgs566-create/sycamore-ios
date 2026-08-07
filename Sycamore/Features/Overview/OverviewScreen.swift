@@ -50,7 +50,9 @@ struct OverviewScreen: View {
     var body: some View {
         // Once per pass, for every court at the venue. See `TodayCourts.rosters(in:day:)` for
         // why this is built here and handed down rather than asked for inside each card.
-        let rosters = store.camp.map { TodayCourts.rosters(in: $0, day: store.today) } ?? [:]
+        let rosters = store.camp.map {
+            TodayCourts.rosters(in: $0, day: store.today, venueID: store.readVenueID)
+        } ?? [:]
 
         return VStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -135,17 +137,19 @@ struct OverviewScreen: View {
     private func card(
         for court: CourtCard, isMine: Bool, from rosters: [Group.ID: CourtRoster]
     ) -> some View {
+        let isExpanded = expandedCourtIDs.contains(court.id)
         let roster = TodayCourts.roster(
             for: court,
             from: rosters,
             preview: OverviewTheme.rosterPreview,
-            isExpanded: expandedCourtIDs.contains(court.id)
+            isExpanded: isExpanded
         )
 
         return OverviewCourtCard(
             card: court,
             isMine: isMine,
             roster: roster,
+            isRosterExpanded: isExpanded,
             note: isMine ? blockNote : nil,
             onOpenCoach: openCoach(court),
             // A court small enough to draw whole gets no control. `isFoldable` asks
@@ -179,12 +183,8 @@ struct OverviewScreen: View {
     // MARK: Intents
 
     private func toggle(_ courtID: Group.ID) {
-        withAnimation(OverviewTheme.fold(reduceMotion: reduceMotion)) {
-            if expandedCourtIDs.contains(courtID) {
-                expandedCourtIDs.remove(courtID)
-            } else {
-                expandedCourtIDs.insert(courtID)
-            }
+        withAnimation(Motion.fold(reduceMotion: reduceMotion)) {
+            expandedCourtIDs.toggle(courtID)
         }
     }
 

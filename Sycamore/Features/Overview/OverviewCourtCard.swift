@@ -29,6 +29,11 @@ struct OverviewCourtCard: View {
     /// The kids on the court, already folded to what this card should draw. Empty for a closed
     /// court, and for one with nobody on it today.
     var roster: CourtRoster = .none
+    /// Whether `roster` is the whole court or a preview of it. Handed in beside the rows rather
+    /// than inferred from them: the screen owns the answer, and `folded(to:)` *adds* to whatever
+    /// overflow a roster already carried, so `overflow == 0` stops meaning "open" the moment a
+    /// roster arrives that was short of the court to begin with.
+    var isRosterExpanded: Bool = false
     /// The note hanging off the block running here — "Cross-court forehand feeds, then a
     /// volley ladder." Nil is the ordinary case.
     var note: String?
@@ -140,13 +145,6 @@ struct OverviewCourtCard: View {
         }
     }
 
-    /// True once every kid on the court is drawn.
-    ///
-    /// Read off the roster rather than handed in beside it. The screen owns which cards are
-    /// open, and a card keeping its own copy of that answer is a second place for the two to
-    /// disagree — `GroupCard` derives the same fact the same way.
-    private var isRosterExpanded: Bool { roster.overflow == 0 }
-
     /// `+3 more`, indented into the rank column so it starts where the names do — and
     /// `Show less`, in the same place, once the card is open.
     ///
@@ -217,25 +215,21 @@ private struct OverviewCourtCardPreviewHarness: View {
         return ScrollView {
             VStack(spacing: OverviewTheme.cardGap) {
                 ForEach(cards) { card in
+                    let isExpanded = expanded.contains(card.id)
                     let roster = TodayCourts.roster(
                         for: card,
                         from: rosters,
                         preview: OverviewTheme.rosterPreview,
-                        isExpanded: expanded.contains(card.id)
+                        isExpanded: isExpanded
                     )
 
                     OverviewCourtCard(
                         card: card,
                         roster: roster,
+                        isRosterExpanded: isExpanded,
                         onOpenCoach: {},
                         onToggleRoster: roster.isFoldable(to: OverviewTheme.rosterPreview)
-                            ? {
-                                if expanded.contains(card.id) {
-                                    expanded.remove(card.id)
-                                } else {
-                                    expanded.insert(card.id)
-                                }
-                            }
+                            ? { expanded.toggle(card.id) }
                             : nil
                     )
                 }

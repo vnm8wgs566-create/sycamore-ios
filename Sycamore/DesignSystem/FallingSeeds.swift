@@ -181,17 +181,26 @@ private struct EntranceLockup: View {
             SycamoreAppMark(size: 72)
                 .shadow(Shadows.tabItem)
 
-            Text(Motion.Entrance.wordmark)
-                .typeStyle(.display, color: Theme.ink)
+            word(Motion.Entrance.wordmark)
                 // Drawn nowhere, measured everywhere: this copy is what sets the row's width.
                 // `.hidden()` rather than `.opacity(0)` so it leaves the accessibility tree too.
                 .hidden()
                 .overlay(alignment: .leading) {
-                    Text(Motion.Entrance.wordmark.prefix(typedCount))
-                        .typeStyle(.display, color: Theme.ink)
+                    word(Motion.Entrance.wordmark.prefix(typedCount))
                 }
                 .padding(.leading, Spacing.large)
         }
+    }
+
+    /// Both runs of the wordmark, set once.
+    ///
+    /// The reserved width and the typed prefix have to be set identically or the mark shifts
+    /// mid-type — the hidden copy would be measuring a word the visible one is not drawing.
+    /// Declared as a function so that is structural rather than two `.typeStyle(.display)`
+    /// calls four lines apart that a reader has to notice must agree.
+    private func word(_ characters: some StringProtocol) -> some View {
+        Text(String(characters))
+            .typeStyle(.display, color: Theme.ink)
     }
 }
 

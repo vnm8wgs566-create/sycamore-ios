@@ -37,16 +37,19 @@ struct FormFieldMetrics: Sendable {
     var fill: Color?
     /// The rule around it. `nil` for search, which is a filled plate with no border at all.
     var border: Color?
-    var borderWidth: CGFloat
+    /// Only read when `border` is set. Defaulted so a borderless preset does not have to invent
+    /// a width for a rule it never draws.
+    var borderWidth: CGFloat = BorderWidth.hairline
     var radius: CGFloat
     var horizontalPadding: CGFloat
     var verticalPadding: CGFloat
-    /// Gap between the leading glyph and the input.
-    var glyphGap: CGFloat
+    /// Gap between the leading glyph and the input. Defaulted, so a preset no call site gives an
+    /// icon to says nothing about glyphs rather than carrying a number transcribed from nowhere.
+    var glyphGap: CGFloat = Spacing.row
     /// Point size of the leading SF Symbol. Stated per box rather than derived from the type
     /// style, because the design has no ratio in it: sign-in runs a 19pt envelope over a 15.5pt
     /// value, the pick-up sheet a 16pt person over a 14pt one, and search a 17pt glass over 15.
-    var glyphSize: CGFloat
+    var glyphSize: CGFloat = 17
     /// Worn by the prompt *and* the glyph. The design has never drawn those two apart — all
     /// three glyph-bearing fields set them to the same grey — so they are one value here.
     var promptColor: Color
@@ -64,11 +67,13 @@ struct FormFieldMetrics: Sendable {
 
     /// The stage-1 intake card — white on `#F8F9F8`, the same rule and radius as sign-in, and
     /// `14` all four sides. Shared by "Shape the camp"'s name and the join-with-a-code row.
+    ///
+    /// Neither of those draws a glyph, so this preset states no glyph metrics. The design has
+    /// never put an icon in this box; if it ever does, the number comes from that drawing.
     static let intakeCard = FormFieldMetrics(
         fill: Theme.surface, border: Theme.stroke, borderWidth: BorderWidth.input,
         radius: Radius.input,
         horizontalPadding: Spacing.gutterWide, verticalPadding: Spacing.gutterWide,
-        glyphGap: Spacing.row, glyphSize: 17,
         promptColor: Theme.inkFaint, minimumHeight: nil
     )
 
@@ -90,7 +95,7 @@ struct FormFieldMetrics: Sendable {
     /// design draws it that way and it is the header of two screens this change does not own.
     /// Flagged in the PR rather than quietly grown here.
     static let plate = FormFieldMetrics(
-        fill: Theme.fill, border: nil, borderWidth: 0, radius: Radius.tile,
+        fill: Theme.fill, border: nil, radius: Radius.tile,
         horizontalPadding: 12, verticalPadding: Spacing.row,
         glyphGap: 9, glyphSize: 17,
         promptColor: Theme.searchPlaceholder, minimumHeight: nil
@@ -132,6 +137,12 @@ extension View {
             }
         }
         .frame(minHeight: metrics.minimumHeight)
+        // Part of the chrome, because the chrome is what creates the need for it. `padding`
+        // wraps its content rather than growing that content's own frame, and `minimumHeight`
+        // grows the box and not the line inside it — so every point this modifier adds around
+        // the text is a point that would otherwise do nothing when a finger lands on it. Both
+        // callers wanted it and both were applying it themselves.
+        .contentShape(.rect)
     }
 }
 
@@ -192,17 +203,16 @@ struct FormField: View {
 
     var body: some View {
         input
-            .formFieldChrome(metrics, icon: icon)
+            // The hit shape comes with the chrome; this is the half that is specific to a field.
             // The tap survives the move to `prompt:`, but there is one of it now rather than
-            // three. `padding` wraps a `TextField`; it does not grow the field's own frame, and
-            // the responder's rect is that frame — so the gutters either side of the text are
-            // not part of what takes a tap however the placeholder is drawn. The pick-up sheet's
-            // box is 44pt tall around a 17pt line; without this, most of it is dead.
+            // three: the responder's rect is the `TextField`'s own frame, so the gutters either
+            // side of the text never take a tap however the placeholder is drawn. The pick-up
+            // sheet's box is 44pt tall around a 17pt line; without this, most of it is dead.
             //
             // Deliberately no `.accessibilityAddTraits(.isButton)` over the top of it. The
             // `TextField` is already the element VoiceOver lands on, and a button trait here
             // would announce a second, imaginary control in front of it.
-            .contentShape(.rect)
+            .formFieldChrome(metrics, icon: icon)
             .onTapGesture { focus.wrappedValue = true }
     }
 
@@ -216,12 +226,17 @@ struct FormField: View {
             .accessibilityLabel(label)
     }
 
-    /// `Text.typeStyle` rather than a bare `.foregroundStyle`: the prompt is drawn inside the
+    /// `typeStyleRun` rather than a bare `.foregroundStyle`: the prompt is drawn inside the
     /// field's own text layout, so it needs the face and the tracking as well as the colour —
     /// the join code's `+.18em` mono is unreadable without them.
+    ///
+    /// The `Run` flavour because `prompt:` takes a `Text` and nothing else. `View.typeStyle`
+    /// returns `some View`, which is the right default everywhere the result is drawn rather
+    /// than handed to SwiftUI as a `Text` — this is one of the four places in the app that is
+    /// the other way round.
     private var promptText: Text {
         Text(verbatim: prompt)
-            .typeStyle(promptType ?? type, color: metrics.promptColor)
+            .typeStyleRun(promptType ?? type, color: metrics.promptColor)
     }
 }
 

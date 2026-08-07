@@ -6,7 +6,10 @@
 //
 //  Nearly every animation in this app is a literal at the site that plays it, and that is right:
 //  a curve used once, in the view it belongs to, is easier to read where the thing is drawn than
-//  three files away. `GroupsMetrics.fold` earned its hoist by having eight callers on one screen.
+//  three files away.
+//
+//  The fold earned this one the ordinary way: it had eight callers on the Groups screen, and then
+//  Overview grew a folded list too. Two features needing the same curve is the condition below.
 //
 //  The entrance earned this one differently. Its choreography is written down as a comment in
 //  `SycamoreApp` — mark lands, word types, hold, fade — but every number that comment describes
@@ -23,9 +26,29 @@
 //  admitted when a second file needs it.
 //
 
-import Foundation
+import SwiftUI
 
 enum Motion {
+
+    /// Every fold and unfold in the app: a group card opening, a court card opening, a kid
+    /// sliding to a new target. One curve, so they are recognisably the same motion.
+    ///
+    /// This lived in `GroupsTokens` while Groups was the only screen that folded a list. Overview
+    /// folds one now, which is the condition this file sets for admitting a duration — and the
+    /// alternative was `Features/Overview` reaching into `Features/Groups`' token namespace for
+    /// its animation, with nothing but the compiler recording the dependency. A Groups-local
+    /// decision to retime its fold would have silently retimed Overview's.
+    static let fold: Animation = .snappy(duration: 0.24)
+
+    /// `fold`, or nothing at all for a reader who has asked for less motion.
+    ///
+    /// A fold is position: rows appear below the ones already there and push the rest down. That
+    /// is precisely what Reduce Motion is about, so the state still changes — it simply arrives
+    /// rather than slides. `nil` rather than a near-zero duration, because `withAnimation(nil)`
+    /// and `.animation(nil, value:)` are both the real "do not animate this".
+    static func fold(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : fold
+    }
 
     /// The cold-launch entrance, in seconds from its first frame.
     ///
@@ -86,5 +109,19 @@ enum Motion {
         static func fade(reduceMotion: Bool) -> Double {
             reduceMotion ? 0.4 : 0.6
         }
+    }
+}
+
+// MARK: - Folding a set
+
+extension Set {
+
+    /// In if it was out, out if it was in.
+    ///
+    /// Every folded list in the app keeps its open rows as a set of ids and wrote the same five
+    /// lines to flip one — `GroupsView`, `OverviewScreen`, and both of their preview harnesses.
+    /// `insert` already reports whether it did anything, so the whole thing is one expression.
+    mutating func toggle(_ member: Element) {
+        if !insert(member).inserted { remove(member) }
     }
 }

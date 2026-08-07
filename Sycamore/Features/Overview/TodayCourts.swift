@@ -45,7 +45,11 @@ enum TodayCourts {
     /// Courts with nobody on them today are simply absent from the dictionary. A lookup that
     /// misses and an empty roster are the same thing to a card, and `roster(for:from:)` reads
     /// the miss as `.none`.
-    static func rosters(in camp: Camp, day: Weekday = .today) -> [Group.ID: CourtRoster] {
+    /// `venueID` narrows the walk to the venue being drawn. Nil builds the whole camp, which is
+    /// what the tests and the fixtures want.
+    static func rosters(
+        in camp: Camp, day: Weekday = .today, venueID: Venue.ID? = nil
+    ) -> [Group.ID: CourtRoster] {
         // The day's attendance, indexed once.
         //
         // First row wins, because `Camp.attendance(for:on:)` takes `first` and this has to be
@@ -60,6 +64,11 @@ enum TodayCourts {
         var byCourt: [Group.ID: [Player]] = [:]
         for player in camp.players {
             guard let courtID = player.groupID else { continue }
+            // Overview draws one venue at a time — `store.courts` is `readVenueID`'s courts —
+            // so on a multi-venue camp the rest of the roll would be built into rows nothing
+            // ever looks up. One comparison in a loop that already runs, rather than a second
+            // pass to filter afterwards.
+            if let venueID, player.venueID != venueID { continue }
             // Sparse by design — a kid with no row is here all day, which is why this asks
             // `!= false` rather than `== true`.
             guard attendance[player.id]?.present != false else { continue }

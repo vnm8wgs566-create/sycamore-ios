@@ -27,9 +27,14 @@ enum Initials {
 
 /// A kid's gender, and the three ways the app says it.
 ///
-/// The raw values are load-bearing and must not be renamed: Postgres stores `M` / `F` / `X`,
-/// the write path sends `symbol`, the read path upper- and lower-cases its way back, and
-/// `Codable` rides the same raw values. Only the display strings below are free to change.
+/// The raw values are load-bearing and must not be renamed: Postgres stores `M` / `F` / `X`, and
+/// both directions of the wire go through `PostgresEnum` — `gender(_:)` in, `text(_:)` out —
+/// which upper- and lower-cases the raw value the same way it does for every other enum.
+/// `Codable` rides the same raw values. Every display string below is free to change.
+///
+/// The write path used to send `symbol`, which produced the identical letter and so looked
+/// correct, but it made a display property into a column encoding: restyling the meta line
+/// would have corrupted `players.gender` on the next write, with no test in between.
 ///
 /// **What `.x` means, and why the strings pick a side.** It is two things at once and this type
 /// cannot tell them apart: a camp that chose the third answer on `8e`, and a row whose gender
@@ -85,13 +90,11 @@ enum Gender: String, Codable, Hashable, CaseIterable, Sendable {
     /// Deliberately not `label`. "Other · 13 years" categorises a child where the sentence is
     /// meant to describe one, and `8q` is a page about that single kid. `Kid` makes the same
     /// refusal to gender them that `Other` does, in the register the line is written in.
-    var noun: String {
-        switch self {
-        case .m: "Boy"
-        case .f: "Girl"
-        case .x: "Kid"
-        }
-    }
+    ///
+    /// Written as the one case that differs rather than a second three-case switch, so that
+    /// "the prose noun is the chip's answer except for `.x`" is the shape of the code and not
+    /// a fact a test has to assert.
+    var noun: String { self == .x ? "Kid" : label }
 }
 
 /// Camp weeks run Monday to Friday; the early pick-up sheet offers exactly these five.

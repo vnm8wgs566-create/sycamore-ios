@@ -149,14 +149,10 @@ enum OverviewTheme {
     /// sixty rows before the reader has scrolled once. Three keeps a card's list to about the
     /// height of its own header, so the screen still scans as a list of courts — and the kids
     /// it folds away are one tap behind the row that counts them.
-    static let rosterPreview = GroupsRules.previewRows
-
-    /// Every fold and unfold on the screen.
-    static let fold: Animation = GroupsMetrics.fold
-
-    /// `fold`, or nothing at all for a reader who has asked for less motion. `nil` rather than a
-    /// near-zero duration; `GroupsMetrics.fold(reduceMotion:)` sets out the whole argument.
-    static func fold(reduceMotion: Bool) -> Animation? {
-        GroupsMetrics.fold(reduceMotion: reduceMotion)
-    }
+    ///
+    /// Deliberately its own number and not `GroupsRules.previewRows`, which is also three. The
+    /// two agree today by coincidence of layout, not by rule: a group card is full width with
+    /// nothing else in it, a court card carries a header, a coach pill and sometimes a note.
+    /// Aliasing them would mean a Groups decision to show four silently changed this screen.
+    static let rosterPreview = 3
 }

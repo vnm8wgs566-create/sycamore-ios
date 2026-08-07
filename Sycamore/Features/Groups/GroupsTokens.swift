@@ -225,21 +225,9 @@ enum GroupsMetrics {
     static let hintGap: CGFloat = 7
     static let hintGlyph: CGFloat = 15
 
-    // MARK: Motion
-
-    /// Every fold, unfold and aim on the screen. One curve, so a card opening and a kid sliding
-    /// to a new target are recognisably the same motion.
-    static let fold: Animation = .snappy(duration: 0.24)
-
-    /// `fold`, or nothing at all for a reader who has asked for less motion.
-    ///
-    /// The whole screen is position: a kid leaves the ladder, travels, and lands. That is
-    /// precisely what Reduce Motion is about, so the state still changes — it simply arrives
-    /// rather than slides. `nil` rather than a near-zero duration, because `withAnimation(nil)`
-    /// and `.animation(nil, value:)` are both the real "do not animate this".
-    static func fold(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : fold
-    }
+    // Motion lives in `DesignSystem/Motion.swift` now. The fold curve was declared here while
+    // this was the only screen that folded a list; Overview folds one too, and a shared curve
+    // owned by one of the two features is how the other ends up depending on it by name.
 }
 
 // MARK: - Chips
