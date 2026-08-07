@@ -12,6 +12,14 @@
 //  their own, so both headings fall away and the list is simply every court in rank order —
 //  which is `8i`, exactly.
 //
+//  Every card lists its kids. The design draws exactly one detailed card per frame and this
+//  screen took that literally: it named a single "detailed" court and handed every other card
+//  `.none`, so on a twelve-court morning eleven of them said how many kids were there and not
+//  one name. Which court a child is on is the question Overview exists to answer. Each card
+//  carries its own list now, folded to `OverviewTheme.rosterPreview` names with a `+N more` that
+//  opens it in place — the design's frames survive as the folded state of a screen that can now
+//  also be opened.
+//
 
 import SwiftUI
 
@@ -27,8 +35,24 @@ struct OverviewScreen: View {
     /// "Skills rotation · until 10:30" — the line under the screen's title.
     var nowLine: String?
 
+    /// Courts the reader has opened past their first few kids.
+    ///
+    /// Local rather than on the store, and for the reason `GroupsView` gives for the same set:
+    /// which cards are open is about this screen at this moment. Nothing else reads it, no write
+    /// depends on it, and the default is the *folded* card — so an empty set means what it looks
+    /// like it means.
+    @State private var expandedCourtIDs: Set<Group.ID> = []
+
+    /// A card opening is a change of position, which is precisely what Reduce Motion is about.
+    /// The rows still arrive; they simply stop travelling.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        VStack(spacing: 0) {
+        // Once per pass, for every court at the venue. See `TodayCourts.rosters(in:day:)` for
+        // why this is built here and handed down rather than asked for inside each card.
+        let rosters = store.camp.map { TodayCourts.rosters(in: $0, day: store.today) } ?? [:]
+
+        return VStack(spacing: 0) {
             VStack(spacing: 0) {
                 StatusBarMock()
 
@@ -49,12 +73,12 @@ struct OverviewScreen: View {
                     }
 
                     if let myCourt {
-                        card(for: myCourt, isMine: true)
+                        card(for: myCourt, isMine: true, from: rosters)
                         otherCourtsHeading
                     }
 
                     ForEach(otherCourts) { court in
-                        card(for: court, isMine: false)
+                        card(for: court, isMine: false, from: rosters)
                     }
 
                     if courts.isEmpty {
@@ -72,6 +96,10 @@ struct OverviewScreen: View {
         // `surfaceWarm`, not `grouped`. Section 8 draws every screen on `#F8F9F8`, a shade
         // warmer than the `#F6F7F9` this app has been grouping on since before the redesign.
         .background(Theme.surfaceWarm)
+        // One tick as a card opens or closes, which is what `BlockNotesCard` gives the only
+        // other fold in the app. On the set rather than on a card, because the cards are drawn
+        // in a loop and there is nothing per-card to hang it off.
+        .sensoryFeedback(.selection, trigger: expandedCourtIDs)
     }
 
     // MARK: Which court is whose
@@ -92,27 +120,40 @@ struct OverviewScreen: View {
         return courts.filter { $0.id != myCourt.id }
     }
 
-    /// The one card that lists its kids: yours if you have one, otherwise the highest court
-    /// still in play. The design draws exactly one detailed card on each frame — "your court
-    /// first, the rest quiet" on `8j`, and the first court on `8i`. A closed court is skipped
-    /// because it has nobody to list, and skipping it moves the detail onto a court that has.
-    private var detailedCourtID: Group.ID? {
-        myCourt?.id ?? courts.first { !$0.isClosed }?.id
-    }
-
-    /// Five kids, or three when the card is carrying a note as well — the note takes the room
-    /// the last two lines would have had. Both counts are the design's own.
-    private var rosterLimit: Int { myCourt != nil && blockNote != nil ? 3 : 5 }
-
     // MARK: Pieces
 
-    private func card(for court: CourtCard, isMine: Bool) -> some View {
-        OverviewCourtCard(
+    /// One card, with its court's list already cut to what the card should draw.
+    ///
+    /// **The note no longer takes the roster's room.** This screen used to fold your own court
+    /// to three kids instead of five whenever a block note was hanging off it, on the argument
+    /// that the note took the room the last two lines would have had. That argument was about a
+    /// card with one chance to show its list: whatever it left out was gone. Now every card
+    /// draws a preview and the rest is one tap away, so the note and the roster are no longer
+    /// competing for the same room — and the old rule had the sign backwards besides. A note
+    /// only ever hangs off *your* court, so it made the one card you care most about the one
+    /// listing fewest kids.
+    private func card(
+        for court: CourtCard, isMine: Bool, from rosters: [Group.ID: CourtRoster]
+    ) -> some View {
+        let roster = TodayCourts.roster(
+            for: court,
+            from: rosters,
+            preview: OverviewTheme.rosterPreview,
+            isExpanded: expandedCourtIDs.contains(court.id)
+        )
+
+        return OverviewCourtCard(
             card: court,
             isMine: isMine,
-            roster: roster(for: court),
+            roster: roster,
             note: isMine ? blockNote : nil,
-            onOpenCoach: openCoach(court)
+            onOpenCoach: openCoach(court),
+            // A court small enough to draw whole gets no control. `isFoldable` asks
+            // `GroupsRules.visibleCount` the same question the fold answers, so the row and the
+            // list can never disagree about whether there is anything behind it.
+            onToggleRoster: roster.isFoldable(to: OverviewTheme.rosterPreview)
+                ? { toggle(court.id) }
+                : nil
         )
     }
 
@@ -125,16 +166,6 @@ struct OverviewScreen: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    /// A closed court lists nobody — there is nobody on it.
-    private func roster(for court: CourtCard) -> CourtRoster {
-        guard court.id == detailedCourtID, !court.isClosed, let camp = store.camp else {
-            return .none
-        }
-        return TodayCourts.roster(
-            forCourt: court.id, in: camp, day: store.today, limit: rosterLimit
-        )
-    }
-
     /// Only a coach the camp actually knows gets a tappable pill; a card carrying a name from
     /// a stale read has nothing to open.
     private func openCoach(_ court: CourtCard) -> (() -> Void)? {
@@ -144,6 +175,18 @@ struct OverviewScreen: View {
 
     /// The note's own words, not the line about who pinned it.
     private func text(of item: InboxItem) -> String { item.detail ?? item.title }
+
+    // MARK: Intents
+
+    private func toggle(_ courtID: Group.ID) {
+        withAnimation(OverviewTheme.fold(reduceMotion: reduceMotion)) {
+            if expandedCourtIDs.contains(courtID) {
+                expandedCourtIDs.remove(courtID)
+            } else {
+                expandedCourtIDs.insert(courtID)
+            }
+        }
+    }
 
     // MARK: Empty state
 
