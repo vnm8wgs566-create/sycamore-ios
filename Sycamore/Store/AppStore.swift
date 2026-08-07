@@ -255,7 +255,10 @@ final class AppStore {
 
     typealias Tab = AppTab
 
-    @ObservationIgnored let repository: SycamoreRepository
+    /// Fixed for the life of the process in a release build — the only writer is the debug
+    /// sign-in bypass below, which swaps Postgres for the offline store so the app it drops you
+    /// into is one you can actually use.
+    @ObservationIgnored private(set) var repository: SycamoreRepository
 
     // MARK: Auth
 
@@ -677,6 +680,31 @@ extension AppStore {
             try await self.finishSignIn(account)
         }
     }
+
+    #if DEBUG
+
+    /// "Continue with Apple" with the Apple part taken out, for as long as the provider is not
+    /// configured. Debug builds only — a release build cannot reach this, so the shipped app has
+    /// no way in but a real authorisation.
+    ///
+    /// It swaps the repository as well as the account, and that is the whole point. Faking the
+    /// signed-in state against Postgres would get you past screen 1 and no further: RLS is strict
+    /// and there would be no session behind the requests, so the picker would be empty and every
+    /// screen after it blank. Handing the store the offline repository instead gives a bypass you
+    /// can walk end to end, writes included.
+    ///
+    /// `-offline` does the same swap at launch (see `SycamoreApp.repository()`). This is that
+    /// switch behind a button, for when you are already running and did not think to pass a flag.
+    func bypassSignIn() async {
+        repository = InMemoryRepository(
+            accounts: [SampleData.account],
+            memberships: SampleData.memberships,
+            camps: SampleData.camps
+        )
+        await perform { try await self.finishSignIn(SampleData.account) }
+    }
+
+    #endif
 
     /// The Apple sheet failing before there is a token to send.
     ///

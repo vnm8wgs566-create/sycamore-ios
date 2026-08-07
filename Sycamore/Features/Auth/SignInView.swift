@@ -103,7 +103,16 @@ struct SignInView: View {
     /// they are left exactly where they were — no banner, nothing to dismiss. Only Apple failing
     /// on its own account reaches the store, because everything after the token has its own
     /// error path through `perform`.
+    ///
+    /// Except in a debug build, where the button skips all of it. Neither end of the real path is
+    /// standing up yet — Sign In with Apple is not on the App ID, and the Apple provider is not
+    /// enabled in Supabase — so the sheet would fail on the entitlement before there was anything
+    /// to exchange. `bypassSignIn` puts you in the app on the offline store until both are done;
+    /// delete this branch, not the store method, when they are.
     private func signInWithApple() async {
+        #if DEBUG
+        await store.bypassSignIn()
+        #else
         do {
             guard let identity = try await AppleSignIn.authorize() else { return }
             await store.continueWithApple(
@@ -112,6 +121,7 @@ struct SignInView: View {
         } catch {
             store.signInFailed(error)
         }
+        #endif
     }
 
     private var divider: some View {
