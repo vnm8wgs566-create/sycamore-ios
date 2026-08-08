@@ -2,10 +2,11 @@
 //  InboxView.swift
 //  Sycamore
 //
-//  `8r` — Inbox, and `8h` — its empty state. "Needs you first, then the morning."
+//  `8r` — Inbox, and `8h` — its empty state. "Pins first, then what needs you, then the morning."
 //
-//  Two things stacked: the items waiting on a decision, then a reverse-chronological feed of
-//  what happened. The filter chips above them are All / Needs you / Notes.
+//  Three things stacked: the messages an admin has pinned, the items waiting on a decision, then
+//  a reverse-chronological feed of what happened. The filter chips above them are All / Needs
+//  you / Notes, and all three sections obey them.
 //
 //  `8h` is what draws in the shipped app today, because `inbox_items` was created empty. The
 //  design's empty state is not a blank page either — it says "All clear." and then shows what
@@ -126,6 +127,15 @@ private struct InboxPreviewHarness: View {
     /// Seeds the two asks and nothing else, so a chip pointed at the feed lands on nothing
     /// while something is still waiting under another one.
     var asksOnly = false
+    /// Reads the screen as somebody who can pin and unpin. Off by default, because the app's
+    /// own `AppStore.preview` is a coach and the coach's view is the one most of these check.
+    var isAdmin = false
+    /// Drops the pins from the seeded morning, which is what the shipped app will actually draw
+    /// for a while: the migration adds `inbox_items.pinned` without backfilling it, so every row
+    /// that already exists arrives `false` and the section stays empty until an admin pins
+    /// something. Worth previewing rather than assuming — an empty section has to read as an
+    /// invitation to an admin and as nothing at all to everybody else.
+    var pinsNothing = false
 
     @State private var store: AppStore?
 
@@ -143,12 +153,13 @@ private struct InboxPreviewHarness: View {
     }
 
     private func seededStore() async -> AppStore {
-        let store = AppStore.preview
+        let store = isAdmin ? AppStore.previewUCLAAdmin : AppStore.preview
         store.selectedTab = .inbox
 
         guard let campID = store.camp?.id, let venueID = store.readVenueID else { return store }
         let morning = InboxPreviewItems.morning(venueID: venueID)
-        let items = asksOnly ? morning.filter { $0.kind == .needsAction } : morning
+        let narrowed = asksOnly ? morning.filter { $0.kind == .needsAction } : morning
+        let items = pinsNothing ? narrowed.filter { !$0.pinned } : narrowed
         for item in items {
             _ = try? await store.repository.addInboxItem(item, campID: campID)
         }
@@ -164,6 +175,29 @@ private struct InboxPreviewHarness: View {
 
 #Preview("Inbox — 8r") {
     InboxPreviewHarness()
+        .showsMockStatusBar()
+}
+
+/// The same morning read by an admin: the pinned section gains a `⋯` on every row and a composer
+/// under them.
+#Preview("Inbox — 8r, admin") {
+    InboxPreviewHarness(isAdmin: true)
+        .showsMockStatusBar()
+}
+
+/// What the app draws the day the migration lands. `inbox_items.pinned` is added without a
+/// backfill, so every row that already exists is `false` and there is nothing to pin at the top
+/// — an admin gets the composer under a bare "Pinned" heading, which is an invitation.
+#Preview("Inbox — nothing pinned yet, admin") {
+    InboxPreviewHarness(isAdmin: true, pinsNothing: true)
+        .showsMockStatusBar()
+}
+
+/// The same morning for a coach: no section at all, and an Inbox indistinguishable from the one
+/// before this change. An empty pinned card over a locked row would be a feature advertising
+/// itself to somebody who cannot use it and has not been told it exists.
+#Preview("Inbox — nothing pinned yet, coach") {
+    InboxPreviewHarness(pinsNothing: true)
         .showsMockStatusBar()
 }
 

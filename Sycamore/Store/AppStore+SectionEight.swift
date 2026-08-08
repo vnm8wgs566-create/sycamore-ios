@@ -55,7 +55,7 @@ extension AppStore {
             async let blocks = self.repository.scheduleBlocks(
                 forVenue: venueID, day: self.today, campID: campID
             )
-            async let inbox = self.repository.inboxItems(forVenue: venueID, campID: campID)
+            async let inbox = self.repository.inboxItems(forCamp: campID)
 
             self.courts = try await courts
             self.scheduleBlocks = try await blocks
@@ -157,17 +157,29 @@ extension AppStore {
 
     // MARK: Inbox
 
+    /// The camp's rows, not one venue's.
+    ///
+    /// This read was per-venue until pinned messages arrived, and `SectionEightRepository` has
+    /// argued against that from the day the camp-wide variant was written: `8r` puts a row
+    /// reading "LATC is 2 coaches short" in front of a reader standing on Sycamore, so the Inbox
+    /// is the one screen in section 8 that is not about a venue. Against the seeded camp the
+    /// narrow read hid exactly the row the design uses as its example.
+    ///
+    /// A pin is what made it a defect rather than a shortcoming. An admin pins at
+    /// `readVenueID`, so a camp-wide announcement reached only the venue its author happened to
+    /// be standing on — and `setPinned` already answered with the camp's rows, so pinning
+    /// widened the list and the next load quietly narrowed it again.
     func loadInbox() async {
-        guard let campID = camp?.id, let venueID = readVenueID else { return }
+        guard let campID = camp?.id else { return }
         await perform {
-            self.inboxItems = try await self.repository.inboxItems(forVenue: venueID, campID: campID)
+            self.inboxItems = try await self.repository.inboxItems(forCamp: campID)
         }
     }
 
     func resolveInboxItem(_ itemID: InboxItem.ID) async {
         guard let campID = camp?.id else { return }
         await perform {
-            self.inboxItems = try await self.repository.resolveInboxItem(itemID, campID: campID)
+            self.inboxItems = try await self.repository.resolveInboxItem(itemID, forCamp: campID)
         }
         // Resolving is the one inbox write that changes another tab: approving a court move
         // reassigns a kid. Re-reading Overview here is cheaper than making every tab re-read on
@@ -178,7 +190,7 @@ extension AppStore {
     func addInboxItem(_ item: InboxItem) async {
         guard let campID = camp?.id else { return }
         await perform {
-            self.inboxItems = try await self.repository.addInboxItem(item, campID: campID)
+            self.inboxItems = try await self.repository.addInboxItem(item, forCamp: campID)
         }
     }
 

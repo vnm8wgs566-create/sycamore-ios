@@ -13,7 +13,19 @@ enum ScheduleSampleDay {
 
     /// `8k`, block for block: a drop-off already behind us, the skills rotation running now with
     /// three notes on it, a break, the match play nobody is running, and lunch.
-    static func blocks(venueID: Venue.ID, day: Weekday = .tue) -> [ScheduleBlock] {
+    ///
+    /// - Parameter coachIDs: who is running the skills rotation. Empty by default, which is the
+    ///   state every preview written before blocks carried coaches expects — and the state the
+    ///   real backend still returns, because `scheduleBlocks(…)` does not populate the column yet.
+    ///   Pass ids to draw the block with its logistics filled in. Only that one block takes them:
+    ///   the design's other four say nothing about who is on them, and putting the same names
+    ///   under all five would be the "everyone at this venue" answer this change exists to stop
+    ///   giving.
+    static func blocks(
+        venueID: Venue.ID,
+        day: Weekday = .tue,
+        coachIDs: [StaffMember.ID] = []
+    ) -> [ScheduleBlock] {
         [
             ScheduleBlock(
                 venueID: venueID, day: day, startsAt: TimeOfDay(8, 30), endsAt: TimeOfDay(9, 0),
@@ -26,7 +38,8 @@ enum ScheduleSampleDay {
                     note("Net on 4 is loose", by: "Nass"),
                     note("Cones on the service line, cart stays north"),
                     note("Volley ladder after the forehand feeds"),
-                ]
+                ],
+                coachIDs: coachIDs
             ),
             ScheduleBlock(
                 venueID: venueID, day: day, startsAt: TimeOfDay(10, 30), endsAt: TimeOfDay(10, 45),
@@ -51,4 +64,5 @@ enum ScheduleSampleDay {
     private static func note(_ text: String, by author: String? = nil) -> BlockNote {
         BlockNote(id: UUID(), text: text, authorName: author, at: .now)
     }
+
 }

@@ -42,6 +42,9 @@ struct OverviewCourtCard: View {
     /// Opens and folds the court's list. Nil on a court small enough to draw whole, which is
     /// what keeps the card from offering a control that would change nothing.
     var onToggleRoster: (() -> Void)?
+    /// Opens the court's own screen — the header caret's destination. Nil draws no caret at all;
+    /// see `header`.
+    var onOpenCourt: (() -> Void)?
 
     /// Kept in step with `CourtRosterRow`'s own scaled column so "+3 more" stays lined up
     /// with the names above it at every type size.
@@ -118,15 +121,47 @@ struct OverviewCourtCard: View {
                 CourtStatusBadge(status: card.status, isProminent: isMine)
             }
 
-            // Drawn, not wired. The caret's destination is the court's own screen, which
-            // section 8 has not drawn yet; a control that goes nowhere is worse than a glyph
-            // that never claimed to, and it lies to VoiceOver besides. Your own court has no
-            // caret in the design — you are already standing on it.
-            if !isMine {
-                DisclosureChevron(size: caretSize)
-                    .accessibilityHidden(true)
+            // Wired at last. The caret's destination is the court's own screen — roster, coach,
+            // status and the notes written against it — which `PushedScreen.court` now presents,
+            // so the glyph is a real control with a real label instead of a drawn one hidden
+            // from VoiceOver. The rule that put it here has not changed: no destination, no
+            // caret, because a control that goes nowhere is worse than a glyph that never
+            // claimed to. That is now `onOpenCourt == nil` rather than a permanent condition.
+            //
+            // Your own court still has no caret. You are already standing on it, and the screen
+            // behind the caret would tell you what is in front of you.
+            //
+            // Deliberately the caret alone and not the whole card. The card already holds three
+            // controls — the coach pill, the `+N more` row and, on `8j`, the pinned banner above
+            // it — and a tap target wrapped round all three has to win an ambiguity contest with
+            // each of them on every tap. It is also the wrong shape for VoiceOver: a card that
+            // is one button reads its title, its subtitle, its coach and five children's names
+            // as a single label, and swiping through the kids stops being possible at all.
+            //
+            // Gated on the closure alone. Your own court has no caret in the design — you are
+            // already standing on it — but that is `OverviewScreen`'s rule to state, and it
+            // states it by passing nothing. Re-testing `isMine` here said it twice, so a caller
+            // that passed a closure for its own court got no caret and no diagnostic.
+            if let onOpenCourt {
+                openCourtButton(onOpenCourt)
             }
         }
+    }
+
+    /// The caret, at 44pt of finger around the 16pt it draws.
+    ///
+    /// Labelled with the court rather than "Open" alone: a screen of these is a screen of
+    /// identical buttons, and the rotor would offer eight of them with no way to tell which court
+    /// each one opens — the failure `InboxNeedsActionRow` records from its two "Review" buttons.
+    private func openCourtButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            DisclosureChevron(size: caretSize)
+                .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(card.courtLabel ?? card.groupName)")
+        .accessibilityHint("Shows its list, its coach and its notes")
     }
 
     // MARK: Roster
@@ -213,7 +248,8 @@ private struct OverviewCourtCardPreviewHarness: View {
                         onOpenCoach: {},
                         onToggleRoster: roster.isFoldable(to: OverviewTheme.rosterPreview)
                             ? { expanded.toggle(card.id) }
-                            : nil
+                            : nil,
+                        onOpenCourt: {}
                     )
                 }
             }
@@ -233,7 +269,8 @@ private struct OverviewCourtCardPreviewHarness: View {
         card: OverviewFixtures.drills,
         roster: OverviewFixtures.fullRoster(for: OverviewFixtures.drills),
         onOpenCoach: {},
-        onToggleRoster: {}
+        onToggleRoster: {},
+        onOpenCourt: {}
     )
     .padding(Spacing.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

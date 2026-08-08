@@ -291,22 +291,43 @@ struct ProfileView: View {
         Card(radius: Radius.settingsCard, borderColor: Theme.accentBorder, isDivided: false) {
             CardRow(spacing: Spacing.medium, horizontalPadding: Spacing.gutterWide, verticalPadding: Spacing.gutterWide) {
                 if let assignment = store.todayAssignment {
-                    // A pin on a green plate, not the venue's emoji on the venue's tint. `8t`
-                    // tints its tiles per venue because it lists several and the colour tells
-                    // them apart; here there is one, and the line beside it already names it.
-                    RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                        .fill(Theme.accentSurface)
-                        .frame(width: todayTileSize, height: todayTileSize)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                                .strokeBorder(Theme.accentSurfaceBorder, lineWidth: BorderWidth.hairline)
-                        }
-                        .overlay {
-                            Image(systemName: "mappin")
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundStyle(Theme.inkSecondary)
-                        }
-                        .accessibilityHidden(true)
+                    // The venue's own emoji on the venue's own tint. The design draws this card
+                    // at `design/Sycamore Flow.dc.html:357` with
+                    // `background:#F1F5EC;font-size:21px` and 🌳 on it — `#F1F5EC` is
+                    // `Theme.color(for: .moss)`, so the plate is the venue's tint, not the
+                    // accent's.
+                    //
+                    // It was a pin on `accentSurface` inside an `accentSurfaceBorder` stroke, on
+                    // the argument that `8t` tints per venue because it lists several while this
+                    // card lists one that the line beside it already names. The argument is
+                    // sound and the drawing was still wrong: `8s.html` and `8t.html` are absent
+                    // from this repository and always have been, so neither the pin nor the
+                    // green plate could be checked against anything, and the design that is here
+                    // draws this card's tile in moss with a tree on it. `TodayAssignment` has
+                    // carried `venueIcon` and `venueTint` the whole time — the latter documented
+                    // as "what Profile's icon tile reads" (`Models.swift:617`) — and this is the
+                    // tile that was not reading them.
+                    //
+                    // The stroke goes with the pin. In the design the `#C9DDFB` border belongs
+                    // to the card, which `Card(borderColor: Theme.accentBorder)` above already
+                    // draws; the tile inside it carries no border at all.
+                    //
+                    // Both halves come off `TodayAssignment` rather than one of them being
+                    // looked up live, so the emoji and the name under it are the same snapshot
+                    // and cannot disagree with each other. That the snapshot itself can go stale
+                    // — `Camp.reindex()` does not refresh the `CourtAssignment` copies a venue
+                    // rename or an icon change leaves behind — is older than this tile and shows
+                    // in `pathLabel` already. It belongs to `Models.swift`, not here.
+                    // Through `IntakeIconTile`, which holds the plate, both `@ScaledMetric`s and
+                    // the hiding. Hidden matters here for a second reason: the whole card is
+                    // combined into one sentence below and `pathLabel` names the venue in it, so
+                    // a read emoji would be a second, wordier name for the same place.
+                    IntakeIconTile(
+                        emoji: assignment.venueIcon,
+                        size: 42,
+                        glyphSize: 20,
+                        fill: Theme.color(for: assignment.venueTint)
+                    )
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
                         Text(assignment.pathLabel)
@@ -403,7 +424,7 @@ struct ProfileView: View {
             SettingsRow(
                 "Camp settings",
                 icon: "slider.horizontal.3",
-                subtitle: store.isAdmin ? nil : adminsOnlyDetail,
+                subtitle: store.isAdmin ? nil : store.adminsOnlyDetail,
                 accessory: store.isAdmin ? .chevron : .lock,
                 action: store.isAdmin ? { store.pushedScreen = .campSettings } : nil
             )
@@ -421,16 +442,6 @@ struct ProfileView: View {
     private var campCountDetail: String {
         let count = store.memberships.count
         return "\(count) on this account"
-    }
-
-    /// `Admins only · ask Nass or Hubert` — derived, like every other name on this screen, from
-    /// who actually administers the camp you are in.
-    private var adminsOnlyDetail: String {
-        let names = (store.camp?.staff ?? []).filter(\.role.isAdmin).map(\.name)
-        // Two, because a row is one line and a camp can have a dozen admins.
-        let asked = Array(names.prefix(2))
-        guard !asked.isEmpty else { return "Admins only" }
-        return "Admins only · ask \(asked.formatted(.list(type: .or)))"
     }
 
     // MARK: Footer

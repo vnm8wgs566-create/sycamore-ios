@@ -122,7 +122,8 @@ struct MainTabView: View {
 
     // MARK: Pushed screens
 
-    /// `8m`, `8q`, `8s`, `8t` — and Rank until Groups absorbs it.
+    /// `8m`, `8q`, `8s`, `8t`, the court a caret on `8i`/`8j` opens — and Rank until Groups
+    /// absorbs it.
     ///
     /// A `NavigationStack` push is wrong for all of them: this app's tab bar is an overlay in this
     /// view rather than a `TabView`'s own chrome, so a push slides underneath it and leaves the
@@ -131,8 +132,8 @@ struct MainTabView: View {
     /// Which modal each gets is `PushedScreen.isFullScreen`'s call, and it turns on one thing —
     /// whether the screen draws its own way out. Profile, Camp settings and Rank were tabs and a
     /// tab needs no way out of itself, so as covers they would be screens you cannot leave; the
-    /// sheet is what supplies their dismissal. `8m` and `8q` draw a ✕ and a back caret, so they
-    /// take the whole frame the design gives them.
+    /// sheet is what supplies their dismissal. `8m` and `8q` draw a ✕ and a back caret, and the
+    /// court screen draws `8q`'s, so all three take the whole frame the design gives them.
     ///
     /// The store and the two overlays are carried in here rather than at each presentation site:
     /// a modal covers the pair `MainTabView` floats, so it needs its own copy of both.
@@ -150,6 +151,8 @@ struct MainTabView: View {
                 AttendanceView(groupIDs: groupIDs, block: block) { store.pushedScreen = nil }
             case .player(let playerID):
                 PlayerScreen(store: store, playerID: playerID)
+            case .court(let groupID):
+                CourtScreen(store: store, groupID: groupID)
             }
         }
         .environment(store)
@@ -271,6 +274,19 @@ private extension View {
 #Preview("Pushed — A kid") {
     let store = AppStore.preview
     store.pushedScreen = .player(SampleData.austinZ.id)
+
+    return MainTabView(store: store)
+        .environment(store)
+        .showsMockStatusBar()
+        .frame(width: 402, height: 874)
+}
+
+/// The newest of the covers, and the one reached by a control rather than by an avatar: the caret
+/// on an Overview card. Worth its own preview for the same reason the kid's is — one optional
+/// drives two modifiers, and "the right one presented" is what breaks.
+#Preview("Pushed — A court") {
+    let store = OverviewFixtures.courtStore
+    store.pushedScreen = .court(OverviewFixtures.drills.id)
 
     return MainTabView(store: store)
         .environment(store)

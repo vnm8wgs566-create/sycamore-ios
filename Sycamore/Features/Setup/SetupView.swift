@@ -207,17 +207,35 @@ struct SetupView: View {
                 store.present(.venue(venue.id))
             } label: {
                 HStack(spacing: Spacing.row) {
-                    // The venue's own tint, with the design's generic pin on it. `8t` lists
-                    // several venues at once, so the plate is what tells them apart.
-                    RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                        .fill(Theme.color(for: venue.tint))
-                        .frame(width: venueTileSize, height: venueTileSize)
-                        .overlay {
-                            Image(systemName: "mappin")
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundStyle(Theme.inkSecondary)
-                        }
-                        .accessibilityHidden(true)
+                    // The venue's own tint with the venue's own emoji on it, which is how the
+                    // design draws this exact row: `background:#F1F5EC` and 🌳, then
+                    // `background:#F7F9E9` and 🎾 (`design/Sycamore Flow.dc.html:276` and
+                    // `:281`).
+                    //
+                    // It was a generic pin, on the argument that `8t` lists several venues at
+                    // once so the plate is what tells them apart. The argument still holds; the
+                    // evidence never did. `8t.html` is not in this repository and never has been
+                    // — `git log --all --diff-filter=A` finds no section-8 document — so the pin
+                    // could not be checked against anything, while the design that *is* here
+                    // draws the emoji, contains no `map-pin` at all, and `SPEC.md`'s
+                    // Phosphor→SF Symbol table has no pin row. The plate still tells the venues
+                    // apart. The emoji tells them apart first, and says which is which rather
+                    // than only that they differ.
+                    //
+                    // Deliberately still 40pt rather than the design's 44: that size came from
+                    // the same absent document, and resizing every venue row is a layout change
+                    // this is not.
+                    // Through `IntakeIconTile` rather than drawn here: it holds the plate, both
+                    // `@ScaledMetric`s and the "hidden because the name is beside it" decision,
+                    // and three screens replaced the same pin in this batch. It also hides
+                    // itself — an emoji is how a venue is recognised, but the name sits
+                    // immediately beside it and reading both would say the venue twice.
+                    IntakeIconTile(
+                        emoji: venue.icon,
+                        size: 40,
+                        glyphSize: 19,
+                        fill: Theme.color(for: venue.tint)
+                    )
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
                         HStack(spacing: Spacing.nameBadge) {

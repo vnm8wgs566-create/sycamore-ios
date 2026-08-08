@@ -56,6 +56,33 @@ enum OverviewFixtures {
         detail: "Court 4 net is loose — keep the little ones off it."
     )
 
+    /// The notes written against Court 1 — what the court screen lists under its own heading.
+    ///
+    /// Scoped by `groupID`, which is what puts a note on a court. Deliberately *not* scoped by
+    /// `pinned`: that column is not backfilled, so every row written before it existed arrives
+    /// `false`, and a court whose notes are all unpinned is the ordinary case rather than an edge
+    /// one. Hence one of each here — the screen has to read correctly with nothing pinned at all,
+    /// which is what the second note on its own would show.
+    static let courtNotes: [InboxItem] = [
+        InboxItem(
+            venueID: SampleData.sycamore.id,
+            kind: .note,
+            title: "Nass · Court 1",
+            detail: "Two in sandals, benched until their shoes turn up.",
+            groupID: drills.id,
+            pinned: true,
+            createdAt: .now.addingTimeInterval(-52 * 60)
+        ),
+        InboxItem(
+            venueID: SampleData.sycamore.id,
+            kind: .note,
+            title: "Dana · Court 1",
+            detail: "Ball machine is on this court until 11 — keep the far tramlines clear.",
+            groupID: drills.id,
+            createdAt: .now.addingTimeInterval(-9 * 60)
+        ),
+    ]
+
     /// The note under your own court's header on `8j`.
     static let blockNote = "Cross-court forehand feeds, then a volley ladder. Cones on the service line."
 
@@ -95,6 +122,21 @@ enum OverviewFixtures {
 
     @MainActor
     static var coachStore: AppStore { store(as: coachAccount, role: .worker, in: coachCamp) }
+
+    /// The same morning, with the two section-8 lists already in the store.
+    ///
+    /// `OverviewScreen` takes its courts and its note as arguments and so needs none of this; the
+    /// court screen reads both off the store, because it is opened over a tab that has already
+    /// loaded them and re-reading on the way in would issue the same query twice to draw one
+    /// screen. Its own store, rather than seeding the two above, so the Overview previews keep
+    /// showing what their arguments say and nothing else.
+    @MainActor
+    static var courtStore: AppStore {
+        let store = store(as: adminAccount, role: .admin, in: camp)
+        store.courts = courts
+        store.inboxItems = courtNotes + [pinnedNote]
+        return store
+    }
 
     // MARK: Builders
 

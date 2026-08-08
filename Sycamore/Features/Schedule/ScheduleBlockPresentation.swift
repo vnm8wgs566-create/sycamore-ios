@@ -35,9 +35,16 @@ extension ScheduleBlock {
     /// How many notes are hiding behind the one the card shows. Renders as the design's `+2`.
     var additionalNoteCount: Int { max(0, notes.count - 1) }
 
-    /// `3 notes on this block`, `1 note on this block`.
+    /// `3 notes on this block`, `1 note on this block`, `No notes on this block yet`.
+    ///
+    /// The zero case is new, and it is only ever drawn for somebody who can do something about it
+    /// — `BlockDetailView` still hides the card outright from everybody else, because "0 notes on
+    /// this block" is a row that exists only to say there is nothing in it. Worded as a state
+    /// rather than as a count ("No notes …" rather than "0 notes …") because it is the label on a
+    /// row that opens a composer, not a tally.
     var notesRowLabel: String {
-        "\(notes.count) note\(notes.count == 1 ? "" : "s") on this block"
+        guard !notes.isEmpty else { return "No notes on this block yet" }
+        return "\(notes.count) note\(notes.count == 1 ? "" : "s") on this block"
     }
 
     /// `8 players · rotate at 10:30am`, or just the head-count when the block runs open-ended.

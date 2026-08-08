@@ -74,13 +74,16 @@ protocol SectionEightData: Sendable {
     //
     // `8r` draws a row reading "LATC is 2 coaches short" while the reader is standing on
     // Sycamore, so the Inbox is a camp-wide list — it is the one screen in section 8 that is not
-    // about a venue. The per-venue three below cannot express that, and the app has been papering
-    // over it: `AppStore.readVenueID` picks the camp's first venue and the Inbox shows that one
-    // venue's rows. Against the seeded camp today that hides exactly the row the design uses as
-    // its example, because the only LATC row is the only row not at Sycamore.
+    // about a venue. The per-venue three below cannot express that, and the app papered over it
+    // for a while: `AppStore.readVenueID` picks the camp's first venue and the Inbox showed that
+    // one venue's rows. Against the seeded camp that hid exactly the row the design uses as its
+    // example, because the only LATC row is the only row not at Sycamore.
     //
-    // The per-venue three are kept rather than replaced because `AppStore+SectionEight` and
-    // `InboxView` still call them. They should move to `forCamp:` and then these should go.
+    // **`AppStore` now calls the `forCamp:` three**, which pinned messages forced: an admin pins
+    // at `readVenueID`, so under the narrow read a camp-wide announcement reached only the venue
+    // its author happened to be standing on. The per-venue three survive because the tests
+    // exercise them directly and because a caller that genuinely wants one venue has nothing else
+    // to ask — but nothing in the app is that caller today, and if none appears they should go.
 
     /// Every Inbox row in the camp, across its venues, newest first.
     func inboxItems(forCamp campID: Camp.ID) async throws -> [InboxItem]
@@ -228,16 +231,95 @@ extension InMemoryRepository: SectionEightData {
         return try await courts(forVenue: group.venueID, campID: campID)
     }
 
+    /// A day's blocks, with each one's notes *derived* rather than stored.
+    ///
+    /// A note is a row of `sectionEightInbox` of kind `.note` carrying this block's id, which is
+    /// what a note is in Postgres — an `inbox_items` row with a `schedule_block_id`. It would
+    /// have been fewer lines to keep the array on the block, and it would have meant the two
+    /// builds disagreed about *where a note lives*: adding one offline would put it on `8k` and
+    /// nowhere near `8r`, while the same tap online would put it in both. That is the exact class
+    /// of bug this file already caught twice — `courts` had "two implementations of one question
+    /// with no way to check them against each other" a few lines above, and the head-count had
+    /// the same in `SupabaseRepository+SectionEight`'s header.
+    ///
+    /// It also means a seeded note shows up on the Inbox tab in previews, which is not a side
+    /// effect to apologise for. Those rows *are* inbox rows.
+    ///
+    /// The Postgres read orders notes by `created_at` ascending; the filter below keeps them in
+    /// `sectionEightInbox` order, which is insertion order and therefore the same order — with
+    /// the array settling the ties that a timestamp on its own leaves open.
     func scheduleBlocks(
         forVenue venueID: Venue.ID, day: Weekday, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
-        sectionEightBlocks
+        let staff = (try? await camp(id: campID))?.staff ?? []
+        let authorNames = Dictionary(
+            staff.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
+        )
+        // Grouped once rather than filtered per block, which is what the Postgres sibling does
+        // and the only reason to write it out here too: two implementations of one question that
+        // differ in shape are how they start differing in answer.
+        let notesByBlock = Dictionary(
+            grouping: sectionEightInbox.filter { $0.kind == .note },
+            by: { $0.scheduleBlockID }
+        )
+        return sectionEightBlocks
             .filter { $0.venueID == venueID && $0.day == day }
             .sorted { $0.startsAt.id < $1.startsAt.id }
+            .map { block in
+                var block = block
+                block.notes = (notesByBlock[block.id] ?? [])
+                    .map { item in
+                        BlockNote(
+                            id: item.id,
+                            // `detail ?? title`, the same way round as the Postgres read: a note
+                            // written against a block puts its sentence in `detail`, and `title`
+                            // stands in only for a row that was given nothing else.
+                            text: item.detail ?? item.title,
+                            authorName: item.actorID.flatMap { authorNames[$0] },
+                            at: item.createdAt
+                        )
+                    }
+                return block
+            }
     }
 
+    /// Stores the block, and splits any notes it arrived with into inbox rows.
+    ///
+    /// A fixture states its notes inline — `ScheduleSampleDay` does, which is how every Schedule
+    /// preview is populated — so a block can turn up here carrying some. They are unpacked rather
+    /// than kept, because the read above derives them and a stored copy would be a second answer
+    /// to the same question that nothing ever looks at.
+    ///
+    /// `note.id` becomes the row's id and `note.at` its `createdAt`, so the note keeps its
+    /// identity and its place in the order across the round trip. The author is matched by name,
+    /// which is the inverse of the read resolving `actorID` to one: a fixture has no ids to give,
+    /// and an unrecognised name lands as nil rather than inventing a staff row for it.
+    ///
+    /// The one place this build is knowingly more generous than Postgres, and the bounds matter.
+    /// `SupabaseRepository.addScheduleBlock` writes the block and its coaches and drops any notes
+    /// it came with, because `scheduleRow` has no column for them and reversing a *name* into an
+    /// `inbox_items.actor_id` would mean guessing which of two people called Alex wrote it —
+    /// against a real database, a wrong author is worse than none. No screen can reach the
+    /// difference: the Add-block sheet composes a block with no notes on it, and the only caller
+    /// that supplies any is `ScheduleSampleDay`, which exists to populate a preview.
     func addScheduleBlock(_ block: ScheduleBlock, campID: Camp.ID) async throws -> [ScheduleBlock] {
-        sectionEightBlocks.append(block)
+        var stored = block
+        stored.notes = []
+        sectionEightBlocks.append(stored)
+
+        let staff = (try? await camp(id: campID))?.staff ?? []
+        sectionEightInbox.append(contentsOf: block.notes.map { note in
+            InboxItem(
+                id: note.id,
+                venueID: block.venueID,
+                kind: .note,
+                title: block.title,
+                detail: note.text,
+                actorID: note.authorName.flatMap { name in staff.first { $0.name == name }?.id },
+                scheduleBlockID: block.id,
+                createdAt: note.at
+            )
+        })
         return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
     }
 
@@ -245,7 +327,13 @@ extension InMemoryRepository: SectionEightData {
         guard let index = sectionEightBlocks.firstIndex(where: { $0.id == block.id }) else {
             throw SycamoreError.unknownGroup
         }
-        sectionEightBlocks[index] = block
+        // The incoming notes are dropped rather than stored, and deliberately not unpacked the
+        // way `addScheduleBlock` unpacks them: the block being edited was read from here a moment
+        // ago, so its notes are already rows and re-adding them would double every one of them.
+        // Postgres does the same by omission — `scheduleRow` has no column for them.
+        var stored = block
+        stored.notes = []
+        sectionEightBlocks[index] = stored
         return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
     }
 
@@ -255,8 +343,20 @@ extension InMemoryRepository: SectionEightData {
         guard let block = sectionEightBlocks.first(where: { $0.id == blockID }) else {
             throw SycamoreError.unknownGroup
         }
-        sectionEightBlocks.removeAll { $0.id == blockID }
+        removeBlocks { $0.id == blockID }
         return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
+    }
+
+    /// Drops blocks *and* the inbox rows hanging off them, which is what
+    /// `inbox_items_schedule_block_id_fkey`'s `on delete cascade` does on the other side.
+    ///
+    /// Without it this build would keep notes pointing at blocks that are gone — and because the
+    /// Inbox reads the same array, they would still be drawn on `8r`, attached to nothing.
+    private func removeBlocks(_ isRemoved: (ScheduleBlock) -> Bool) {
+        let removed = Set(sectionEightBlocks.filter(isRemoved).map(\.id))
+        guard !removed.isEmpty else { return }
+        sectionEightBlocks.removeAll { removed.contains($0.id) }
+        sectionEightInbox.removeAll { $0.scheduleBlockID.map(removed.contains) ?? false }
     }
 
     func applyDayShape(
@@ -264,7 +364,10 @@ extension InMemoryRepository: SectionEightData {
     ) async throws -> [ScheduleBlock] {
         // Replaces the day rather than appending to it. "Start from a shape" is only offered on
         // an empty day, but a double tap must not produce two overlapping timetables.
-        sectionEightBlocks.removeAll { $0.venueID == venueID && $0.day == day }
+        //
+        // A shape names no coaches — `DayShape.blocks` is `(hour, minute, title, detail)` — so
+        // the blocks below arrive with `coachIDs` empty, exactly as they do from Postgres.
+        removeBlocks { $0.venueID == venueID && $0.day == day }
         for spec in shape.blocks {
             sectionEightBlocks.append(
                 ScheduleBlock(
@@ -279,11 +382,20 @@ extension InMemoryRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: venueID, day: day, campID: campID)
     }
 
+    /// Copies a day. The coaches follow the blocks; the notes do not.
+    ///
+    /// The source is read from `sectionEightBlocks` directly rather than through
+    /// `scheduleBlocks(forVenue:day:campID:)`, so a copy is made from a block whose `notes` have
+    /// not been derived onto it — which is the same answer Postgres gives for a different reason
+    /// (there, a copy is minted a fresh id and no `inbox_items` row points at it). `copy.status`
+    /// argues the case below: "net still down, play on 1–3" is true of the morning it was written
+    /// and is nobody's instruction for tomorrow. Who is rostered on a block is not that kind of
+    /// fact, so `coachIDs` rides along on the copy.
     func copySchedule(
         fromDay: Weekday, toDay: Weekday, venueID: Venue.ID, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
         let source = sectionEightBlocks.filter { $0.venueID == venueID && $0.day == fromDay }
-        sectionEightBlocks.removeAll { $0.venueID == venueID && $0.day == toDay }
+        removeBlocks { $0.venueID == venueID && $0.day == toDay }
         for block in source {
             var copy = block
             copy.id = UUID()
@@ -295,28 +407,40 @@ extension InMemoryRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: venueID, day: toDay, campID: campID)
     }
 
+    /// Writes the note as an inbox row, in the same words the Postgres one uses: the block's
+    /// title in `title`, the note in `detail`. Nothing is appended to the block — see
+    /// `scheduleBlocks(forVenue:day:campID:)` for where a note actually lives.
     func addBlockNote(
         _ text: String, to block: ScheduleBlock, authorID: StaffMember.ID?, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
-        guard let index = sectionEightBlocks.firstIndex(where: { $0.id == block.id }) else {
+        guard sectionEightBlocks.contains(where: { $0.id == block.id }) else {
             throw SycamoreError.unknownGroup
         }
-        let author = (try? await camp(id: campID))?.staff.first { $0.id == authorID }
-        sectionEightBlocks[index].notes.append(
-            BlockNote(id: UUID(), text: text, authorName: author?.name, at: .now)
+        sectionEightInbox.append(
+            InboxItem(
+                venueID: block.venueID,
+                kind: .note,
+                title: block.title,
+                detail: text,
+                actorID: authorID,
+                scheduleBlockID: block.id
+            )
         )
         return try await scheduleBlocks(
             forVenue: block.venueID, day: block.day, campID: campID
         )
     }
 
+    /// By id alone, which is what the Postgres delete filters on. Narrowing it to the block as
+    /// well would make this build stricter than the real one — a difference only the offline
+    /// build could ever show you.
     func deleteBlockNote(
         _ noteID: InboxItem.ID, from block: ScheduleBlock, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
-        guard let index = sectionEightBlocks.firstIndex(where: { $0.id == block.id }) else {
+        guard sectionEightInbox.contains(where: { $0.id == noteID }) else {
             throw SycamoreError.unknownGroup
         }
-        sectionEightBlocks[index].notes.removeAll { $0.id == noteID }
+        sectionEightInbox.removeAll { $0.id == noteID }
         return try await scheduleBlocks(
             forVenue: block.venueID, day: block.day, campID: campID
         )

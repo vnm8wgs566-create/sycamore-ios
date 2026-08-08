@@ -152,8 +152,5 @@ extension CourtCard {
         return "\(playersHere) player\(playersHere == 1 ? "" : "s")"
     }
 
-    var isClosed: Bool {
-        if case .closed = status { return true }
-        return false
-    }
+    var isClosed: Bool { status.isClosed }
 }

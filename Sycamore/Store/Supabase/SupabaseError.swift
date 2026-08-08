@@ -73,6 +73,22 @@ enum SupabaseError: LocalizedError, Equatable {
         return false
     }
 
+    /// The policy answering, as opposed to the token being stale — see `isExpiredCredential`.
+    ///
+    /// Postgres answers a `with check` violation with 403, and PostgREST passes the status
+    /// through. That is a rule refusing a value, not a session refusing a person, and the two
+    /// want different sentences: `errorDescription` says "You don't have access to that.", which
+    /// reads as a sign-in problem and sends an admin's colleague to the wrong screen. A caller on
+    /// an admin-gated write turns this into `SycamoreError.notPermitted` — "Only an admin can do
+    /// that." — which is the sentence that was already written for it.
+    ///
+    /// Matched on the status rather than on Postgres's `42501`, because the two arrive by
+    /// different routes: `42501` is a missing *grant* (the `today_courts` view has one), while a
+    /// row level security refusal carries no SQLSTATE at all.
+    var isPolicyRefusal: Bool {
+        if case .rejected(let status, _) = self { status == 403 } else { false }
+    }
+
     /// A `URLSession` failure, classified.
     ///
     /// Cancellation is not a network failure and must not be dressed as one. A screen dismissed

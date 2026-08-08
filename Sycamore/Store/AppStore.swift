@@ -72,10 +72,10 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 /// The last two are the opposite case and arrive as covers. See `isFullScreen`, and
 /// `RootView.pushedView(for:)` for both.
 ///
-/// No longer `String`-backed, and no longer `CaseIterable`: `8m` needs the courts it is marking
-/// and `8q` needs the kid, so two of these five carry a payload and neither a raw value nor
-/// `allCases` can survive that. Nothing asked for either — the raw value existed only to spell
-/// `id`, which is now written out below.
+/// No longer `String`-backed, and no longer `CaseIterable`: `8m` needs the courts it is marking,
+/// `8q` needs the kid and the court screen needs the court, so three of these six carry a payload
+/// and neither a raw value nor `allCases` can survive that. Nothing asked for either — the raw
+/// value existed only to spell `id`, which is now written out below.
 enum PushedScreen: Identifiable, Hashable, Sendable {
     /// `8s` — the avatar's destination.
     case profile
@@ -94,8 +94,19 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     case attendance([Group.ID], ScheduleBlock?)
     /// `8q` — a kid.
     case player(Player.ID)
+    /// One court: its roster, its coach, its status and the notes written against it.
+    ///
+    /// The one screen in this enum the design does not draw. Section 8 draws a caret on every
+    /// court card on `8i`/`8j` and no frame for where it goes, so the screen behind it is
+    /// composed from the parts the design *does* draw — `8q`'s header shape, Overview's own coach
+    /// pill, status badge and roster rows.
+    ///
+    /// Carries the court rather than the whole `CourtCard`: the card is a row of `today_courts`
+    /// that the store re-reads on every load, and holding a copy of it in the navigation state
+    /// would leave the screen drawing a headcount from whenever it was opened.
+    case court(Group.ID)
 
-    /// Written out rather than derived, because two of these cases carry a payload and the
+    /// Written out rather than derived, because three of these cases carry a payload and the
     /// payload is what makes them different screens. An `id` that ignored it would leave `8q`
     /// showing the first kid when a second was asked for — SwiftUI reads `.sheet(item:)` as
     /// "still the same presentation" and never rebuilds the content.
@@ -108,6 +119,7 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
             let courts = groupIDs.map(\.uuidString).joined(separator: "+")
             return "attendance-\(courts)-\(block?.id.uuidString ?? "no-block")"
         case .player(let id): return "player-\(id.uuidString)"
+        case .court(let id): return "court-\(id.uuidString)"
         }
     }
 
@@ -117,9 +129,12 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     /// pin a bar to the bottom edge. A sheet would inset the header behind rounded corners, put
     /// its own dismissal chrome beside a control that already exists, and float a grabber over a
     /// screen that draws a mock status bar. The other three have none of that and stay sheets.
+    ///
+    /// The court screen draws `8q`'s header — mock status bar, back caret, serif title — so it
+    /// answers the question the same way and for the same reason.
     var isFullScreen: Bool {
         switch self {
-        case .attendance, .player: true
+        case .attendance, .player, .court: true
         case .profile, .campSettings, .rank: false
         }
     }
@@ -417,6 +432,20 @@ extension AppStore {
 
     var role: Role? { selectedMembership?.role }
     var isAdmin: Bool { role?.isAdmin == true }
+
+    /// `Admins only · ask Nass or Hubert` — the sentence a locked row wears.
+    ///
+    /// Here rather than on the screens, because it is a sentence with a policy in it: two names
+    /// and not three, "or" and not "and", and a fallback for a camp whose admins have all left.
+    /// Profile and the Inbox each wrote it out privately and identically, which is how the third
+    /// screen that locks a row ends up wording it differently.
+    var adminsOnlyDetail: String {
+        let names = (camp?.staff ?? []).filter(\.role.isAdmin).map(\.name)
+        // Two, because a row is one line and a camp can have a dozen admins.
+        let asked = Array(names.prefix(2))
+        guard !asked.isEmpty else { return "Admins only" }
+        return "Admins only · ask \(asked.formatted(.list(type: .or)))"
+    }
 
     /// The signed-in person's own staff row in the current camp — the Profile header
     /// and "ON TODAY" card read from it.
@@ -1115,6 +1144,26 @@ extension AppStore {
         store.memberships = SampleData.memberships
         store.selectedMembership = SampleData.westsideMembership
         store.camp = SampleData.westsideSwim
+        return store
+    }
+
+    /// The same person and camp as `preview`, with the UCLA membership promoted to admin.
+    ///
+    /// Section 8 draws a handful of things only an admin sees — the note composer, the per-note
+    /// delete, the "Assign" on an uncovered block, the pinned-message field — and neither
+    /// existing fixture could show them. `preview` is Alex, a *worker* at UCLA; `previewAdmin` is
+    /// an admin of Westside Swim, which has none of the venues or staff those screens are built
+    /// from, so its previews would draw an empty screen for the opposite reason. Two features
+    /// each patched the hole locally before this existed.
+    ///
+    /// Promoting the membership is the smallest change that keeps the camp: `role` lives on the
+    /// membership and never on the account, which is `Role`'s own argument — the same login can
+    /// be an admin at one camp and a worker at another.
+    static var previewUCLAAdmin: AppStore {
+        let store = preview
+        var membership = SampleData.uclaMembership
+        membership.role = .admin
+        store.selectedMembership = membership
         return store
     }
 }
