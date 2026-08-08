@@ -104,13 +104,25 @@ struct SignInView: View {
     /// on its own account reaches the store, because everything after the token has its own
     /// error path through `perform`.
     ///
-    /// Except in a debug build, where the button skips all of it. Neither end of the real path is
-    /// standing up yet — Sign In with Apple is not on the App ID, and the Apple provider is not
-    /// enabled in Supabase — so the sheet would fail on the entitlement before there was anything
-    /// to exchange. `bypassSignIn` puts you in the app on the offline store until both are done;
-    /// delete this branch, not the store method, when they are.
+    /// Except on a debug simulator build, where the button skips all of it.
+    ///
+    /// This branch used to be the whole of `#if DEBUG`, because neither end of the real path was
+    /// standing up: Sign In with Apple was not on the App ID and the Apple provider was not
+    /// enabled in Supabase. Both are now on, so a debug build on a *device* takes the real path
+    /// like every other build — which is the only way the exchange is ever exercised before
+    /// release.
+    ///
+    /// What is left is the case where Apple cannot work whatever anyone configures. The simulator
+    /// forces `ENTITLEMENTS_ALLOWED = NO`, so `com.apple.developer.applesignin` is stripped from
+    /// the installed binary and `ASAuthorizationController` answers `.unknown` without drawing
+    /// anything — there is no sheet to back out of and no token to exchange. Sending that to
+    /// `signInFailed` would put a banner on screen 1 every time somebody ran the app on a Mac,
+    /// reporting a misconfiguration that does not exist.
+    ///
+    /// `bypassSignIn` puts you in the app on the offline store instead. The email path is real in
+    /// the simulator and is the way to exercise Postgres from one.
     private func signInWithApple() async {
-        #if DEBUG
+        #if DEBUG && targetEnvironment(simulator)
         await store.bypassSignIn()
         #else
         do {

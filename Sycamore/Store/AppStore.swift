@@ -768,9 +768,13 @@ extension AppStore {
 
     #if DEBUG
 
-    /// "Continue with Apple" with the Apple part taken out, for as long as the provider is not
-    /// configured. Debug builds only — a release build cannot reach this, so the shipped app has
-    /// no way in but a real authorisation.
+    /// "Continue with Apple" with the Apple part taken out. Debug builds only — a release build
+    /// cannot reach this, so the shipped app has no way in but a real authorisation.
+    ///
+    /// It used to stand in for the whole provider, which was not configured. It is now reached
+    /// only from a debug *simulator* build, where the entitlement is stripped before the app is
+    /// installed and no configuration on either side can make Apple work. `SignInView` carries
+    /// the argument.
     ///
     /// It swaps the repository as well as the account, and that is the whole point. Faking the
     /// signed-in state against Postgres would get you past screen 1 and no further: RLS is strict
