@@ -13,7 +13,19 @@ enum ScheduleSampleDay {
 
     /// `8k`, block for block: a drop-off already behind us, the skills rotation running now with
     /// three notes on it, a break, the match play nobody is running, and lunch.
-    static func blocks(venueID: Venue.ID, day: Weekday = .tue) -> [ScheduleBlock] {
+    ///
+    /// - Parameter coachIDs: who is running the skills rotation. Empty by default, which is the
+    ///   state every preview written before blocks carried coaches expects — and the state the
+    ///   real backend still returns, because `scheduleBlocks(…)` does not populate the column yet.
+    ///   Pass ids to draw the block with its logistics filled in. Only that one block takes them:
+    ///   the design's other four say nothing about who is on them, and putting the same names
+    ///   under all five would be the "everyone at this venue" answer this change exists to stop
+    ///   giving.
+    static func blocks(
+        venueID: Venue.ID,
+        day: Weekday = .tue,
+        coachIDs: [StaffMember.ID] = []
+    ) -> [ScheduleBlock] {
         [
             ScheduleBlock(
                 venueID: venueID, day: day, startsAt: TimeOfDay(8, 30), endsAt: TimeOfDay(9, 0),
@@ -26,7 +38,8 @@ enum ScheduleSampleDay {
                     note("Net on 4 is loose", by: "Nass"),
                     note("Cones on the service line, cart stays north"),
                     note("Volley ladder after the forehand feeds"),
-                ]
+                ],
+                coachIDs: coachIDs
             ),
             ScheduleBlock(
                 venueID: venueID, day: day, startsAt: TimeOfDay(10, 30), endsAt: TimeOfDay(10, 45),
@@ -50,5 +63,25 @@ enum ScheduleSampleDay {
     /// so two notes reading the same words are still two rows.
     private static func note(_ text: String, by author: String? = nil) -> BlockNote {
         BlockNote(id: UUID(), text: text, authorName: author, at: .now)
+    }
+
+    /// `AppStore.preview`, promoted.
+    ///
+    /// Three screens on Schedule now draw something only an admin sees — the note composer, the
+    /// per-note delete, the "Assign" on an uncovered block — and `AppStore.preview` is Alex, who
+    /// is a *worker* at UCLA. `AppStore.previewAdmin` is an admin, but of Westside Swim, which has
+    /// none of the venues or staff these fixtures are built from, so its previews would draw an
+    /// empty screen for the opposite reason.
+    ///
+    /// Promoting the membership is the smallest change that keeps the camp: `role` lives on the
+    /// membership and never on the account, which is the whole point of `Role`'s own header —
+    /// "the same login can be an admin at one camp and a worker at another".
+    @MainActor
+    static func adminStore() -> AppStore {
+        let store = AppStore.preview
+        var membership = SampleData.uclaMembership
+        membership.role = .admin
+        store.selectedMembership = membership
+        return store
     }
 }
