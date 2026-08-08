@@ -71,6 +71,12 @@ struct ProfileView: View {
     /// the same line as two rows of copy; pinning it makes the card lopsided at large sizes.
     @ScaledMetric(relativeTo: .body) private var todayTileSize: CGFloat = 42
 
+    /// The venue's emoji on that plate. The design sets `font-size:21px` on a 44px tile
+    /// (`design/Sycamore Flow.dc.html:357`) — 0.477 of the plate — which on 42pt is 20. Its own
+    /// `@ScaledMetric` rather than a fraction of `todayTileSize`, so the glyph is rounded to the
+    /// reader's type size once instead of twice.
+    @ScaledMetric(relativeTo: .body) private var todayGlyphSize: CGFloat = 20
+
     /// The design's `padding:10px 22px 20px` on the white plate, less the 5pt the close disc's
     /// 44pt hit frame already hangs above its 34pt circle. Measuring to the disc rather than to
     /// the frame is what keeps the drawn result identical to the design.
@@ -291,21 +297,43 @@ struct ProfileView: View {
         Card(radius: Radius.settingsCard, borderColor: Theme.accentBorder, isDivided: false) {
             CardRow(spacing: Spacing.medium, horizontalPadding: Spacing.gutterWide, verticalPadding: Spacing.gutterWide) {
                 if let assignment = store.todayAssignment {
-                    // A pin on a green plate, not the venue's emoji on the venue's tint. `8t`
-                    // tints its tiles per venue because it lists several and the colour tells
-                    // them apart; here there is one, and the line beside it already names it.
+                    // The venue's own emoji on the venue's own tint. The design draws this card
+                    // at `design/Sycamore Flow.dc.html:357` with
+                    // `background:#F1F5EC;font-size:21px` and 🌳 on it — `#F1F5EC` is
+                    // `Theme.color(for: .moss)`, so the plate is the venue's tint, not the
+                    // accent's.
+                    //
+                    // It was a pin on `accentSurface` inside an `accentSurfaceBorder` stroke, on
+                    // the argument that `8t` tints per venue because it lists several while this
+                    // card lists one that the line beside it already names. The argument is
+                    // sound and the drawing was still wrong: `8s.html` and `8t.html` are absent
+                    // from this repository and always have been, so neither the pin nor the
+                    // green plate could be checked against anything, and the design that is here
+                    // draws this card's tile in moss with a tree on it. `TodayAssignment` has
+                    // carried `venueIcon` and `venueTint` the whole time — the latter documented
+                    // as "what Profile's icon tile reads" (`Models.swift:617`) — and this is the
+                    // tile that was not reading them.
+                    //
+                    // The stroke goes with the pin. In the design the `#C9DDFB` border belongs
+                    // to the card, which `Card(borderColor: Theme.accentBorder)` above already
+                    // draws; the tile inside it carries no border at all.
+                    //
+                    // Both halves come off `TodayAssignment` rather than one of them being
+                    // looked up live, so the emoji and the name under it are the same snapshot
+                    // and cannot disagree with each other. That the snapshot itself can go stale
+                    // — `Camp.reindex()` does not refresh the `CourtAssignment` copies a venue
+                    // rename or an icon change leaves behind — is older than this tile and shows
+                    // in `pathLabel` already. It belongs to `Models.swift`, not here.
                     RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                        .fill(Theme.accentSurface)
+                        .fill(Theme.color(for: assignment.venueTint))
                         .frame(width: todayTileSize, height: todayTileSize)
                         .overlay {
-                            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                                .strokeBorder(Theme.accentSurfaceBorder, lineWidth: BorderWidth.hairline)
+                            Text(assignment.venueIcon)
+                                .font(.system(size: todayGlyphSize))
                         }
-                        .overlay {
-                            Image(systemName: "mappin")
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundStyle(Theme.inkSecondary)
-                        }
+                        // The whole card is already combined into one sentence below, and
+                        // `pathLabel` names the venue in it. Hidden so the emoji is not read as
+                        // a second, wordier name for the same place.
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {

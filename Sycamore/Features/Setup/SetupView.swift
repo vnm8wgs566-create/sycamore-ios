@@ -38,6 +38,12 @@ struct SetupView: View {
     /// the two lines of copy beside it.
     @ScaledMetric(relativeTo: .body) private var venueTileSize: CGFloat = 40
 
+    /// The emoji on that plate. The design sets `font-size:21px` on a 44px tile
+    /// (`design/Sycamore Flow.dc.html:276`) — 0.477 of the plate — which on 40pt is 19. Scaled
+    /// alongside the plate rather than derived from it, because `@ScaledMetric` rounds each
+    /// value to the reader's type size and a glyph computed from an already-rounded plate drifts.
+    @ScaledMetric(relativeTo: .body) private var venueGlyphSize: CGFloat = 19
+
     /// `8t` collapses the whole staff list into one summary row with a caret. There is no staff
     /// screen to send that caret to and no `PushedScreen` case to reach one, so the row opens
     /// the list in place — which is also what keeps the staff sheet reachable.
@@ -207,16 +213,33 @@ struct SetupView: View {
                 store.present(.venue(venue.id))
             } label: {
                 HStack(spacing: Spacing.row) {
-                    // The venue's own tint, with the design's generic pin on it. `8t` lists
-                    // several venues at once, so the plate is what tells them apart.
+                    // The venue's own tint with the venue's own emoji on it, which is how the
+                    // design draws this exact row: `background:#F1F5EC` and 🌳, then
+                    // `background:#F7F9E9` and 🎾 (`design/Sycamore Flow.dc.html:276` and
+                    // `:281`).
+                    //
+                    // It was a generic pin, on the argument that `8t` lists several venues at
+                    // once so the plate is what tells them apart. The argument still holds; the
+                    // evidence never did. `8t.html` is not in this repository and never has been
+                    // — `git log --all --diff-filter=A` finds no section-8 document — so the pin
+                    // could not be checked against anything, while the design that *is* here
+                    // draws the emoji, contains no `map-pin` at all, and `SPEC.md`'s
+                    // Phosphor→SF Symbol table has no pin row. The plate still tells the venues
+                    // apart. The emoji tells them apart first, and says which is which rather
+                    // than only that they differ.
+                    //
+                    // Deliberately still 40pt rather than the design's 44: that size came from
+                    // the same absent document, and resizing every venue row is a layout change
+                    // this is not.
                     RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                         .fill(Theme.color(for: venue.tint))
                         .frame(width: venueTileSize, height: venueTileSize)
                         .overlay {
-                            Image(systemName: "mappin")
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundStyle(Theme.inkSecondary)
+                            Text(venue.icon)
+                                .font(.system(size: venueGlyphSize))
                         }
+                        // Not decorative — an emoji is how a venue is recognised — but the name
+                        // sits immediately beside it, so reading both would say the venue twice.
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
