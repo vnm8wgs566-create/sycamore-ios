@@ -41,7 +41,8 @@ struct InboxMoreRow: View {
 
 // MARK: - Previews
 
-#if DEBUG
+/// Unguarded, for the reason `InboxPreviewItems` sets out: the `#Preview` under it compiles in
+/// release whether or not the harness does.
 private struct InboxMoreRowPreview: View {
     @State private var isExpanded = false
 
@@ -53,7 +54,6 @@ private struct InboxMoreRowPreview: View {
         .background(Theme.surfaceWarm)
     }
 }
-#endif
 
 #Preview("More row") {
     InboxMoreRowPreview()

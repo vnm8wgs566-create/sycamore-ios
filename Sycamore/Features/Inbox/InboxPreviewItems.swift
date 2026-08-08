@@ -9,8 +9,24 @@
 //  app's seed data, and putting them in the shipped fixture set would put a fictional morning in
 //  front of the first real person who opens the tab.
 //
+//  Compiled in release as well as debug, which is not where this file started. All of it sat
+//  behind `#if DEBUG` and the previews that read it did not, which is a contradiction rather
+//  than an arrangement: `#Preview` expands in every configuration, so a release build reached for
+//  `InboxPreviewItems` and found nothing there. Debug was clean and release was 29 errors, all of
+//  them in this feature and in `DesignSystem/MoreRow.swift`, and TestFlight was on the far side
+//  of them.
+//
+//  The alternative was to guard the previews to match — `#if DEBUG` around each `#Preview` as
+//  well as around the scenery. Rejected on the evidence of the rest of the app: 173 `#Preview`
+//  blocks across 97 files already compile in release, beside harnesses declared plainly at file
+//  scope (`TabBarPreviewHarness`, `GroupCardPreviewHarness`) and fixtures reached the same way
+//  (`AppStore.preview`, `SampleData`). Guarding six files would have made them the exception a
+//  second time, in the opposite direction, and left the next preview added here to guess which
+//  half of the app it belonged to. Release carries a few kilobytes of scenery for that; nothing
+//  in this file is reachable from the running app, whose only route in would be a call, and
+//  `#Preview` is the only caller there is.
+//
 
-#if DEBUG
 import Foundation
 
 enum InboxPreviewItems {
@@ -117,4 +133,3 @@ enum InboxPreviewItems {
     }
 
 }
-#endif
