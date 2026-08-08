@@ -9,9 +9,15 @@
 //  them draws a back control, so a cover would be a screen you cannot leave. This one draws its
 //  own caret. It also draws a bottom call to action, which a sheet's grabber would sit under.
 //
-//  The court card and "Who is where" are read out of the camp graph rather than off the block.
-//  `ScheduleBlock` carries a title, a time and its notes; who is standing where is the camp's
-//  answer, not the schedule's, and the two would drift the moment somebody was reassigned.
+//  The court card is read out of the camp graph rather than off the block: which court you are
+//  standing on and how many kids are in front of you is the camp's answer, not the schedule's, and
+//  the two would drift the moment somebody was reassigned.
+//
+//  "Who is where" used to be read the same way and it was wrong to. That claim holds for court
+//  *occupancy* and not for who runs a block: filtered by venue, every block of the day listed the
+//  same names, so the screen could not answer whether this one was covered. `ScheduleBlock` now
+//  carries `coachIDs`, the logistics card resolves those, and the venue filter has moved to the
+//  editor's picker, where it was always the right question.
 //
 
 import SwiftUI
@@ -26,6 +32,14 @@ struct BlockDetailView: View {
     let isCurrent: Bool
     let onClose: () -> Void
 
+    /// The editor, presented from here rather than through `store.activeSheet`.
+    ///
+    /// This screen is itself a cover, and the root that owns `activeSheet` is underneath it —
+    /// asking it to present would open the editor *behind* this screen. `PlayerScreen` reaches
+    /// `8n` the same way and for the same reason. `ScheduleView` holds a second, independent one
+    /// of these: two callers, two pieces of state, no shared slot to fight over.
+    @State private var editing: BlockEditorDraft?
+
     @ScaledMetric(relativeTo: .footnote) private var statusDot = ScheduleMetrics.statusDot
     @ScaledMetric(relativeTo: .headline) private var ctaHeight = ScheduleMetrics.ctaHeight
 
@@ -37,7 +51,7 @@ struct BlockDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: ScheduleMetrics.blockGap) {
                     yourCourt
-                    whoIsWhere
+                    logistics
                     notesRow
                 }
                 .padding(.horizontal, Spacing.gutter)
@@ -49,6 +63,12 @@ struct BlockDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { takeAttendance }
+        // A sheet, not a cover: a cover cannot be presented over a cover, and this screen is one.
+        // See `BlockEditorSheet`'s header for the rest of the reasoning.
+        .sheet(item: $editing) { draft in
+            BlockEditorSheet(draft: draft, onClose: { editing = nil })
+                .environment(store)
+        }
         // A cover hides the pair `MainTabView` floats, so it carries the store's own — not a
         // private banner. `AppStore.perform` owns `errorMessage` and `isWorking`; this screen
         // just has to be somewhere they can be seen from.
@@ -123,10 +143,17 @@ struct BlockDetailView: View {
         block.status == .planned && isCurrent ? Theme.accent : block.status.tint
     }
 
-    /// The design's `⋯`. Both entries are writes `AppStore` already makes, so neither is a
+    /// The design's `⋯`. Every entry is a write `AppStore` already makes, so none of them is a
     /// button that does nothing.
+    ///
+    /// "Delete block" stays here *and* appears at the foot of the editor. That is one action in
+    /// two places rather than two actions: from the menu it is the quick way out, and inside the
+    /// editor it is where somebody who has just looked at what the block contains decides they do
+    /// not want it. The alternative — dropping it here — would make deleting a block a two-step
+    /// job through a sheet.
     private var blockMenu: some View {
         Menu {
+            Button("Edit block", action: edit)
             if block.status != .done {
                 Button("Mark done", action: markDone)
             }
@@ -155,40 +182,51 @@ struct BlockDetailView: View {
         }
     }
 
-    // MARK: Who is where
+    // MARK: Logistics
 
-    @ViewBuilder
-    private var whoIsWhere: some View {
-        // Resolved once: the filter-and-sort would otherwise run twice per pass, once to decide
-        // whether the section exists and once to fill it.
-        let people = assignees
-
-        if !people.isEmpty {
-            BlockAssigneeList(people: people, myID: store.myStaffRecord?.id)
-        }
+    /// When the block runs, where, and who is on it.
+    ///
+    /// Always drawn, unlike the section it replaces. That one hid itself when it had nobody in it,
+    /// which was right while empty meant "no staff at this venue" — but it now means "nobody is
+    /// covering this", and the when and the where are facts about every block whether or not
+    /// anybody has been assigned to one.
+    private var logistics: some View {
+        BlockAssigneeList(
+            day: block.day,
+            timeLabel: block.timeLabel,
+            venueName: store.venue(block.venueID)?.name,
+            people: BlockAssigneeList.coaches(on: block, in: store.camp),
+            myID: store.myStaffRecord?.id,
+            onAssign: assignAction
+        )
     }
 
-    /// Everyone standing at this block's venue, courts first and roamers last, which is the
-    /// order the design lists them in.
-    private var assignees: [StaffMember] {
-        guard let camp = store.camp else { return [] }
-        return camp.staff
-            .filter { $0.venueID == block.venueID || ($0.isRoaming && $0.venueID == nil) }
-            .sorted { lhs, rhs in
-                let left = lhs.assignment?.groupNumber ?? .max
-                let right = rhs.assignment?.groupNumber ?? .max
-                return left == right ? lhs.name < rhs.name : left < right
-            }
+    /// Nil for a coach, so the empty row states the fact and offers nothing rather than drawing a
+    /// control that would be refused — `ProfileView` locks its admin rows the same way. The gate
+    /// that counts is the RLS policy on `schedule_blocks`.
+    ///
+    /// Spelled out rather than written as `store.isAdmin ? edit : nil` at the call site: a ternary
+    /// between a method reference and `nil` gives the type checker nothing to anchor the optional
+    /// on, and inside a nine-argument initialiser it gives up on the whole expression.
+    private var assignAction: (() -> Void)? {
+        guard store.isAdmin else { return nil }
+        return edit
     }
 
     // MARK: Notes
 
-    /// Hidden outright on a block nobody has written anything on. "0 notes on this block" is a
-    /// row that exists only to say there is nothing in it.
+    /// Hidden on a block nobody has written anything on — unless you are the person who would
+    /// write the first one.
+    ///
+    /// The old condition was `!block.notes.isEmpty`, and its reason was sound: "0 notes on this
+    /// block" is a row that exists only to say there is nothing in it. That reason survives for a
+    /// coach, who can only read. For an admin the card is now also the *composer*, so hiding it
+    /// hides the only way to add a note to a block that has none — an empty row for them is an
+    /// invitation rather than a tally, and `notesRowLabel` words its zero case that way.
     @ViewBuilder
     private var notesRow: some View {
-        if !block.notes.isEmpty {
-            BlockNotesCard(notes: block.notes, label: block.notesRowLabel)
+        if !block.notes.isEmpty || store.isAdmin {
+            BlockNotesCard(block: block)
         }
     }
 
@@ -223,6 +261,13 @@ struct BlockDetailView: View {
         store.pushedScreen = .attendance(groupIDs, block)
     }
 
+    /// Opens the editor on this block. Reached from the `⋯` and from "Assign" on an uncovered
+    /// block — the second is the same screen entered with a different question in mind, not a
+    /// second editor scoped to coaches.
+    private func edit() {
+        editing = BlockEditorDraft(editing: block)
+    }
+
     private func markDone() {
         var updated = block
         updated.status = .done
@@ -241,11 +286,23 @@ struct BlockDetailView: View {
 
 private struct BlockDetailPreview: View {
     var index: Int
+    /// Who is on the block. The design's Tuesday says nothing about this, because nothing on it
+    /// could until now — so the fixture takes it as a parameter and the two previews below draw
+    /// the two answers that matter: covered, and not.
+    var coachIDs: [StaffMember.ID] = []
+    var isAdmin: Bool = true
 
-    @State private var store = AppStore.preview
+    @State private var store: AppStore
+
+    init(index: Int, coachIDs: [StaffMember.ID] = [], isAdmin: Bool = true) {
+        self.index = index
+        self.coachIDs = coachIDs
+        self.isAdmin = isAdmin
+        _store = State(initialValue: isAdmin ? ScheduleSampleDay.adminStore() : AppStore.preview)
+    }
 
     var body: some View {
-        let blocks = ScheduleSampleDay.blocks(venueID: SampleData.sycamore.id)
+        let blocks = ScheduleSampleDay.blocks(venueID: SampleData.sycamore.id, coachIDs: coachIDs)
         // The design's clock, so "On now · 41 min left" reads as `8l` draws it whatever the
         // time is on the machine running the preview.
         let currentID = ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41))?.id
@@ -261,9 +318,15 @@ private struct BlockDetailPreview: View {
 }
 
 #Preview("Block opened — on now") {
-    BlockDetailPreview(index: 1)
+    BlockDetailPreview(index: 1, coachIDs: [SampleData.nass.id, SampleData.alexStaff.id])
 }
 
 #Preview("Block opened — needs a coach") {
     BlockDetailPreview(index: 3)
+}
+
+/// The same screen for somebody who can only read it: no "Assign" beside "Nobody assigned", and
+/// the notes card carries no composer and no per-note `⋯`.
+#Preview("Block opened — coach, read-only") {
+    BlockDetailPreview(index: 1, coachIDs: [SampleData.nass.id], isAdmin: false)
 }

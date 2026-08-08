@@ -34,6 +34,13 @@ struct ScheduleView: View {
     /// survives its own edits and closes itself when the block is deleted.
     @State private var openedBlock: ScheduleBlock?
 
+    /// The block editor, held here rather than on `store.activeSheet`.
+    ///
+    /// `BlockDetailView` holds a second, independent one of these — it has to, being a cover that
+    /// the root's sheet slot sits underneath — and two callers each owning their own state is
+    /// simpler than one slot they take turns in. Nothing is added to `ActiveSheet`.
+    @State private var editing: BlockEditorDraft?
+
     private var blocks: [ScheduleBlock] {
         loadedDay == selectedDay ? store.scheduleBlocks : []
     }
@@ -82,6 +89,10 @@ struct ScheduleView: View {
             loadedDay = selectedDay
         }
         // Failure and in-flight state are `MainTabView`'s, floated once over all four tabs.
+        .sheet(item: $editing) { draft in
+            BlockEditorSheet(draft: draft, onClose: { editing = nil })
+                .environment(store)
+        }
         .blockDetailCover(item: $openedBlock) { block in
             BlockDetailView(
                 block: block,
@@ -166,17 +177,49 @@ struct ScheduleView: View {
                         openedBlock = block
                     }
                 }
+
+                addBlockRow
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, ScheduleMetrics.listTop)
         }
     }
 
+    /// "Add a block" at the foot of a day that already has some.
+    ///
+    /// `8f` gives an empty day one obvious action and this is its equivalent for a day that is
+    /// already written: until now a camp could start a day and never add a sixth block to it. It
+    /// is drawn as a card row rather than as a floating button because the tab bar already floats
+    /// over this scroll, and two things pinned to the bottom edge is one too many.
+    ///
+    /// Not gated on `store.isAdmin`, which is deliberate and matches what is already here: "Add
+    /// the first block", the three day shapes and "Copy Monday instead" are all ungated, and RLS
+    /// on `schedule_blocks` is the gate that decides. Gating one entrance to the composer and not
+    /// the other four would be a lock on a door standing beside an open one.
+    private var addBlockRow: some View {
+        Button(action: addBlock) {
+            Card(radius: ScheduleMetrics.cardRadius) {
+                CardRow(spacing: ScheduleMetrics.rowGap, verticalPadding: Spacing.medium) {
+                    DisclosureChevron(systemName: "plus", size: 15, color: Theme.accent)
+                        .accessibilityHidden(true)
+
+                    Text("Add a block")
+                        .typeStyle(ScheduleType.inlineAction, color: Theme.accent)
+
+                    Spacer(minLength: Spacing.small)
+                }
+                .frame(minHeight: HitTarget.minimum)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the block editor on \(selectedDay.fullName)")
+    }
+
     // MARK: Empty state
 
     private var emptyDay: some View {
         VStack(alignment: .leading, spacing: ScheduleMetrics.sectionGap) {
-            ScheduleEmptyDayHero(day: selectedDay, onAdd: addFirstBlock)
+            ScheduleEmptyDayHero(day: selectedDay, onAdd: addBlock)
 
             ScheduleShapesCard(day: selectedDay, onApply: apply, onCopyMonday: copyMonday)
         }
@@ -184,16 +227,21 @@ struct ScheduleView: View {
 
     // MARK: Writes
 
-    /// There is no block composer in section 8 yet, so this writes the one thing "add" can mean
-    /// without one: an empty 9:00 block for the day to be built around.
-    private func addFirstBlock() {
+    /// Opens the composer on this day. Both entrances land here — `8f`'s "Add the first block" and
+    /// the row at the foot of a populated day — because they are the same act on days that differ
+    /// only in how many blocks are already on them.
+    ///
+    /// This used to *be* the write: it inserted a hardcoded 9:00 "New block" and said so, because
+    /// there was no composer to send anybody to. There is one now, so nothing is written until
+    /// somebody has said what the block is called.
+    ///
+    /// A day can be changed inside the editor, and a block saved onto another day will not appear
+    /// in this list — the chips stay where they were. That is the honest outcome: the sheet says
+    /// which day it is writing to in its own subtitle, and silently dragging the day picker after
+    /// somebody deliberately moved a block would be worse.
+    private func addBlock() {
         guard let venueID = store.readVenueID else { return }
-        Task {
-            await store.addScheduleBlock(
-                ScheduleBlock(venueID: venueID, day: selectedDay, startsAt: TimeOfDay(9, 0),
-                              title: "New block")
-            )
-        }
+        editing = BlockEditorDraft(creatingIn: venueID, day: selectedDay)
     }
 
     private func apply(_ shape: DayShape) {

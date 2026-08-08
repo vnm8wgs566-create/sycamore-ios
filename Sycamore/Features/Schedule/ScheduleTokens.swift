@@ -97,6 +97,29 @@ enum ScheduleMetrics {
     /// `20` — `bottom:20px`, which is two points tighter than the tab bar's own inset because
     /// `8l` draws no tab bar to sit above.
     static let ctaBottom: CGFloat = 20
+    /// `17` — the tick beside a coach in the block editor's picker, and beside a note's `⋯`.
+    /// A glyph rather than copy, so it is sized in points and not through the type table.
+    static let pickerCheck: CGFloat = 17
+
+    // MARK: The block editor
+
+    /// The sheet's height over the 700pt frame the design draws its sheets in, the way
+    /// `SheetChrome` takes every other one. Taller than the venue sheet's `0.87` because this one
+    /// carries four sections and a list of people; `.large` is still one drag away.
+    ///
+    /// Here rather than on `ActiveSheet.detentFraction`, which is a property of a slot this sheet
+    /// deliberately does not occupy — see `BlockEditorSheet`'s header.
+    static let editorDetent: Double = 0.92
+    /// `18` — between the editor's sections, matching the gap `VenueSheet` leaves between its own.
+    static let editorSectionGap: CGFloat = 18
+    /// `9` — between two fields inside one section.
+    static let editorFieldGap: CGFloat = 9
+    /// `52` — the editor's commit bar, and the delete below it.
+    ///
+    /// The same number as `ctaHeight` and stated separately rather than borrowed: that one is
+    /// `8l`'s pinned "Take attendance", and the day the design moves one it will not have moved
+    /// the other.
+    static let editorButtonHeight: CGFloat = 52
 
     // MARK: `8f`
 
@@ -205,8 +228,22 @@ enum ScheduleType {
     static let assigneeMeta = TypeStyle.rowDetail
     /// `500 13.5` — "3 notes on this block". The design's single use of 500 at this size.
     static let notesRow = TypeStyle(size: 13.5, weight: .medium)
-    /// `600 16`, `-.015em` — "Take attendance".
+    /// `600 16`, `-.015em` — "Take attendance", and the editor's commit bar.
     static let cta = TypeStyle.button
+
+    // MARK: The block editor
+
+    /// `500 14` — what somebody has typed into one of the editor's fields, and what its two time
+    /// menus read back.
+    ///
+    /// `bodyAlt` without its 1.5 line-height multiple, which is `VenueSheet`'s expression and its
+    /// reasoning: that multiple is for wrapped copy, and on a one-line field it only adds 7pt of
+    /// leading under a single line. The description field *does* wrap, and takes its leading from
+    /// the same place every other paragraph in the app does rather than from a field style.
+    static let editorValue = TypeStyle.bodyAlt.lineHeight(nil)
+    /// `400 14` — the prompt in those fields. A placeholder is one weight lighter than a value in
+    /// this design, so the two read apart before the colour difference lands.
+    static let editorPlaceholder = TypeStyle.rowValue
 
     // MARK: `8f`
 
