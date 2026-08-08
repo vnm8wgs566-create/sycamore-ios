@@ -11,6 +11,12 @@
 //  writes each row's real numbers back through `updateVenue`, which re-syncs the courts. The
 //  round trip is invisible and the saved camp is the shape the person drew.
 //
+//  A venue's emoji rides the same round trip. `Camp.make(from:)` gives every new venue the icon
+//  its position implies, which is the right guess and the wrong answer once somebody has picked
+//  one — so the pick is stored on the row here and written over the seeded value a moment later.
+//  Nothing in `Models.swift` or `Store/` had to change for that: the correction path the court
+//  counts already take was the path the icon needed.
+//
 //  Fold this into `CampDraft` when the store can take it — see the PR body.
 //
 
@@ -24,7 +30,22 @@ struct VenueShape: Identifiable, Hashable, Sendable {
     var name: String
     /// "Higher level" — the design's second line. Nil reads as the placeholder.
     var subtitle: String?
-    var tint: VenueTint
+    /// One of `Venue.iconOptions`. Seeded from the row's position and then chosen from the tile
+    /// itself; `venue(applying:)` writes it into the created venue.
+    ///
+    /// This used to be computed at the two places a row is made and thrown away again, with only
+    /// the tint it implied surviving — so the screen knew which emoji a venue was going to get
+    /// and drew a pin instead. Storing it is what makes it choosable.
+    var icon: String
+    /// The tile's colour, which on this screen is always the emoji's own.
+    ///
+    /// Computed rather than stored, which is the whole reason the icon menu needs no binding of
+    /// its own: `8b` draws no tint control, so there is nothing here that could make the two
+    /// disagree, and a stored copy would only be a second field to forget to write — a citron
+    /// plate under a tree, one tap after choosing the tree. `Venue.tint` stays stored because
+    /// screen 11 genuinely can separate them ("unless someone has said otherwise",
+    /// `VenueSheet.swift:94`).
+    var tint: VenueTint { .suggested(for: icon) }
     /// Courts, fields or lanes, depending on the sport.
     var courts: Int
 }
@@ -52,13 +73,13 @@ struct CampShape: Hashable, Sendable {
     static func initial(venueCount: Int = CampDraft().venueCount, courts: Int = CampDraft().groupsPerVenue) -> CampShape {
         CampShape(
             venues: (0..<max(1, venueCount)).map { index in
-                // The same icon-to-tint pairing `Camp.make(from:)` uses, so the tile colour on
-                // this screen is the tile colour the venue keeps.
-                let icon = Venue.iconOptions[index % Venue.iconOptions.count]
-                return VenueShape(
+                // The same rotation `Camp.make(from:)` seeds with, so a camp saved without
+                // opening the icon menu once is exactly the camp this screen drew — same emoji,
+                // same tint, in the same order.
+                VenueShape(
                     name: "Venue \(index + 1)",
                     subtitle: nil,
-                    tint: .suggested(for: icon),
+                    icon: Venue.iconOptions[index % Venue.iconOptions.count],
                     courts: courts
                 )
             }
@@ -79,12 +100,11 @@ struct CampShape: Hashable, Sendable {
     mutating func addVenue() {
         guard venues.count < Self.venueRange.upperBound else { return }
         let index = venues.count
-        let icon = Venue.iconOptions[index % Venue.iconOptions.count]
         venues.append(
             VenueShape(
                 name: "Venue \(index + 1)",
                 subtitle: nil,
-                tint: .suggested(for: icon),
+                icon: Venue.iconOptions[index % Venue.iconOptions.count],
                 courts: venues.last?.courts ?? CampDraft().groupsPerVenue
             )
         )
@@ -92,12 +112,18 @@ struct CampShape: Hashable, Sendable {
 
     /// Removing a row renumbers the rest, because the names are positional and a camp with a
     /// "Venue 1" and a "Venue 3" and nothing between them reads as a bug.
+    ///
+    /// The icons deliberately do not renumber with them, and the tints follow the icons. They
+    /// used to — the icon was implied by the row's position, so position was the only thing that
+    /// could carry it, and re-deriving the tint on removal was how they stayed in the design's
+    /// order. Now that the emoji is chosen, re-deriving would silently take back a choice made
+    /// two taps earlier and hand the row a colour nobody asked for. A number is positional; an
+    /// emoji is not.
     mutating func removeVenue(_ id: VenueShape.ID) {
         guard venues.count > Self.venueRange.lowerBound else { return }
         venues.removeAll { $0.id == id }
         for index in venues.indices {
             venues[index].name = "Venue \(index + 1)"
-            venues[index].tint = .suggested(for: Venue.iconOptions[index % Venue.iconOptions.count])
         }
     }
 
@@ -111,18 +137,27 @@ struct CampShape: Hashable, Sendable {
         return draft
     }
 
-    /// `existing` with row `index`'s numbers written into it, or nil when the two already
-    /// agree and there is nothing to send.
+    /// `existing` with row `index`'s numbers and chosen emoji written into it, or nil when the
+    /// two already agree and there is nothing to send.
     ///
     /// The limits are derived rather than stored: a venue's ceiling is its courts times what
     /// fits on one, and its coach floor is its courts times what a court needs. `coachMax`
     /// keeps the one-over slack `Camp.make(from:)` already allows, so a venue that is one coach
     /// up does not read as over-staffed.
+    ///
+    /// The icon and tint ride the same round trip. `Camp.make(from:)` seeds both from the
+    /// venue's position (`Models.swift:1151`), which is right only for as long as nobody has
+    /// chosen — and choosing is now the point of the tile. This writes the chosen pair over the
+    /// top through `updateVenue`, the same way the court counts are corrected, so the emoji
+    /// picked on `8b` is the emoji the venue keeps. Both, not just the icon: a tint the design
+    /// pairs with a different emoji would leave the tile the wrong colour for what is on it.
     func venue(applying index: Int, to existing: Venue) -> Venue? {
         guard venues.indices.contains(index) else { return nil }
         let row = venues[index]
 
         var updated = existing
+        updated.icon = row.icon
+        updated.tint = row.tint
         updated.groupCount = row.courts
         updated.playerMin = 0
         updated.playerMax = row.courts * kidsPerCourt

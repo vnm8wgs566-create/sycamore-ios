@@ -10,7 +10,9 @@
 //  in the order you would say them out loud, and the shape below is the design's, unchanged.
 //
 //  Nothing here is a commitment. The header says so, and it is true: venues, courts and both
-//  per-court numbers are all editable from Camp settings any day of the week.
+//  per-court numbers are all editable from Camp settings any day of the week. The venue emoji is
+//  editable there too, but it is chosen here — this is where the venues come into existence, and
+//  a tile picked at setup is a tile that was never wrong.
 //
 //  Saving does not create the camp. It hands the shape to `OnboardingFlowView`, which brings in
 //  the week and writes the camp at the end of it — see that file for why the order is that way
@@ -217,13 +219,7 @@ struct CreateCampView: View {
 
     private func venueRow(_ venue: Binding<VenueShape>) -> some View {
         CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: Spacing.medium) {
-            // The tile says "a place"; the row's own name says which one.
-            IntakeIconTile(
-                "mappin",
-                size: 40,
-                glyphSize: 17,
-                fill: Theme.color(for: venue.wrappedValue.tint)
-            )
+            iconMenu(venue)
 
             VStack(alignment: .leading, spacing: Spacing.hairGap) {
                 Text(venue.wrappedValue.name)
@@ -243,8 +239,12 @@ struct CreateCampView: View {
         }
         // The design draws no way to take a venue back off the list — Camp settings owns that
         // once the camp exists. But nothing exists yet here, so an accidental "Add a venue"
-        // would otherwise follow you into the camp. The menu keeps the row exactly as drawn and
-        // is in the VoiceOver actions rotor for free.
+        // would otherwise follow you into the camp. The context menu keeps the row exactly as
+        // drawn and is in the VoiceOver actions rotor for free.
+        //
+        // It still is, now that the tile in the row is a menu of its own: the tile opens on a
+        // tap and this opens on a long press, so the two never contend for the same gesture, and
+        // by ear the tile is a labelled control on the row rather than an action of it.
         .contextMenu {
             if shape.venues.count > CampShape.venueRange.lowerBound {
                 Button(role: .destructive) {
@@ -254,6 +254,58 @@ struct CreateCampView: View {
                 }
             }
         }
+    }
+
+    /// The venue's emoji on the venue's tint, and the six the design offers behind it.
+    ///
+    /// The tile used to be a generic pin: "the tile says 'a place'; the row's own name says which
+    /// one." Two things changed. The design draws a venue's own emoji everywhere it draws a
+    /// venue (`design/Sycamore Flow.dc.html:276`, `:281`, `:357`) and no pin anywhere — the pin
+    /// came from `8t.html`, which is not in this repository and never has been. And a camp is set
+    /// up here, so this is the screen on which choosing the emoji is worth anything at all; by
+    /// the time Camp settings can change it the person has already looked at the wrong tile all
+    /// week.
+    ///
+    /// Why a menu and not the design's grid: screen 11 draws the picker as six 52pt tiles
+    /// (`:480-485`), which is a card's worth of height. Two or three of those stacked down a card
+    /// that also holds a name, a subtitle and a stepper is not the card the design draws. Making
+    /// the tile itself the control keeps the row exactly as drawn and still offers the same six,
+    /// in the same order. `Menu` wrapped round a `Picker` is what `8g`'s "Leaves at" field
+    /// already does (`EarlyPickupSheet.swift:196`) — it draws the selected mark and carries the
+    /// VoiceOver "selected" trait without either being hand-drawn, and it is a plain button, so
+    /// it is reachable by swipe rather than only in the actions rotor. The row's `.contextMenu`
+    /// keeps "Remove": a long press and a tap are different gestures and both survive.
+    ///
+    /// The selection binds straight to `venue.icon` and nothing else is written. `VenueShape.tint`
+    /// is computed from the emoji, so the plate is already the right colour by the time this
+    /// returns — no second write to keep in step, and no `onChange` leaving one frame in which
+    /// the tree sits on citron.
+    private func iconMenu(_ venue: Binding<VenueShape>) -> some View {
+        Menu {
+            Picker("Icon", selection: venue.icon) {
+                ForEach(Venue.iconOptions, id: \.self) { icon in
+                    Text(icon).tag(icon)
+                }
+            }
+        } label: {
+            IntakeIconTile(
+                emoji: venue.wrappedValue.icon,
+                size: 40,
+                // 21-on-44 is the design's ratio (`:276`); on this 40pt plate that is 19.
+                glyphSize: 19,
+                fill: Theme.color(for: venue.wrappedValue.tint)
+            )
+            // The plate is drawn at 40 and the design keeps it there; only what takes the touch
+            // grows to 44, the same call the camp picker's Switch button makes.
+            .intakeTouchTarget(inset: 2)
+        }
+        .buttonStyle(.plain)
+        // The tile inside is hidden, so this is the only thing spoken here — and "Venue 1" is
+        // already the next thing read, so the label names what the control changes rather than
+        // repeating the venue.
+        .accessibilityLabel("Icon for \(venue.wrappedValue.name)")
+        .accessibilityValue(venue.wrappedValue.icon)
+        .sensoryFeedback(.selection, trigger: venue.wrappedValue.icon)
     }
 
     private var addVenueRow: some View {
