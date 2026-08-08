@@ -917,6 +917,22 @@ extension Camp {
             groups[index].presentCount = members.count { !isAway($0.id, on: .today) }
             groups[index].coachID = coach(forGroup: groups[index].id)?.id
         }
+
+        // A court assignment carries the venue's name and emoji so a chip renders without
+        // walking the graph, but it only wrote them the moment the coach was assigned. Left
+        // alone, renaming a venue or picking a new emoji would keep every coach already
+        // standing there on the old one until they happened to be moved. Re-reading the copies
+        // here is what makes `upsert(_ venue:)` change a venue everywhere it shows.
+        //
+        // A venue that has gone missing leaves the snapshot as it was: a stale name still says
+        // where the coach is, and blanking it would not.
+        for index in staff.indices {
+            guard let venueID = staff[index].assignment?.venueID,
+                  let venue = venue(venueID)
+            else { continue }
+            staff[index].assignment?.venueName = venue.name
+            staff[index].assignment?.venueIcon = venue.icon
+        }
     }
 
     /// `day` says which row to write. It deliberately does not reach the reindex —

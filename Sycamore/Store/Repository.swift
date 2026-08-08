@@ -572,11 +572,16 @@ actor InMemoryRepository: SycamoreRepository {
             }
             membershipRecords[index].role = record.role
             membershipRecords[index].campSummary = nil
+            // Emoji and tint are drawn on top of each other in Profile's "On today" tile, so
+            // they come from one read of one venue. Taking the emoji off the assignment's
+            // snapshot and the tint off the venue is what let the tile render the old emoji on
+            // the new colour. The assignment is the fallback for a venue that has gone missing.
+            let venue = camp.venue(assignment.venueID)
             membershipRecords[index].todayAssignment = TodayAssignment(
                 venueID: assignment.venueID,
-                venueName: assignment.venueName,
-                venueIcon: assignment.venueIcon,
-                venueTint: camp.venue(assignment.venueID)?.tint ?? camp.tint,
+                venueName: venue?.name ?? assignment.venueName,
+                venueIcon: venue?.icon ?? assignment.venueIcon,
+                venueTint: venue?.tint ?? camp.tint,
                 groupID: court.id,
                 groupLabel: court.label,
                 kidCount: court.playerCount,
