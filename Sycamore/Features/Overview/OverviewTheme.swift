@@ -14,7 +14,8 @@
 //  styles below are aliases onto it rather than a private copy of the scale.
 //
 //  Nothing here is invented. Every number is transcribed from the design's own CSS and the
-//  shorthand it came from is quoted beside it.
+//  shorthand it came from is quoted beside it — bar the three at the foot, which govern the fold
+//  the design never drew and are borrowed whole from the screen that did draw one.
 //
 
 import SwiftUI
@@ -133,4 +134,25 @@ enum OverviewTheme {
     static let bannerVertical: CGFloat = 10
     static let bannerGap: CGFloat = 9
     static let bannerGlyph: CGFloat = 14
+
+    // MARK: The fold
+    //
+    // Three values borrowed from Groups rather than restated. Both screens now fold a court's
+    // kids to a few names behind a "+N more", and a reader who learns that shape on one tab
+    // should meet exactly the same shape — same count, same rule, same curve — on the other.
+    // Restating any of the three here would be three chances for the two to drift apart.
+
+    /// Kids a folded court card lists before `+N more`.
+    ///
+    /// Three, not the five the design draws. Five was the count for the *one* card that listed
+    /// anybody; every card lists its court now, and five names across a twelve-court venue is
+    /// sixty rows before the reader has scrolled once. Three keeps a card's list to about the
+    /// height of its own header, so the screen still scans as a list of courts — and the kids
+    /// it folds away are one tap behind the row that counts them.
+    ///
+    /// Deliberately its own number and not `GroupsRules.previewRows`, which is also three. The
+    /// two agree today by coincidence of layout, not by rule: a group card is full width with
+    /// nothing else in it, a court card carries a header, a coach pill and sometimes a note.
+    /// Aliasing them would mean a Groups decision to show four silently changed this screen.
+    static let rosterPreview = 3
 }

@@ -1126,9 +1126,15 @@ extension View {
 // MARK: - Search field
 
 /// `fill` plate at radius 13 with a magnifying glass and the design's grey placeholder.
+///
+/// A named wrapper over `FormField(.plate)` rather than the raw component at each call site: two
+/// screens use this and both want the same glyph, the same type and the same keyboard, and
+/// "search" is the thing they mean. It keeps its own `@FocusState` because nothing outside it
+/// has ever needed to put the keyboard down on its behalf.
 struct SearchField: View {
     @Binding var text: String
     var placeholder: String
+    @FocusState private var isFocused: Bool
 
     init(text: Binding<String>, placeholder: String = "Search") {
         self._text = text
@@ -1136,36 +1142,26 @@ struct SearchField: View {
     }
 
     var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(Theme.searchPlaceholder)
+        let field = FormField(
+            placeholder,
+            text: $text,
+            // The placeholder *is* the label here — "Find a player" names the control as well as
+            // any separate string would, and the two screens draw no header above it.
+            label: placeholder,
+            metrics: .plate,
+            type: .searchValue,
+            icon: "magnifyingglass",
+            focus: $isFocused
+        )
+        .autocorrectionDisabled()
 
-            ZStack(alignment: .leading) {
-                if text.isEmpty {
-                    Text(placeholder)
-                        .typeStyle(.searchValue, color: Theme.searchPlaceholder)
-                }
-                field
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
-        .background(Theme.fill, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
-    }
-
-    private var field: some View {
-        let base = TextField("", text: $text)
-            .textFieldStyle(.plain)
-            .typeStyle(.searchValue, color: Theme.ink)
-            .autocorrectionDisabled()
-
+        // Both travel down the environment to the `TextField` inside `FormField`.
         #if os(iOS)
-        return base
+        return field
             .textInputAutocapitalization(.never)
             .submitLabel(.search)
         #else
-        return base
+        return field
         #endif
     }
 }

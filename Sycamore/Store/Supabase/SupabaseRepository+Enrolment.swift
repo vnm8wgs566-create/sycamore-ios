@@ -268,7 +268,7 @@ extension SupabaseRepository {
             "last_initial": .text(player.lastInitial),
             "last_name": .text(player.lastName),
             "age": .int(player.age),
-            "gender": .text(player.gender.symbol),
+            "gender": .text(PostgresEnum.text(player.gender)),
             "is_returning": .bool(player.isReturning),
             "site_id": .uuid(venueID),
         ]

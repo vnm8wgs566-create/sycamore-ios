@@ -26,7 +26,7 @@ struct GroupsView: View {
     @Environment(AppStore.self) private var store
     /// The lift, the drop and the fold are all changes of *position*, which is the one thing
     /// Reduce Motion is actually about. Every animation on the screen goes through
-    /// `GroupsMetrics.fold(reduceMotion:)`, so the state still changes — it arrives rather than
+    /// `Motion.fold(reduceMotion:)`, so the state still changes — it arrives rather than
     /// travels.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -62,7 +62,7 @@ struct GroupsView: View {
         // gives this screen its own page colour; see the PR for why it is not `Theme.grouped`.
         .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { moveBar }
-        .animation(GroupsMetrics.fold(reduceMotion: reduceMotion), value: move == nil)
+        .animation(Motion.fold(reduceMotion: reduceMotion), value: move == nil)
         // A filter that changes under a kid in the air can take their group off the screen.
         .onChange(of: store.searchText) { move = nil }
         .onChange(of: store.venueFilter) { move = nil }
@@ -436,12 +436,8 @@ struct GroupsView: View {
     // MARK: - Intents
 
     private func toggle(_ groupID: Group.ID) {
-        withAnimation(GroupsMetrics.fold(reduceMotion: reduceMotion)) {
-            if expandedGroupIDs.contains(groupID) {
-                expandedGroupIDs.remove(groupID)
-            } else {
-                expandedGroupIDs.insert(groupID)
-            }
+        withAnimation(Motion.fold(reduceMotion: reduceMotion)) {
+            expandedGroupIDs.toggle(groupID)
         }
     }
 
@@ -510,7 +506,7 @@ struct GroupsView: View {
         var updated = current
         updated.target = slot
         updated.translation = slot.y - current.origin.midY
-        withAnimation(GroupsMetrics.fold(reduceMotion: reduceMotion)) { move = updated }
+        withAnimation(Motion.fold(reduceMotion: reduceMotion)) { move = updated }
     }
 
     private func cancelMove() {

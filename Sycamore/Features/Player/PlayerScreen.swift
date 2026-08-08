@@ -41,6 +41,7 @@ struct PlayerScreen: View {
                 PlayerHeader(
                     placement: store.camp?.placementLine(for: playerID) ?? "",
                     name: player?.displayName ?? "",
+                    gender: player?.gender,
                     whoTheyAre: whoTheyAre,
                     onBack: { store.pushedScreen = nil }
                 )
@@ -74,26 +75,23 @@ struct PlayerScreen: View {
 
     /// `Boy · 13 years`, under the name.
     ///
-    /// The design sets a gender glyph beside it (`ph-gender-male` at `#A2A6AE`). SF Symbols has
-    /// no gender set, and the nearest candidates encode the distinction as a dress, so the line
-    /// stands on its own words instead. See the PR body.
+    /// The design sets a gender glyph beside it (`ph-gender-male` at `#A2A6AE`, which is
+    /// `Theme.inkFaint`). SF Symbols has no gender set and its nearest candidates encode the
+    /// distinction as a dress, so for a long while this line stood on its own words — but that
+    /// left the one screen the design draws the mark on largest without it. `GenderMark` draws
+    /// Venus, Mars and a third mark of its own, and `PlayerHeader` sets it in front of these
+    /// words at `8q`'s size and grey.
+    ///
+    /// The words stay. `Gender.noun` is `Girl` / `Boy` / `Kid` where the mark's own label is
+    /// `Girl` / `Boy` / `Other`: this is a sentence about one child, and "Other · 13 years"
+    /// categorises them where the line is meant to describe them.
     private var whoTheyAre: String? {
         guard let player else { return nil }
         // `ageLabel`, not `player.age` — the age became optional when it turned out that
         // substituting `0` for a missing one failed the column's `4..19` CHECK, so a kid imported
         // without an age could not be written at all. Interpolating the optional directly renders
         // "Optional(13) years".
-        return "\(genderNoun(player.gender)) · \(player.ageLabel)"
-    }
-
-    /// `.x` gets a noun of its own rather than a default — a camp that recorded "x" did so
-    /// deliberately, and rounding it to one of the other two would be the app overruling them.
-    private func genderNoun(_ gender: Gender) -> String {
-        switch gender {
-        case .m: "Boy"
-        case .f: "Girl"
-        case .x: "Kid"
-        }
+        return "\(player.gender.noun) · \(player.ageLabel)"
     }
 
     // MARK: - Content

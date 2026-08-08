@@ -70,8 +70,8 @@ struct VerifyView: View {
     private var sentToLine: some View {
         let email = store.pendingEmail ?? store.emailInput
         return (
-            Text("We sent a code to ").typeStyle(.body, color: Theme.inkTertiary)
-                + Text(email).typeStyle(.body.weight(.bold), color: Theme.ink)
+            Text("We sent a code to ").typeStyleRun(.body, color: Theme.inkTertiary)
+                + Text(email).typeStyleRun(.body.weight(.bold), color: Theme.ink)
         )
         .lineSpacing(TypeStyle.body.lineSpacing)
         .fixedSize(horizontal: false, vertical: true)

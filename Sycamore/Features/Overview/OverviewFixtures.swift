@@ -66,6 +66,12 @@ enum OverviewFixtures {
         TodayCourts.roster(forCourt: card.id, in: camp, day: day, limit: limit)
     }
 
+    /// A court's whole list, as the screen holds it before folding — so a preview can draw the
+    /// open state without a `@State` set behind it.
+    static func fullRoster(for card: CourtCard) -> CourtRoster {
+        TodayCourts.rosters(in: camp, day: day)[card.id] ?? .none
+    }
+
     // MARK: Who is reading
 
     /// `8i` — an admin, so no court is theirs. A fresh identifier rather than

@@ -222,7 +222,7 @@ struct GroupsLockedState: View {
     }
 
     private func toggleEveryone() {
-        withAnimation(GroupsMetrics.fold(reduceMotion: reduceMotion)) { showsEveryone.toggle() }
+        withAnimation(Motion.fold(reduceMotion: reduceMotion)) { showsEveryone.toggle() }
     }
 
     /// `Serene C` → `SC`. `Initials.make(from:)` takes the first two letters of a name, which is

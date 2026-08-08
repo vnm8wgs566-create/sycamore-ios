@@ -213,7 +213,7 @@ struct AddPlayerView: View {
         answerCard("Gender") {
             HStack(spacing: Spacing.tight) {
                 ForEach(Gender.intakeOptions, id: \.self) { option in
-                    IntakeChoiceChip(title: option.intakeLabel, isSelected: gender == option) {
+                    IntakeChoiceChip(title: option.label, isSelected: gender == option) {
                         gender = option
                     }
                 }
