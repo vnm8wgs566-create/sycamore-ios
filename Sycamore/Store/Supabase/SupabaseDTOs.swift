@@ -127,6 +127,17 @@ struct ScheduleBlockRecord: Decodable, Sendable {
     var status: String
 }
 
+/// One row of `schedule_block_coaches`: this coach is on that block.
+///
+/// Two columns and no more, though the table also carries `created_at`. That column is read as an
+/// `order` and never as a value — it is what keeps "Nass & Alina" from becoming "Alina & Nass"
+/// between two reads of the same block, since the primary key `(block_id, coach_id)` says nothing
+/// about sequence and Postgres is under no obligation to invent one.
+struct ScheduleBlockCoachRecord: Decodable, Sendable {
+    var blockId: UUID
+    var coachId: UUID
+}
+
 struct InboxItemRecord: Decodable, Sendable {
     var id: UUID
     var siteId: UUID
@@ -143,6 +154,15 @@ struct InboxItemRecord: Decodable, Sendable {
     var pinned: Bool = false
     var resolved: Bool
     var createdAt: Date
+}
+
+/// `select=id` against any relation that has one.
+///
+/// For asking whether a row is *there* without caring what is in it — which is the one question
+/// that separates "no such row" from "a policy would not let you write to that row". See
+/// `SupabaseRepository.missingOrRefused(_:id:)`.
+struct RowIDRecord: Decodable, Sendable {
+    var id: UUID
 }
 
 // MARK: - Closed sets
@@ -313,7 +333,21 @@ extension Attendance {
 }
 
 extension ScheduleBlock {
-    init?(_ record: ScheduleBlockRecord) {
+    /// Two of the block's fields are not in its row, and both arrive as arguments.
+    ///
+    /// `notes` are `inbox_items` of kind `note` carrying this block's `schedule_block_id`;
+    /// `coachIDs` are `schedule_block_coaches`. Neither is something a row-to-value initialiser
+    /// can go and fetch, so the repository reads all three relations in one wave and hands the
+    /// two child lists in — see `scheduleBlocks(forVenue:day:campID:)`, which is where the
+    /// previous version of this comment said the decision belonged.
+    ///
+    /// Both keep a default. `deleteScheduleBlock` decodes the row it removed only to learn which
+    /// day to re-read, and a block built to answer that question has no children to supply.
+    init?(
+        _ record: ScheduleBlockRecord,
+        notes: [BlockNote] = [],
+        coachIDs: [StaffMember.ID] = []
+    ) {
         guard let day = CampWeek.weekday(from: record.day),
               let startsAt = TimeOfDay(postgresTime: record.startsAt)
         else { return nil }
@@ -326,11 +360,8 @@ extension ScheduleBlock {
             title: record.title,
             detail: record.detail,
             status: ScheduleBlockStatus(rawValue: record.status) ?? .planned,
-            // Still empty here, but no longer for want of a column: `inbox_items.schedule_block_id`
-            // now names the block a note belongs to. Filling this means a second read of a second
-            // relation, which is the repository's call to make and not something a row-to-value
-            // initialiser can do — so a block arrives with none rather than with some.
-            notes: []
+            notes: notes,
+            coachIDs: coachIDs
         )
     }
 }

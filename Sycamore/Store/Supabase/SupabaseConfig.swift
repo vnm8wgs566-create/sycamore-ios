@@ -57,5 +57,9 @@ enum Relation {
     static let courtAssignments = "court_assignments"
     static let assessments = "assessments"
     static let scheduleBlocks = "schedule_blocks"
+    /// Who is running a block. A join table rather than a `coach_id` on `schedule_blocks`,
+    /// because the design writes "Nass & Alina" on one card — a block can have more than one
+    /// coach on it, and a single column could only ever say the first of them.
+    static let scheduleBlockCoaches = "schedule_block_coaches"
     static let inboxItems = "inbox_items"
 }
