@@ -35,6 +35,10 @@ struct GroupsView: View {
     /// set of collapsed ids means the opposite.
     @State private var expandedGroupIDs: Set<Group.ID> = []
     @State private var move: GroupsMove?
+    /// Set for the one state change on this screen that must *not* animate: a move ending by
+    /// being committed. Cleared at the start of the next lift rather than on a timer, which is
+    /// the only moment it could matter again. See `drop()`.
+    @State private var isDropping = false
     /// Card and row rectangles in `GroupsSpace.list` — the raw material for every drop slot.
     @State private var cardFrames: [Group.ID: CGRect] = [:]
     @State private var rowFrames: [Player.ID: CGRect] = [:]
@@ -105,11 +109,29 @@ struct GroupsView: View {
 
                 addGroupRow(venue)
             }
+            // The shift: rows sliding aside to open a space, the card the kid left closing up
+            // by one row, the card they are aimed at opening by one. Keyed on the *target*
+            // alone, so a finger travelling within one slot moves nothing.
+            //
+            // Placement is load-bearing. Applied here it wraps the cards and nothing else;
+            // applied after `.overlay` it would also catch `liftedRow`, whose offset changes on
+            // every frame of a finger drag — and animating that makes the card the reader is
+            // carrying lag their finger by a quarter of a second. Reduce Motion falls out for
+            // free: `Motion.fold(reduceMotion:)` returns nil, which is the real "do not animate
+            // this", and the rows simply arrive already shifted.
+            //
+            // The curve is read from the body that is running when the value changes, which is
+            // what lets `drop()` opt one single change out of it — `.animation(_:value:)` is a
+            // scoped override and beats the ambient transaction, so `withTransaction` cannot do
+            // that job from the call site.
+            .animation(
+                isDropping ? nil : Motion.fold(reduceMotion: reduceMotion),
+                value: move?.target
+            )
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, GroupsMetrics.listTop)
             .padding(.bottom, Spacing.tabBarClearance)
             .coordinateSpace(.named(GroupsSpace.list))
-            .overlay(alignment: .top) { dropIndicator }
             .overlay(alignment: .top) { liftedRow }
         }
         .scrollIndicators(.hidden)
@@ -131,12 +153,22 @@ struct GroupsView: View {
             onMoveChanged: updateMove(to:),
             onMoveEnded: endTracking,
             onNudge: { nudge($0, in: entry, by: $1) },
-            onRowFrame: { rowFrames[$0] = $1 }
+            // Both frame stores describe the list **at rest**, which is the only state a drop
+            // slot can be measured from. A slot is a promise about where a boundary was when
+            // the kid was picked up; the moment the rows start shifting, what is on screen is a
+            // *consequence* of the target and so cannot be used to choose one. See
+            // `GroupsMove.slots`.
+            //
+            // Nothing reads either dictionary mid-move today — `beginMove` reads both, once,
+            // and is the only reader — so this is structure rather than a fix. It also stops
+            // `body` re-evaluating on every frame of every shift animation, which is a great
+            // many frames now that there is a shift at all.
+            onRowFrame: { id, frame in if move == nil { rowFrames[id] = frame } }
         )
         .onGeometryChange(for: CGRect.self) {
             $0.frame(in: .named(GroupsSpace.list))
-        } action: {
-            cardFrames[entry.id] = $0
+        } action: { frame in
+            if move == nil { cardFrames[entry.id] = frame }
         }
     }
 
@@ -197,35 +229,18 @@ struct GroupsView: View {
 
     // MARK: - Move overlays
 
-    /// Where the kid will land: a dot, then a rule across the rest of the card.
+    /// The kid, out of the list and under the finger.
     ///
-    /// The dot is not decoration — a bare green line between two rows reads as a divider that
-    /// has changed colour, and the dot is what turns it back into a caret pointing at a place.
-    @ViewBuilder
-    private var dropIndicator: some View {
-        if let slot = move?.target {
-            HStack(spacing: GroupsMetrics.dropDotGap) {
-                Circle()
-                    .fill(Theme.accent)
-                    .frame(width: GroupsMetrics.dropDot, height: GroupsMetrics.dropDot)
-
-                Capsule(style: .continuous)
-                    .fill(Theme.accent)
-                    .frame(height: BorderWidth.focus)
-            }
-            // The overlay spans the whole list, gutter included, so the inset has to clear the
-            // gutter *and* the card's own padding to line up with the names.
-            .padding(.horizontal, Spacing.gutter + GroupsMetrics.cardPadding)
-            // Centred on the boundary rather than hanging below it — the dot is the tallest
-            // part, so it is the dot that has to straddle the line.
-            .offset(y: slot.y - GroupsMetrics.dropDot / 2)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
-    }
-
-    /// The kid, out of the list and under the finger. The original row stays in the flow as a
-    /// dashed gap so the measured geometry — and therefore every drop slot — holds still.
+    /// There is no insertion bar under this any more. A dot and a rule between two rows was the
+    /// screen's answer to "where will they land", drawn at `slot.y` over a list that was being
+    /// held rigid so that `slot.y` stayed true. The list is not held rigid now: the rows shift,
+    /// the card the kid left closes by one row and the card they are aimed at opens by one, and
+    /// the greyed row sitting in that space answers the question by *being* the answer. See
+    /// `GroupsGhost` for the arithmetic that keeps this card parked over it.
+    ///
+    /// The original row is still in the flow — it owns the live gesture — but it has given up
+    /// its space; see `GroupCard.rowView(_:)`. What keeps every drop slot valid is that the
+    /// slots were captured at lift, not that the geometry stopped moving.
     ///
     /// Drawn from the same `GroupsRow` as the row it came out of, and that matters: this card is
     /// positioned directly over that row at the moment of pick-up, so a numeral column or a
@@ -386,6 +401,14 @@ struct GroupsView: View {
     /// The foot is what makes a group with nothing drawn in it — folded to its header, or
     /// searched down to nothing — somewhere a kid can still be put. It carries the *unfiltered*
     /// row count, which is a different index from the last drawn row's when a card is folded.
+    ///
+    /// That foot slot's y is the card's own bottom edge, which is `Spacing.tight` below the row
+    /// boundary the space actually opens at — so the card carrying the kid parks about six
+    /// points low when it is aimed there. Left alone on purpose: this y is what the kid *aims*
+    /// with, moving it would move where they land, and the foot slot is what **tapping a card**
+    /// means. "Somewhere at the back of this one" is not a request in which six points of
+    /// parking is the thing being asked about. The ghost itself is unaffected — it is placed by
+    /// layout, at the back of the card's real stack, not by this number.
     private func slots(for entries: [GroupsEntry]) -> [GroupsDropSlot] {
         entries.flatMap { entry -> [GroupsDropSlot] in
             let venueID = entry.card.group.venueID
@@ -456,6 +479,13 @@ struct GroupsView: View {
               let index = entry.card.rows.firstIndex(where: { $0.id == row.id })
         else { return }
 
+        // The last drop's "do not animate this" instruction, spent. Cleared here rather than on
+        // a hop off the main actor because this is the next moment `move?.target` changes at
+        // all, so it is the first moment the flag could affect anything again — and it is
+        // cleared in the same pass that sets the move, so the body that reads the animation
+        // sees a live lift and a false flag.
+        isDropping = false
+
         // Deliberately not guarded on `move == nil`: a gesture cancelled rather than ended can
         // leave state behind, and overwriting it beats stranding a kid in the air.
         move = GroupsMove(
@@ -500,21 +530,41 @@ struct GroupsView: View {
 
     /// Tapping a group while a kid is in the air aims at the end of it, and carries the card
     /// over so "where is this kid going" has the same answer however it was asked.
+    ///
+    /// The card is parked with its **top** on the space that has opened, which is the one place
+    /// in the app where `GroupsGhost.top` is evaluated at runtime — everywhere else the same
+    /// arithmetic is played by the layout itself. Top rather than middle because that is the
+    /// relationship a lift already has: at the moment of pick-up `translation` is 0 and the
+    /// card sits exactly over the row's top edge. It also means this returns 0 for the target
+    /// `beginMove` starts with, so the two agree on the first frame rather than nudging the
+    /// card by half a row before the finger has moved.
     private func aim(at groupID: Group.ID) {
         guard let current = move, let slot = current.lastSlot(in: groupID) else { return }
 
         var updated = current
         updated.target = slot
-        updated.translation = slot.y - current.origin.midY
+        updated.translation = GroupsGhost.top(of: slot, lifted: current.origin) - current.origin.minY
         withAnimation(Motion.fold(reduceMotion: reduceMotion)) { move = updated }
     }
 
+    /// Putting the kid back. Animated, unlike `drop()`: the rows closing over the space again
+    /// and the card returning to the row it came out of is exactly the story a cancel is
+    /// telling.
     private func cancelMove() {
         move = nil
     }
 
     private func drop() {
         guard let move, let slot = move.target else { return }
+
+        // Not animated, and this is the one asymmetry with `cancelMove()`. The write below is
+        // asynchronous, so between clearing the move and the new ladder arriving there is a
+        // window — a whole network round trip against the Supabase repository. Letting the
+        // shift animate through it plays the move *backwards*: the space closing, the source
+        // card growing its row back, and only then the kid appearing where they were asked to
+        // go. Setting this in the same pass that clears the move is what the animation modifier
+        // reads; `beginMove` clears it again.
+        isDropping = true
         self.move = nil
 
         // Landing either side of where the kid already stands is not a move.

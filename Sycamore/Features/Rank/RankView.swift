@@ -11,6 +11,13 @@
 //  shadow, and a 2.5pt accent bar marks where it will land. Both are drawn as overlays on
 //  the list content so nothing in the flow shifts while a finger is down.
 //
+//  Groups' drag (`8p`) does the opposite now — its rows shift and a greyed ghost of the kid
+//  travels into the space they open. Not an oversight here, and not a thing to copy across:
+//  that screen puts its kids in *cards*, and a kid moving between two of them has to be shown
+//  as one card closing up by a row and another opening by one, which only real layout can do.
+//  This screen is a single ladder with no cards in it, so there is no height for a shift to
+//  change and an overlay says everything there is to say. See `GroupsGhost`.
+//
 
 import SwiftUI
 
