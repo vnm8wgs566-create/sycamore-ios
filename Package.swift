@@ -44,9 +44,10 @@ let package = Package(
         .target(
             name: "Sycamore",
             path: "Sycamore",
-            // Info.plist and the entitlements are consumed by the Xcode target's build
-            // settings — `INFOPLIST_FILE` and `CODE_SIGN_ENTITLEMENTS` — not by SwiftPM,
-            // which would otherwise treat them as unhandled resources and warn on every build.
+            // Info.plist and the entitlements used to be excluded here, back when they lived in
+            // `Sycamore/Resources/`. They moved to `Config/` on 2026-08-08, outside this target's
+            // `path`, so SwiftPM no longer sees them and there is nothing left to exclude — an
+            // exclude naming a file that does not exist is itself a warning on every build.
             //
             // `App/SycamoreApp.swift` is excluded for a different reason: it carries `@main`,
             // which synthesises a `_main` symbol into the library. The test bundle's runner
@@ -62,8 +63,6 @@ let package = Package(
             // bundle nobody opens, so they are excluded — which also silences the "found 5
             // file(s) which are unhandled" warning on every `swift test`.
             exclude: [
-                "Resources/Info.plist",
-                "Resources/Sycamore.entitlements",
                 "Resources/Assets.xcassets",
                 "Resources/Fonts",
                 "App/SycamoreApp.swift",
