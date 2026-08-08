@@ -74,13 +74,16 @@ protocol SectionEightData: Sendable {
     //
     // `8r` draws a row reading "LATC is 2 coaches short" while the reader is standing on
     // Sycamore, so the Inbox is a camp-wide list — it is the one screen in section 8 that is not
-    // about a venue. The per-venue three below cannot express that, and the app has been papering
-    // over it: `AppStore.readVenueID` picks the camp's first venue and the Inbox shows that one
-    // venue's rows. Against the seeded camp today that hides exactly the row the design uses as
-    // its example, because the only LATC row is the only row not at Sycamore.
+    // about a venue. The per-venue three below cannot express that, and the app papered over it
+    // for a while: `AppStore.readVenueID` picks the camp's first venue and the Inbox showed that
+    // one venue's rows. Against the seeded camp that hid exactly the row the design uses as its
+    // example, because the only LATC row is the only row not at Sycamore.
     //
-    // The per-venue three are kept rather than replaced because `AppStore+SectionEight` and
-    // `InboxView` still call them. They should move to `forCamp:` and then these should go.
+    // **`AppStore` now calls the `forCamp:` three**, which pinned messages forced: an admin pins
+    // at `readVenueID`, so under the narrow read a camp-wide announcement reached only the venue
+    // its author happened to be standing on. The per-venue three survive because the tests
+    // exercise them directly and because a caller that genuinely wants one venue has nothing else
+    // to ask — but nothing in the app is that caller today, and if none appears they should go.
 
     /// Every Inbox row in the camp, across its venues, newest first.
     func inboxItems(forCamp campID: Camp.ID) async throws -> [InboxItem]
