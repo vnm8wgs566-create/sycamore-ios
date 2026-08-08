@@ -189,13 +189,13 @@ private struct BlockNotesPreview: View {
     var noteCount: Int
 
     /// `AppStore.preview` is Alex, a *worker* at UCLA — which is exactly the read-only case, and
-    /// exactly not the one the composer needs. See `ScheduleSampleDay.adminStore()`.
+    /// exactly not the one the composer needs. See `AppStore.previewUCLAAdmin`.
     @State private var store: AppStore
 
     init(isAdmin: Bool, noteCount: Int) {
         self.isAdmin = isAdmin
         self.noteCount = noteCount
-        _store = State(initialValue: isAdmin ? ScheduleSampleDay.adminStore() : AppStore.preview)
+        _store = State(initialValue: isAdmin ? AppStore.previewUCLAAdmin : AppStore.preview)
     }
 
     var body: some View {

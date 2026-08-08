@@ -153,7 +153,7 @@ private struct InboxPreviewHarness: View {
     }
 
     private func seededStore() async -> AppStore {
-        let store = isAdmin ? InboxPreviewItems.adminStore : AppStore.preview
+        let store = isAdmin ? AppStore.previewUCLAAdmin : AppStore.preview
         store.selectedTab = .inbox
 
         guard let campID = store.camp?.id, let venueID = store.readVenueID else { return store }

@@ -27,11 +27,8 @@ import Foundation
 /// thrown away. Refusing before the tap costs one disabled button; refusing after it costs the
 /// whole draft and produces a banner pointing at no field in particular.
 ///
-/// Every count is in `unicodeScalars` and not `String.count`. Postgres' `char_length` counts
-/// characters of the UTF-8 string; Swift's `count` counts grapheme clusters, and one cluster can
-/// be many scalars — "👩‍👩‍👧" is one `Character` and seven scalars. Counting the way Swift reads a
-/// string would let a title of emoji through the client and straight into the failed insert this
-/// exists to prevent.
+/// Every count goes through `CharLength`, which counts the way Postgres does rather than the way
+/// Swift reads a string. The bounds stay here, beside the SQL each one cites.
 enum BlockRules {
 
     /// `check (char_length(title) between 1 and 80)` — `20260805074039:30`.
@@ -51,15 +48,15 @@ enum BlockRules {
     static let noteLimits = 1...200
 
     static func isValidTitle(_ trimmed: String) -> Bool {
-        titleLimits.contains(trimmed.unicodeScalars.count)
+        CharLength.of(trimmed, fits: titleLimits)
     }
 
     static func isValidDetail(_ trimmed: String) -> Bool {
-        trimmed.unicodeScalars.count <= detailLimit
+        CharLength.of(trimmed, atMost: detailLimit)
     }
 
     static func isValidNote(_ trimmed: String) -> Bool {
-        noteLimits.contains(trimmed.unicodeScalars.count)
+        CharLength.of(trimmed, fits: noteLimits)
     }
 
     /// `check (ends_at is null or ends_at > starts_at)` — `20260805074039:38-39`.

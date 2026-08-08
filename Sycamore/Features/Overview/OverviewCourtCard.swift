@@ -137,7 +137,12 @@ struct OverviewCourtCard: View {
             // each of them on every tap. It is also the wrong shape for VoiceOver: a card that
             // is one button reads its title, its subtitle, its coach and five children's names
             // as a single label, and swiping through the kids stops being possible at all.
-            if !isMine, let onOpenCourt {
+            //
+            // Gated on the closure alone. Your own court has no caret in the design — you are
+            // already standing on it — but that is `OverviewScreen`'s rule to state, and it
+            // states it by passing nothing. Re-testing `isMine` here said it twice, so a caller
+            // that passed a closure for its own court got no caret and no diagnostic.
+            if let onOpenCourt {
                 openCourtButton(onOpenCourt)
             }
         }

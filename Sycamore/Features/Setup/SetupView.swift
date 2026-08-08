@@ -38,12 +38,6 @@ struct SetupView: View {
     /// the two lines of copy beside it.
     @ScaledMetric(relativeTo: .body) private var venueTileSize: CGFloat = 40
 
-    /// The emoji on that plate. The design sets `font-size:21px` on a 44px tile
-    /// (`design/Sycamore Flow.dc.html:276`) — 0.477 of the plate — which on 40pt is 19. Scaled
-    /// alongside the plate rather than derived from it, because `@ScaledMetric` rounds each
-    /// value to the reader's type size and a glyph computed from an already-rounded plate drifts.
-    @ScaledMetric(relativeTo: .body) private var venueGlyphSize: CGFloat = 19
-
     /// `8t` collapses the whole staff list into one summary row with a caret. There is no staff
     /// screen to send that caret to and no `PushedScreen` case to reach one, so the row opens
     /// the list in place — which is also what keeps the staff sheet reachable.
@@ -231,16 +225,17 @@ struct SetupView: View {
                     // Deliberately still 40pt rather than the design's 44: that size came from
                     // the same absent document, and resizing every venue row is a layout change
                     // this is not.
-                    RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                        .fill(Theme.color(for: venue.tint))
-                        .frame(width: venueTileSize, height: venueTileSize)
-                        .overlay {
-                            Text(venue.icon)
-                                .font(.system(size: venueGlyphSize))
-                        }
-                        // Not decorative — an emoji is how a venue is recognised — but the name
-                        // sits immediately beside it, so reading both would say the venue twice.
-                        .accessibilityHidden(true)
+                    // Through `IntakeIconTile` rather than drawn here: it holds the plate, both
+                    // `@ScaledMetric`s and the "hidden because the name is beside it" decision,
+                    // and three screens replaced the same pin in this batch. It also hides
+                    // itself — an emoji is how a venue is recognised, but the name sits
+                    // immediately beside it and reading both would say the venue twice.
+                    IntakeIconTile(
+                        emoji: venue.icon,
+                        size: 40,
+                        glyphSize: 19,
+                        fill: Theme.color(for: venue.tint)
+                    )
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
                         HStack(spacing: Spacing.nameBadge) {

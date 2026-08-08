@@ -71,12 +71,6 @@ struct ProfileView: View {
     /// the same line as two rows of copy; pinning it makes the card lopsided at large sizes.
     @ScaledMetric(relativeTo: .body) private var todayTileSize: CGFloat = 42
 
-    /// The venue's emoji on that plate. The design sets `font-size:21px` on a 44px tile
-    /// (`design/Sycamore Flow.dc.html:357`) — 0.477 of the plate — which on 42pt is 20. Its own
-    /// `@ScaledMetric` rather than a fraction of `todayTileSize`, so the glyph is rounded to the
-    /// reader's type size once instead of twice.
-    @ScaledMetric(relativeTo: .body) private var todayGlyphSize: CGFloat = 20
-
     /// The design's `padding:10px 22px 20px` on the white plate, less the 5pt the close disc's
     /// 44pt hit frame already hangs above its 34pt circle. Measuring to the disc rather than to
     /// the frame is what keeps the drawn result identical to the design.
@@ -324,17 +318,16 @@ struct ProfileView: View {
                     // — `Camp.reindex()` does not refresh the `CourtAssignment` copies a venue
                     // rename or an icon change leaves behind — is older than this tile and shows
                     // in `pathLabel` already. It belongs to `Models.swift`, not here.
-                    RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                        .fill(Theme.color(for: assignment.venueTint))
-                        .frame(width: todayTileSize, height: todayTileSize)
-                        .overlay {
-                            Text(assignment.venueIcon)
-                                .font(.system(size: todayGlyphSize))
-                        }
-                        // The whole card is already combined into one sentence below, and
-                        // `pathLabel` names the venue in it. Hidden so the emoji is not read as
-                        // a second, wordier name for the same place.
-                        .accessibilityHidden(true)
+                    // Through `IntakeIconTile`, which holds the plate, both `@ScaledMetric`s and
+                    // the hiding. Hidden matters here for a second reason: the whole card is
+                    // combined into one sentence below and `pathLabel` names the venue in it, so
+                    // a read emoji would be a second, wordier name for the same place.
+                    IntakeIconTile(
+                        emoji: assignment.venueIcon,
+                        size: 42,
+                        glyphSize: 20,
+                        fill: Theme.color(for: assignment.venueTint)
+                    )
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
                         Text(assignment.pathLabel)
@@ -431,7 +424,7 @@ struct ProfileView: View {
             SettingsRow(
                 "Camp settings",
                 icon: "slider.horizontal.3",
-                subtitle: store.isAdmin ? nil : adminsOnlyDetail,
+                subtitle: store.isAdmin ? nil : store.adminsOnlyDetail,
                 accessory: store.isAdmin ? .chevron : .lock,
                 action: store.isAdmin ? { store.pushedScreen = .campSettings } : nil
             )
@@ -449,16 +442,6 @@ struct ProfileView: View {
     private var campCountDetail: String {
         let count = store.memberships.count
         return "\(count) on this account"
-    }
-
-    /// `Admins only · ask Nass or Hubert` — derived, like every other name on this screen, from
-    /// who actually administers the camp you are in.
-    private var adminsOnlyDetail: String {
-        let names = (store.camp?.staff ?? []).filter(\.role.isAdmin).map(\.name)
-        // Two, because a row is one line and a camp can have a dozen admins.
-        let asked = Array(names.prefix(2))
-        guard !asked.isEmpty else { return "Admins only" }
-        return "Admins only · ask \(asked.formatted(.list(type: .or)))"
     }
 
     // MARK: Footer

@@ -33,11 +33,6 @@ struct CourtHeader: View {
     let status: CourtStatus
     let onBack: () -> Void
 
-    private var isClosed: Bool {
-        if case .closed = status { return true }
-        return false
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Spacing.tight) {
@@ -88,7 +83,7 @@ struct CourtHeader: View {
             // court out of play is not being run by anybody, and the lede above already names
             // whoever is on it. Without this the header would offer "Needs a coach" for a court
             // that does not need one.
-            if !isClosed {
+            if !status.isClosed {
                 CoachPill(name: coachName)
             }
             // Prominent, so an open court says so outright. Every card on Overview but your own

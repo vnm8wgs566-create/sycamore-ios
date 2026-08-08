@@ -65,23 +65,4 @@ enum ScheduleSampleDay {
         BlockNote(id: UUID(), text: text, authorName: author, at: .now)
     }
 
-    /// `AppStore.preview`, promoted.
-    ///
-    /// Three screens on Schedule now draw something only an admin sees — the note composer, the
-    /// per-note delete, the "Assign" on an uncovered block — and `AppStore.preview` is Alex, who
-    /// is a *worker* at UCLA. `AppStore.previewAdmin` is an admin, but of Westside Swim, which has
-    /// none of the venues or staff these fixtures are built from, so its previews would draw an
-    /// empty screen for the opposite reason.
-    ///
-    /// Promoting the membership is the smallest change that keeps the camp: `role` lives on the
-    /// membership and never on the account, which is the whole point of `Role`'s own header —
-    /// "the same login can be an admin at one camp and a worker at another".
-    @MainActor
-    static func adminStore() -> AppStore {
-        let store = AppStore.preview
-        var membership = SampleData.uclaMembership
-        membership.role = .admin
-        store.selectedMembership = membership
-        return store
-    }
 }

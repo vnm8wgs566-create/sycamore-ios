@@ -23,18 +23,13 @@ enum PinnedMessage {
     /// The CHECK, in Swift.
     static let lengthLimits = 1...120
 
-    /// Counted in unicode scalars rather than in `String.count`.
-    ///
-    /// Postgres' `char_length` counts characters of the UTF-8 string; Swift's `count` counts
-    /// grapheme clusters, and one cluster can be many scalars — "👩‍👩‍👧" is one `Character` and seven
-    /// scalars. Counting the way Swift reads a string would let a message of emoji through the
-    /// composer and straight into the failed insert this exists to prevent.
+    /// Counted through `CharLength`, which counts the way Postgres does.
     ///
     /// Deliberately a refusal rather than a truncation. `CampName` validates rather than trims,
     /// and a composer that silently swallowed the end of a sentence would be worse than one that
     /// declines to send it: the words stay on screen where their author can see which to cut.
     static func isValid(_ trimmed: String) -> Bool {
-        lengthLimits.contains(trimmed.unicodeScalars.count)
+        CharLength.of(trimmed, fits: lengthLimits)
     }
 
     /// What the composer will actually store.
@@ -50,6 +45,6 @@ enum PinnedMessage {
     /// How far past the limit a draft is, or zero. Drawn under the field, so the number the
     /// reader is asked to cut is the same number this rule is measuring.
     static func overrun(_ trimmed: String) -> Int {
-        max(0, trimmed.unicodeScalars.count - lengthLimits.upperBound)
+        CharLength.overrun(trimmed, over: lengthLimits.upperBound)
     }
 }

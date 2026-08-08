@@ -46,8 +46,39 @@ regenerate it instead:
 brew install xcodegen && xcodegen generate
 ```
 
-`project.yml` and the checked-in `project.pbxproj` duplicate bundle id, deployment target,
-Info.plist path and device family by necessity — keep them in step.
+`project.yml` and the checked-in `project.pbxproj` duplicate deployment target, Info.plist path
+and device family by necessity — keep them in step.
+
+### Building on your own device
+
+The simulator needs nothing. A physical phone needs a provisioning profile, and a profile is
+issued to *a* developer — so the three settings that are a property of whoever is building live
+in [`Config/Signing.xcconfig`](Config/Signing.xcconfig) rather than in the project file:
+
+| | default |
+|---|---|
+| `SYCAMORE_DEVELOPMENT_TEAM` | `FYQ358R59X` |
+| `SYCAMORE_BUNDLE_ID` | `com.cjgimena.app` |
+| `SYCAMORE_ENTITLEMENTS` | `Config/Sycamore.entitlements` |
+
+Do nothing and you build with those. To build under a different Apple ID:
+
+```bash
+cp Config/Signing.local.xcconfig.example Config/Signing.local.xcconfig
+```
+
+Fill in your team and a bundle id nobody has registered, then reopen the project. That file is
+gitignored, so building on your own phone is never a commit and never changes anyone else's
+build. Set them there and not in Xcode's Signing & Capabilities tab, which writes to
+`project.pbxproj` — where a target-level setting overrides the xcconfig and lands in your next
+commit.
+
+**On a free Apple ID** also clear `SYCAMORE_ENTITLEMENTS` (the example file has the line ready to
+uncomment). A Personal Team cannot sign `com.apple.developer.applesignin`, and Xcode fails the
+build rather than dropping the claim — "Cannot create a iOS App Development provisioning profile"
+is what that looks like. The cost is only the "Continue with Apple" button: the email and
+six-digit code path is untouched, and a DEBUG build's Apple button bypasses to the offline store
+anyway. Free provisioning also expires after seven days, so re-run from Xcode to refresh.
 
 > **The `.xcodeproj` has never been opened.** It was written on a machine with no Xcode (see
 > below), so it is unverified. It parses as a plist and every object reference resolves, but if

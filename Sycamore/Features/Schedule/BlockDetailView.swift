@@ -298,7 +298,7 @@ private struct BlockDetailPreview: View {
         self.index = index
         self.coachIDs = coachIDs
         self.isAdmin = isAdmin
-        _store = State(initialValue: isAdmin ? ScheduleSampleDay.adminStore() : AppStore.preview)
+        _store = State(initialValue: isAdmin ? AppStore.previewUCLAAdmin : AppStore.preview)
     }
 
     var body: some View {

@@ -433,6 +433,20 @@ extension AppStore {
     var role: Role? { selectedMembership?.role }
     var isAdmin: Bool { role?.isAdmin == true }
 
+    /// `Admins only · ask Nass or Hubert` — the sentence a locked row wears.
+    ///
+    /// Here rather than on the screens, because it is a sentence with a policy in it: two names
+    /// and not three, "or" and not "and", and a fallback for a camp whose admins have all left.
+    /// Profile and the Inbox each wrote it out privately and identically, which is how the third
+    /// screen that locks a row ends up wording it differently.
+    var adminsOnlyDetail: String {
+        let names = (camp?.staff ?? []).filter(\.role.isAdmin).map(\.name)
+        // Two, because a row is one line and a camp can have a dozen admins.
+        let asked = Array(names.prefix(2))
+        guard !asked.isEmpty else { return "Admins only" }
+        return "Admins only · ask \(asked.formatted(.list(type: .or)))"
+    }
+
     /// The signed-in person's own staff row in the current camp — the Profile header
     /// and "ON TODAY" card read from it.
     var myStaffRecord: StaffMember? {
@@ -1130,6 +1144,26 @@ extension AppStore {
         store.memberships = SampleData.memberships
         store.selectedMembership = SampleData.westsideMembership
         store.camp = SampleData.westsideSwim
+        return store
+    }
+
+    /// The same person and camp as `preview`, with the UCLA membership promoted to admin.
+    ///
+    /// Section 8 draws a handful of things only an admin sees — the note composer, the per-note
+    /// delete, the "Assign" on an uncovered block, the pinned-message field — and neither
+    /// existing fixture could show them. `preview` is Alex, a *worker* at UCLA; `previewAdmin` is
+    /// an admin of Westside Swim, which has none of the venues or staff those screens are built
+    /// from, so its previews would draw an empty screen for the opposite reason. Two features
+    /// each patched the hole locally before this existed.
+    ///
+    /// Promoting the membership is the smallest change that keeps the camp: `role` lives on the
+    /// membership and never on the account, which is `Role`'s own argument — the same login can
+    /// be an admin at one camp and a worker at another.
+    static var previewUCLAAdmin: AppStore {
+        let store = preview
+        var membership = SampleData.uclaMembership
+        membership.role = .admin
+        store.selectedMembership = membership
         return store
     }
 }

@@ -8,6 +8,12 @@
 # expansion, this line can go and the file can be shared.
 .mcp.json
 
+# Per-developer signing. Team, bundle id and entitlements for whoever is sitting at the machine,
+# which is the one thing about a build that is not shared. Ignored so that building on your own
+# phone is never a commit — see Config/Signing.xcconfig, and copy
+# Config/Signing.local.xcconfig.example to start one.
+Config/Signing.local.xcconfig
+
 # macOS
 .DS_Store
 ._*

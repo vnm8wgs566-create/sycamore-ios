@@ -62,6 +62,18 @@ enum CourtStatus: Hashable, Sendable {
         case .closed: "Closed"
         }
     }
+
+    /// Why the court is out of play, or nil while it is in play.
+    ///
+    /// The one place `.closed` is unwrapped, so "is it closed" and "why" are the same question
+    /// asked two ways. Three screens had written the `if case .closed` out longhand and two of
+    /// them could not reach `CourtCard.isClosed`, which is where it used to live — a predicate
+    /// about a status belongs on the status.
+    var closureReason: String? {
+        if case .closed(let reason) = self { reason } else { nil }
+    }
+
+    var isClosed: Bool { closureReason != nil }
 }
 
 // MARK: - Schedule

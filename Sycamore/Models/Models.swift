@@ -706,14 +706,37 @@ enum CampName {
     /// The CHECK, in Swift.
     static let lengthLimits = 1...80
 
-    /// Counted in unicode scalars rather than in `String.count`.
-    ///
-    /// Postgres' `char_length` counts characters of the UTF-8 string; Swift's `count` counts
-    /// grapheme clusters, and one cluster can be many scalars — "👩‍👩‍👧" is one `Character` and seven
-    /// scalars. Counting the way Swift reads a string would have let a name of emoji through the
-    /// client and straight into the same failed insert this exists to prevent.
     static func isValid(_ trimmed: String) -> Bool {
-        lengthLimits.contains(trimmed.unicodeScalars.count)
+        CharLength.of(trimmed, fits: lengthLimits)
+    }
+}
+
+/// `char_length(x)`, counted the way Postgres counts it.
+///
+/// Postgres counts characters of the UTF-8 string; Swift's `String.count` counts grapheme
+/// clusters, and one cluster can be many scalars — "👩‍👩‍👧" is one `Character` and seven. A rule
+/// written with `.count` therefore lets a field of emoji through the client and straight into the
+/// failed insert the rule exists to prevent.
+///
+/// Here rather than restated at each mirror, and that is the whole point: four columns are now
+/// mirrored in Swift — `camps.name`, `inbox_items.title`, `schedule_blocks.title` and
+/// `.detail` — and this is the part of the mirroring that fails *silently*. A fifth written with
+/// `.count` compiles, passes any test built the obvious way, and diverges from the column only on
+/// input nobody types during review. The bounds stay beside the features that read them, next to
+/// the SQL they cite; only the counting comes here.
+enum CharLength {
+
+    static func of(_ trimmed: String, fits limits: ClosedRange<Int>) -> Bool {
+        limits.contains(trimmed.unicodeScalars.count)
+    }
+
+    static func of(_ trimmed: String, atMost limit: Int) -> Bool {
+        trimmed.unicodeScalars.count <= limit
+    }
+
+    /// How far past a ceiling a draft is, or zero — the number a composer asks its reader to cut.
+    static func overrun(_ trimmed: String, over limit: Int) -> Int {
+        max(0, trimmed.unicodeScalars.count - limit)
     }
 }
 

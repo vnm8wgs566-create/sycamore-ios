@@ -115,11 +115,6 @@ struct CourtScreen: View {
     /// recorded against it, which is what open means.
     private var status: CourtStatus { card?.status ?? .open }
 
-    private var isClosed: Bool {
-        if case .closed = status { return true }
-        return false
-    }
-
     /// The coach's first name, off the camp graph rather than off the card.
     ///
     /// The card carries a `coachName` too, but it is a denormalised copy from whenever the courts
@@ -168,7 +163,7 @@ struct CourtScreen: View {
     /// two screens disagreeing about what "closed" means is worse than a screen that says less.
     /// What this one adds is the reason, in words, where the card only badges it.
     private var detailRoster: CourtDetailRoster {
-        guard !isClosed, let camp = store.camp else { return .none }
+        guard !status.isClosed, let camp = store.camp else { return .none }
         return CourtDetailRoster.build(forCourt: groupID, in: camp, day: store.today)
     }
 

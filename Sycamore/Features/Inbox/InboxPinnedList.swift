@@ -68,29 +68,17 @@ struct InboxPinnedList: View {
     /// naming the people who *can*, rather than a control drawn and then switched off. A disabled
     /// composer would put a keyboard-shaped promise in front of somebody it will not keep.
     ///
-    /// `adminsOnlyDetail` is restated here rather than shared because `ProfileView` keeps it
-    /// private and section 8 is being written across a dozen files at once. Both spell the same
-    /// sentence; the pair belongs on `AppStore` once the section lands.
     private var lockedRow: some View {
         SettingsRow(
             "Pin a message",
             icon: "pin",
-            subtitle: adminsOnlyDetail,
+            subtitle: store.adminsOnlyDetail,
             accessory: .lock
         )
         // As Profile's locked row: combined, because with no action the row is not a `Button` and
         // SwiftUI has not merged it into one element for us.
         .accessibilityElement(children: .combine)
         .accessibilityValue("Locked")
-    }
-
-    /// `Admins only · ask Nass or Hubert` — derived from who actually administers this camp.
-    private var adminsOnlyDetail: String {
-        let names = (store.camp?.staff ?? []).filter(\.role.isAdmin).map(\.name)
-        // Two, because a row is one line and a camp can have a dozen admins.
-        let asked = Array(names.prefix(2))
-        guard !asked.isEmpty else { return "Admins only" }
-        return "Admins only · ask \(asked.formatted(.list(type: .or)))"
     }
 
     // MARK: Intents
@@ -128,7 +116,7 @@ struct InboxPinnedList: View {
             .padding(.top, Spacing.large)
     }
     .background(Theme.surfaceWarm)
-    .environment(InboxPreviewItems.adminStore)
+    .environment(AppStore.previewUCLAAdmin)
 }
 
 /// The composer's empty state: an admin whose camp has pinned nothing yet.
@@ -139,7 +127,7 @@ struct InboxPinnedList: View {
             .padding(.top, Spacing.large)
     }
     .background(Theme.surfaceWarm)
-    .environment(InboxPreviewItems.adminStore)
+    .environment(AppStore.previewUCLAAdmin)
 }
 
 /// What a coach sees: the same pins, read-only, under a locked row naming who to ask.

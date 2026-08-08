@@ -116,23 +116,5 @@ enum InboxPreviewItems {
         ]
     }
 
-    /// The same person and the same camp as `AppStore.preview`, with the admin membership.
-    ///
-    /// `AppStore.preview` reads as a *worker* at UCLA — `SampleData.uclaMembership` is
-    /// `role: .worker` — which is the right default for these screens and the wrong one for the
-    /// composer. Deliberately not `AppStore.previewAdmin`, which is admin of a *different* camp
-    /// (Westside Swim): its venues are not the ones these fixtures are seeded against, so the
-    /// Inbox would read an empty venue and the section would have nothing to draw.
-    @MainActor
-    static var adminStore: AppStore {
-        var membership = SampleData.uclaMembership
-        membership.role = .admin
-
-        let store = AppStore.preview
-        store.memberships = [membership, SampleData.westsideMembership]
-        store.selectedMembership = membership
-        store.selectedTab = .inbox
-        return store
-    }
 }
 #endif

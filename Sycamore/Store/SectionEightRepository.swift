@@ -255,13 +255,19 @@ extension InMemoryRepository: SectionEightData {
         let authorNames = Dictionary(
             staff.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
         )
+        // Grouped once rather than filtered per block, which is what the Postgres sibling does
+        // and the only reason to write it out here too: two implementations of one question that
+        // differ in shape are how they start differing in answer.
+        let notesByBlock = Dictionary(
+            grouping: sectionEightInbox.filter { $0.kind == .note },
+            by: { $0.scheduleBlockID }
+        )
         return sectionEightBlocks
             .filter { $0.venueID == venueID && $0.day == day }
             .sorted { $0.startsAt.id < $1.startsAt.id }
             .map { block in
                 var block = block
-                block.notes = sectionEightInbox
-                    .filter { $0.kind == .note && $0.scheduleBlockID == block.id }
+                block.notes = (notesByBlock[block.id] ?? [])
                     .map { item in
                         BlockNote(
                             id: item.id,

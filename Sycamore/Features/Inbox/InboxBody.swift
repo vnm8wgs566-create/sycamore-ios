@@ -87,5 +87,5 @@ struct InboxBody: View {
             .padding(.top, Spacing.large)
     }
     .background(Theme.surfaceWarm)
-    .environment(InboxPreviewItems.adminStore)
+    .environment(AppStore.previewUCLAAdmin)
 }
