@@ -72,10 +72,10 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 /// The last two are the opposite case and arrive as covers. See `isFullScreen`, and
 /// `RootView.pushedView(for:)` for both.
 ///
-/// No longer `String`-backed, and no longer `CaseIterable`: `8m` needs the courts it is marking
-/// and `8q` needs the kid, so two of these five carry a payload and neither a raw value nor
-/// `allCases` can survive that. Nothing asked for either — the raw value existed only to spell
-/// `id`, which is now written out below.
+/// No longer `String`-backed, and no longer `CaseIterable`: `8m` needs the courts it is marking,
+/// `8q` needs the kid and the court screen needs the court, so three of these six carry a payload
+/// and neither a raw value nor `allCases` can survive that. Nothing asked for either — the raw
+/// value existed only to spell `id`, which is now written out below.
 enum PushedScreen: Identifiable, Hashable, Sendable {
     /// `8s` — the avatar's destination.
     case profile
@@ -94,8 +94,19 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     case attendance([Group.ID], ScheduleBlock?)
     /// `8q` — a kid.
     case player(Player.ID)
+    /// One court: its roster, its coach, its status and the notes written against it.
+    ///
+    /// The one screen in this enum the design does not draw. Section 8 draws a caret on every
+    /// court card on `8i`/`8j` and no frame for where it goes, so the screen behind it is
+    /// composed from the parts the design *does* draw — `8q`'s header shape, Overview's own coach
+    /// pill, status badge and roster rows.
+    ///
+    /// Carries the court rather than the whole `CourtCard`: the card is a row of `today_courts`
+    /// that the store re-reads on every load, and holding a copy of it in the navigation state
+    /// would leave the screen drawing a headcount from whenever it was opened.
+    case court(Group.ID)
 
-    /// Written out rather than derived, because two of these cases carry a payload and the
+    /// Written out rather than derived, because three of these cases carry a payload and the
     /// payload is what makes them different screens. An `id` that ignored it would leave `8q`
     /// showing the first kid when a second was asked for — SwiftUI reads `.sheet(item:)` as
     /// "still the same presentation" and never rebuilds the content.
@@ -108,6 +119,7 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
             let courts = groupIDs.map(\.uuidString).joined(separator: "+")
             return "attendance-\(courts)-\(block?.id.uuidString ?? "no-block")"
         case .player(let id): return "player-\(id.uuidString)"
+        case .court(let id): return "court-\(id.uuidString)"
         }
     }
 
@@ -117,9 +129,12 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     /// pin a bar to the bottom edge. A sheet would inset the header behind rounded corners, put
     /// its own dismissal chrome beside a control that already exists, and float a grabber over a
     /// screen that draws a mock status bar. The other three have none of that and stay sheets.
+    ///
+    /// The court screen draws `8q`'s header — mock status bar, back caret, serif title — so it
+    /// answers the question the same way and for the same reason.
     var isFullScreen: Bool {
         switch self {
-        case .attendance, .player: true
+        case .attendance, .player, .court: true
         case .profile, .campSettings, .rank: false
         }
     }
