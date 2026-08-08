@@ -1,0 +1,30 @@
+//
+//  Signing.local.xcconfig.example
+//  Sycamore
+//
+//  Template for a per-developer signing override. To use it:
+//
+//      cp Config/Signing.local.xcconfig.example Config/Signing.local.xcconfig
+//
+//  then fill in your team and bundle id below and close/reopen the project (Xcode reads
+//  xcconfigs when the project loads). The real file is gitignored — it is yours, it never
+//  travels, and nobody else's device build changes because of it.
+//
+//  Only override what you need. Anything left commented out keeps the default from
+//  `Signing.xcconfig`.
+//
+
+// Xcode → Settings → Accounts → your Apple ID → the ten-character team id in the team list.
+// A free Apple ID's is its "(Personal Team)" entry — free provisioning signs for a real device
+// fine; the build just expires after seven days and you re-run from Xcode to refresh it.
+// SYCAMORE_DEVELOPMENT_TEAM = ABCDE12345
+
+// Must be one nobody has registered. `com.cjgimena.app` is taken — it belongs to the team
+// above — and a duplicate fails as "Failed to register bundle identifier".
+// SYCAMORE_BUNDLE_ID = com.yourname.sycamore
+
+// Uncomment — leaving it empty — if you are signing with a free Apple ID. A Personal Team
+// cannot sign Sign In with Apple, and Xcode fails the build rather than dropping the claim.
+// Paid memberships should leave this alone: your own App ID can carry the capability once you
+// tick it on developer.apple.com.
+// SYCAMORE_ENTITLEMENTS =

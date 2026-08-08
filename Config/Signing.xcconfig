@@ -1,0 +1,48 @@
+//
+//  Signing.xcconfig
+//  Sycamore
+//
+//  The three build settings that are a property of *whoever is building*, rather than of the
+//  project: the team the profile is requested from, the App ID it is requested for, and the
+//  entitlements that App ID is allowed to claim. They live here instead of in `project.pbxproj`
+//  so a second person can build on their own phone without editing — and then committing — a
+//  file that would break everyone else's device build.
+//
+//  The values below are the real ones: team `FYQ358R59X`, the App ID that has Sign In with Apple
+//  ticked, and the entitlement that claims it. That is what CI and the maintainer build with,
+//  and it is what you get if you do nothing.
+//
+//  To build under a different Apple ID, write `Config/Signing.local.xcconfig` — it is
+//  gitignored, it is `#include?`d below (the `?` means "if it exists"), and it overrides any of
+//  the three by setting the `SYCAMORE_*` variable rather than the build setting itself. Copy
+//  `Signing.local.xcconfig.example` and fill it in.
+//
+//  Set these in the file, not in Xcode's Signing & Capabilities tab. Anything you change there
+//  is written straight into `project.pbxproj`, where it wins over this file and lands in your
+//  next commit.
+//
+
+// The team automatic signing asks for a provisioning profile. A free Apple ID has one too — its
+// ten-character Personal Team ID, from Xcode → Settings → Accounts.
+SYCAMORE_DEVELOPMENT_TEAM = FYQ358R59X
+
+// App IDs are a single global namespace, so this string is claimed and cannot be claimed twice.
+// A second developer needs their own — `com.yourname.sycamore` — which also means their build is
+// a different app to Apple, to Supabase's Apple provider, and to the phone, which will install
+// it alongside rather than over the top.
+SYCAMORE_BUNDLE_ID = com.cjgimena.app
+
+// Set empty to build with no entitlements at all. Free Apple IDs must: a Personal Team cannot
+// sign `com.apple.developer.applesignin`, and Xcode rejects the build outright rather than
+// dropping the claim. What that costs is only the "Continue with Apple" route — the email and
+// six-digit code path is untouched, and a DEBUG build's Apple button bypasses to the offline
+// store anyway (see `SignInView.signInWithApple`).
+SYCAMORE_ENTITLEMENTS = Config/Sycamore.entitlements
+
+#include? "Signing.local.xcconfig"
+
+// Assigned after the include so the local file only has to state the `SYCAMORE_*` value it
+// wants, in any order, and never these three names.
+DEVELOPMENT_TEAM = $(SYCAMORE_DEVELOPMENT_TEAM)
+PRODUCT_BUNDLE_IDENTIFIER = $(SYCAMORE_BUNDLE_ID)
+CODE_SIGN_ENTITLEMENTS = $(SYCAMORE_ENTITLEMENTS)
