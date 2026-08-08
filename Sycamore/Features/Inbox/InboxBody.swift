@@ -8,6 +8,10 @@
 //  change under the reader's thumb: answering the second ask turns `8r` into `8h` without a
 //  navigation of any kind.
 //
+//  The pinned section goes above both states rather than inside either. It is the camp's standing
+//  state and not part of its morning, so it outranks "Needs you" and it survives the all-clear
+//  card — which says nothing is waiting on a *decision*, and a notice is not one.
+//
 
 import SwiftUI
 
@@ -22,6 +26,10 @@ struct InboxBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Draws nothing at all for a coach in a camp that has pinned nothing, and carries its
+            // own bottom gap when it does draw — so this stack does not have to know which.
+            InboxPinnedList(items: contents.pinned)
+
             // "All clear." is a statement about what is waiting on *you*, so it appears the
             // moment the last `needsAction` row is dealt with rather than only when the whole
             // relation empties. The morning stays underneath it: approving a court move does
@@ -63,4 +71,21 @@ struct InboxBody: View {
             .padding(.top, Spacing.large)
     }
     .background(Theme.surfaceWarm)
+    // `InboxPinnedList` reads `isAdmin` and the camp's admins out of the environment, so the
+    // body cannot be drawn without a store any more. `AppStore.preview` is a worker at UCLA,
+    // which is the coach's view of the pins.
+    .environment(AppStore.preview)
+}
+
+/// The same morning read by somebody who can take the pins down and add another.
+#Preview("Inbox body — admin") {
+    let contents = InboxContents(items: InboxPreviewItems.morning(venueID: UUID()), filter: .all)
+
+    return ScrollView {
+        InboxBody(contents: contents, filter: .all) { _ in }
+            .padding(.horizontal, Spacing.gutter)
+            .padding(.top, Spacing.large)
+    }
+    .background(Theme.surfaceWarm)
+    .environment(InboxPreviewItems.adminStore)
 }
