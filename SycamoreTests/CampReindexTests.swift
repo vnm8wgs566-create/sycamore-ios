@@ -138,6 +138,57 @@ struct CampReindexTests {
         #expect(camp.group(courts[1].id)?.coachID == nass.id)
     }
 
+    // MARK: Denormalised court assignments
+
+    /// A `CourtAssignment` copies the venue's name and emoji so a chip renders without walking
+    /// back to the graph, and `assignStaff` was the only thing that ever wrote them. So renaming
+    /// a venue, or picking a new emoji in the venue sheet, left every coach already standing
+    /// there carrying the old pair — on Setup's staff row, on the staff sheet's subtitle, and in
+    /// the camp picker — until they happened to be reassigned.
+    @Test("A renamed, re-iconed venue reaches the coaches already standing on it")
+    func assignmentsFollowTheVenue() {
+        var camp = Fixture.camp([.init("Sycamore", courts: 2)], players: 4)
+        let court = camp.groups(in: camp.venues[0].id)[0]
+        let nass = StaffMember(name: "Nass", role: .worker)
+        camp.staff.append(nass)
+        camp.assignStaff(nass.id, toGroup: court.id)
+        #expect(camp.staff(nass.id)?.assignment?.chip == "🌳 C1")
+
+        var venue = camp.venues[0]
+        venue.name = "Sycamore North"
+        venue.icon = "🎾"
+        camp.upsert(venue)
+
+        let assignment = camp.staff(nass.id)?.assignment
+        #expect(assignment?.chip == "🎾 C1")
+        #expect(assignment?.pathLabel == "Sycamore North · Court 1")
+        #expect(assignment?.pickerLabel == "Sycamore North, Court 1")
+        // Setup's staff row reads the chip through the member, not the assignment.
+        #expect(camp.staff(nass.id)?.courtChip == "🎾 C1")
+    }
+
+    /// Two venues, one edit: a coach at the other venue is not holding a copy of the venue that
+    /// was edited, and re-reading everyone's must not hand them one.
+    @Test("Editing one venue leaves a coach at the other alone")
+    func editingOneVenueLeavesTheOtherAlone() {
+        var camp = Fixture.camp(
+            [.init("Sycamore", courts: 1), .init("LATC", courts: 1)],
+            players: 4
+        )
+        let latcCourt = camp.groups(in: camp.orderedVenues[1].id)[0]
+        let hubert = StaffMember(name: "Hubert", role: .worker)
+        camp.staff.append(hubert)
+        camp.assignStaff(hubert.id, toGroup: latcCourt.id)
+
+        var sycamore = camp.orderedVenues[0]
+        sycamore.name = "Sycamore North"
+        sycamore.icon = "🎾"
+        camp.upsert(sycamore)
+
+        #expect(camp.staff(hubert.id)?.assignment?.pathLabel == "LATC · Court 1")
+        #expect(camp.staff(hubert.id)?.assignment?.chip == "🌳 C1")
+    }
+
     // MARK: `presentCount` is a statement about today
 
     /// The bug this pins: `reindex` used to take the day it was being called *about*, so writing

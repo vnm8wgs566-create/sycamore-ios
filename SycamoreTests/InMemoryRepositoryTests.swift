@@ -633,3 +633,72 @@ struct RepositoryStaffTests {
         }
     }
 }
+
+/// Alex coaches Court 3 at Sycamore and has a membership carrying today's post, so the design's
+/// camp is the only fixture where a venue edit can be followed all the way from `upsert` through
+/// the camp graph and out into what the picker and Profile read.
+@Suite("InMemoryRepository — venue edits")
+struct RepositoryVenueEditTests {
+
+    private func loaded() -> (InMemoryRepository, Camp) {
+        let repo = InMemoryRepository(
+            accounts: [SampleData.account],
+            memberships: SampleData.memberships,
+            camps: SampleData.camps
+        )
+        return (repo, SampleData.uclaTennisCamp)
+    }
+
+    private func alexsTile(_ repo: InMemoryRepository, _ camp: Camp) async throws -> TodayAssignment {
+        let memberships = try await repo.memberships(forAccount: SampleData.account.id)
+        let membership = try #require(memberships.first { $0.campID == camp.id })
+        return try #require(membership.todayAssignment)
+    }
+
+    /// Profile's "On today" tile draws the venue's emoji *on* the venue's tint. The projection
+    /// took the emoji off the assignment's snapshot and the tint off the live venue, so the two
+    /// halves of one tile arrived from two places and a new emoji landed on the tile before its
+    /// colour did — 🌳 on citron.
+    @Test("The today tile's emoji and tint come from the same venue")
+    func theTodayTileIsOneVenue() async throws {
+        let (repo, camp) = loaded()
+        var venue = SampleData.sycamore
+        venue.icon = "🎾"
+        venue.tint = .suggested(for: "🎾")
+
+        _ = try await repo.updateVenue(venue, campID: camp.id)
+
+        let tile = try await alexsTile(repo, camp)
+        #expect(tile.venueIcon == "🎾")
+        #expect(tile.venueTint == .citron)
+    }
+
+    @Test("A renamed venue reaches the camp picker's copy of today's post")
+    func theTodayTileFollowsARename() async throws {
+        let (repo, camp) = loaded()
+        var venue = SampleData.sycamore
+        venue.name = "Sycamore North"
+
+        _ = try await repo.updateVenue(venue, campID: camp.id)
+
+        let tile = try await alexsTile(repo, camp)
+        #expect(tile.venueName == "Sycamore North")
+        #expect(tile.pathLabel == "Sycamore North · Court 3")
+    }
+
+    /// The same edit, read back off the camp graph rather than off the membership — Setup's staff
+    /// card and the staff sheet go this way round.
+    @Test("A renamed venue reaches the coach's own chip")
+    func theCoachsChipFollowsARename() async throws {
+        let (repo, camp) = loaded()
+        let alex = try #require(camp.staff.first { $0.accountID == SampleData.account.id })
+        var venue = SampleData.sycamore
+        venue.name = "Sycamore North"
+        venue.icon = "🎾"
+
+        let after = try await repo.updateVenue(venue, campID: camp.id)
+
+        #expect(after.staff(alex.id)?.assignment?.chip == "🎾 C3")
+        #expect(after.staff(alex.id)?.detailLine == "Worker · Sycamore North · Court 3")
+    }
+}
