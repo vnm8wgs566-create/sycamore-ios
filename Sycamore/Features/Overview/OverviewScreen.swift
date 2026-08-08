@@ -157,7 +157,11 @@ struct OverviewScreen: View {
             // list can never disagree about whether there is anything behind it.
             onToggleRoster: roster.isFoldable(to: OverviewTheme.rosterPreview)
                 ? { toggle(court.id) }
-                : nil
+                : nil,
+            // The header caret's destination. Nil on your own court, which draws no caret — you
+            // are already standing on it. The card decides whether to draw the glyph; this
+            // decides where it goes, and the two are the same question asked once each.
+            onOpenCourt: isMine ? nil : { store.pushedScreen = .court(court.id) }
         )
     }
 
