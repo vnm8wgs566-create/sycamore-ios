@@ -84,6 +84,13 @@ enum InboxMetrics {
     static let titleGap: CGFloat = 3
     /// `font-size:15px` — the trailing caret on a feed row.
     static let caret: CGFloat = 15
+    /// The `⋯` that closes a pinned row, in the slot the caret would otherwise sit in.
+    ///
+    /// The one number on this screen with no CSS behind it, because the design does not draw the
+    /// Inbox with a menu on it — stated here rather than at the call site precisely because it is
+    /// the exception, the way `InboxType.narrowedTitle` is. Two points over the caret: three dots
+    /// at 15 read as a speck where a chevron at 15 reads as a direction.
+    static let rowMenu: CGFloat = 17
     /// `padding:7px 12px` — the "Review" / "Assign" button.
     static let actionPaddingH: CGFloat = 12
     static let actionPaddingV: CGFloat = 7

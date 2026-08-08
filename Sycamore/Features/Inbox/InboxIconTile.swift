@@ -47,8 +47,18 @@ extension InboxIconTile {
     ///
     /// - A `needsAction` naming a player is a move — somebody wants a kid on another court.
     ///   One that names no player is a hole in the roster, which is the amber case.
-    /// - A `note` against a court is a court note; a note against nothing is pinned to the
-    ///   whole camp, which is what the design draws the green pin for.
+    /// - A `note` carrying `pinned` gets the green pin the design draws; every other note gets
+    ///   the grey page.
+    ///
+    ///   This rule used to read "a note against a court is a court note; a note against nothing
+    ///   is pinned to the whole camp". Two claims were being read off one shape, and they are not
+    ///   the same claim: *camp-wide* is about what a note is attached to, and *pinned* is about
+    ///   whether an admin has held it at the top of the screen. A row is entitled to make either,
+    ///   both or neither — "shade tent is up on the lawn" is camp-wide and need not be pinned;
+    ///   "court 4 net is loose" is pinned and is about a court. Conflated, the rule ran backwards:
+    ///   attaching a note to a court *un-pinned* it. `pinned` is a stored column now, so the tile
+    ///   reads the claim it is drawing rather than inferring it from `groupID`, which goes back to
+    ///   answering only its own question.
     /// - An `activity` with a player but no actor is a standing arrangement about that kid
     ///   (an early pick-up) rather than something a coach just did, so it keeps the amber
     ///   clock. With an actor it is somebody's action, and with neither it is camp-wide.
@@ -71,9 +81,9 @@ extension InboxIconTile {
                 : ("person.crop.circle.dashed", .warning)
 
         case .note:
-            item.groupID != nil
-                ? ("note.text", .neutral)
-                : ("pin.fill", .accent)
+            item.pinned
+                ? ("pin.fill", .accent)
+                : ("note.text", .neutral)
 
         case .activity:
             if item.playerID != nil, item.actorID == nil {

@@ -57,8 +57,15 @@ struct OverviewView: View {
 
     /// The design banners one note. Items arrive newest first, so the newest one still standing
     /// is the one the morning is about.
+    ///
+    /// Read off the stored `pinned` flag rather than guessed. This used to be "the newest
+    /// unresolved note", which bannered the first thing any coach happened to write down — and it
+    /// disagreed with the Inbox, which drew its green pin for a different rule again ("a note
+    /// against no court"). Two guesses, two answers, neither of them the question the design is
+    /// asking, which is *what has an admin pinned*. One column answers it now, and the two screens
+    /// read the same column.
     private var pinnedNote: InboxItem? {
-        store.inboxItems.first { $0.kind == .note && !$0.resolved }
+        store.inboxItems.first { $0.pinned && !$0.resolved }
     }
 
     /// "Skills rotation · until 10:30" while a block is running.
