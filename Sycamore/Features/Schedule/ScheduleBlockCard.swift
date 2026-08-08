@@ -125,7 +125,7 @@ struct ScheduleBlockCard: View {
                 DisclosureChevron(systemName: "pin.fill", size: 13, color: Theme.accent)
                     .accessibilityHidden(true)
 
-                Text(pinned)
+                Text(pinned.text)
                     .typeStyle(ScheduleType.noteLine, color: Theme.inkWarm)
                     .lineLimit(1)
                     .truncationMode(.tail)

@@ -129,6 +129,32 @@ extension AppStore {
         }
     }
 
+    /// Writes a note against a block, then re-reads the Inbox.
+    ///
+    /// The second read has a precedent and a rule: `resolveInboxItem` re-reads Overview because
+    /// that is "the only place the two are known to be coupled". A block note *is* an Inbox row,
+    /// so this is the second such place — leaving it out would put a note on `8l` that `8r`
+    /// does not know about until the tab is opened again.
+    func addBlockNote(_ text: String, to block: ScheduleBlock) async {
+        guard let campID = camp?.id else { return }
+        await perform {
+            self.scheduleBlocks = try await self.repository.addBlockNote(
+                text, to: block, authorID: self.myStaffRecord?.id, campID: campID
+            )
+        }
+        await loadInbox()
+    }
+
+    func deleteBlockNote(_ noteID: InboxItem.ID, from block: ScheduleBlock) async {
+        guard let campID = camp?.id else { return }
+        await perform {
+            self.scheduleBlocks = try await self.repository.deleteBlockNote(
+                noteID, from: block, campID: campID
+            )
+        }
+        await loadInbox()
+    }
+
     // MARK: Inbox
 
     func loadInbox() async {
@@ -153,6 +179,31 @@ extension AppStore {
         guard let campID = camp?.id else { return }
         await perform {
             self.inboxItems = try await self.repository.addInboxItem(item, campID: campID)
+        }
+    }
+
+    /// The admin composer. A pinned message is an ordinary `.note` row wearing the flag, so this
+    /// is `addInboxItem` with the two fields the composer does not ask about filled in — not a
+    /// separate kind of thing.
+    func addPinnedMessage(_ text: String) async {
+        guard let venueID = readVenueID else { return }
+        await addInboxItem(
+            InboxItem(
+                venueID: venueID,
+                kind: .note,
+                title: text,
+                actorID: myStaffRecord?.id,
+                pinned: true
+            )
+        )
+    }
+
+    func setPinned(_ pinned: Bool, for itemID: InboxItem.ID) async {
+        guard let campID = camp?.id else { return }
+        await perform {
+            self.inboxItems = try await self.repository.setPinned(
+                pinned, forItem: itemID, forCamp: campID
+            )
         }
     }
 }

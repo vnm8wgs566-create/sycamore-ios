@@ -13,7 +13,7 @@ import SwiftUI
 
 struct BlockNotesCard: View {
 
-    let notes: [String]
+    let notes: [BlockNote]
     /// "3 notes on this block" — spelled by the block, so the card and the block agree on the
     /// plural.
     let label: String
@@ -45,16 +45,18 @@ struct BlockNotesCard: View {
                 .accessibilityHint(isExpanded ? "Hides the notes" : "Shows the notes")
 
                 if isExpanded {
-                    // Indices, not the notes themselves: two coaches can write the same line,
-                    // and identical strings would collapse into one row.
-                    ForEach(notes.indices, id: \.self) { index in
+                    // The notes themselves, now that each carries an id. This used to key on
+                    // indices, because two coaches can write the same line and identical
+                    // strings would have collapsed into one row — an id says which row is
+                    // which without that dodge, and it is also what a delete has to name.
+                    ForEach(notes) { note in
                         Hairline(color: Theme.hairlineSoft)
 
                         CardRow(spacing: Spacing.row,
                                 horizontalPadding: ScheduleMetrics.cardPadding,
                                 verticalPadding: Spacing.medium,
                                 alignment: .top) {
-                            Text(notes[index])
+                            Text(note.text)
                                 .typeStyle(ScheduleType.noteLine, color: Theme.inkTertiary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

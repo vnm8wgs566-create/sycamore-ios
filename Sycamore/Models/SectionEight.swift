@@ -80,7 +80,14 @@ struct ScheduleBlock: Identifiable, Hashable, Sendable, Codable {
     var detail: String?
     var status: ScheduleBlockStatus = .planned
     /// "1 note · shade tent is up". Notes hang off a block; the count is what the card shows.
-    var notes: [String] = []
+    var notes: [BlockNote] = []
+    /// Who is running this block, as opposed to who happens to be at the venue.
+    ///
+    /// Declared last deliberately. `ScheduleBlock`'s memberwise initialiser is called with
+    /// labels but in declaration order in three places — `SupabaseDTOs.swift`,
+    /// `ScheduleSampleDay.swift` and `SectionEightRepository.swift` — and a stored property
+    /// added above `notes` would have broken all three at once.
+    var coachIDs: [StaffMember.ID] = []
 
     /// "8:30", and "8:30 – 9:00" once there is an end.
     var timeLabel: String {
@@ -90,8 +97,28 @@ struct ScheduleBlock: Identifiable, Hashable, Sendable, Codable {
 
     var noteSummary: String? {
         guard let first = notes.first else { return nil }
-        return notes.count == 1 ? "1 note · \(first)" : "\(notes.count) notes"
+        return notes.count == 1 ? "1 note · \(first.text)" : "\(notes.count) notes"
     }
+}
+
+/// A line pinned to a block — "shade tent is up", "two nut allergies".
+///
+/// Carries its own id rather than being a bare `String`, and that is the point of the type. A
+/// note has to be deletable, and an index into a list re-read from the server is a race: the
+/// list can change between the tap and the write. `BlockNotesCard` had already hit the same
+/// edge from the other side and keyed its `ForEach` on indices because "two coaches can write
+/// the same line, and identical strings would collapse into one row" — an id settles both.
+///
+/// The id is an `InboxItem.ID` because that is what a block note *is*. There is no notes table:
+/// a note is a row of `inbox_items` with `kind = 'note'` carrying `schedule_block_id`, which is
+/// the design the seed migration states and the column that already exists to serve it.
+struct BlockNote: Identifiable, Hashable, Sendable, Codable {
+    var id: InboxItem.ID
+    var text: String
+    /// Nil when the author has left the camp — `removeStaff` deactivates rather than deletes,
+    /// so the row survives its author.
+    var authorName: String?
+    var at: Date
 }
 
 extension ScheduleBlock {
@@ -147,6 +174,17 @@ struct InboxItem: Identifiable, Hashable, Sendable {
     /// block of the day, so a note tied only to the court belongs to all five at once. Nil for
     /// the rows that really are about the camp rather than a moment in it.
     var scheduleBlockID: ScheduleBlock.ID?
+    /// Held at the top of the Inbox and drawn on Overview as the pinned banner, until an admin
+    /// takes it down.
+    ///
+    /// Stored rather than inferred. It used to be read off the shape of the row — a `.note`
+    /// with no `groupID` — which was two rules pretending to be one, and the wrong way round:
+    /// attaching a note to a court *un-pinned* it. A camp-wide note and a pinned one are
+    /// different claims and a row is entitled to make either, both or neither.
+    ///
+    /// Writing it is admin-only, and the enforcement that counts is the RLS policy on
+    /// `inbox_items` rather than anything on this side of the wire.
+    var pinned: Bool = false
     var resolved: Bool = false
     var createdAt: Date = .now
 }

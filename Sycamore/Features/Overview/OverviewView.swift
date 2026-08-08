@@ -34,7 +34,7 @@ struct OverviewView: View {
             store: store,
             courts: store.courts,
             pinnedNote: pinnedNote,
-            blockNote: runningBlock?.notes.first,
+            blockNote: runningBlock?.notes.first?.text,
             nowLine: nowLine
         )
         .task(id: store.readVenueID) { await load() }

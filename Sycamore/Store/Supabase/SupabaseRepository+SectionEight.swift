@@ -163,6 +163,41 @@ extension SupabaseRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: record.siteId, day: day, campID: campID)
     }
 
+    /// A note is an `inbox_items` row of kind `note` carrying `schedule_block_id`. There is no
+    /// notes table and deliberately so — the seed migration states this design, `8r` already
+    /// draws these rows in the day's feed, and a `text[]` on the block could carry neither the
+    /// author nor the time that feed shows.
+    ///
+    /// The text goes in `detail` rather than `title`: that is where the seeded notes put the
+    /// sentence, `title` is where "Nass pinned a note" lives, and `detail` is the column with
+    /// 200 characters rather than 120 — which suits describing an activity.
+    func addBlockNote(
+        _ text: String, to block: ScheduleBlock, authorID: StaffMember.ID?, campID: Camp.ID
+    ) async throws -> [ScheduleBlock] {
+        let item = InboxItem(
+            venueID: block.venueID,
+            kind: .note,
+            title: block.title,
+            detail: text,
+            actorID: authorID,
+            scheduleBlockID: block.id
+        )
+        try await db.insert(Relation.inboxItems, [Self.inboxRow(item)])
+        return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
+    }
+
+    func deleteBlockNote(
+        _ noteID: InboxItem.ID, from block: ScheduleBlock, campID: Camp.ID
+    ) async throws -> [ScheduleBlock] {
+        let deleted: [InboxItemRecord] = try await db.delete(
+            Relation.inboxItems,
+            where: PostgRESTQuery().eq("id", noteID),
+            returning: InboxItemRecord.self
+        )
+        guard !deleted.isEmpty else { throw SycamoreError.unknownGroup }
+        return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
+    }
+
     func applyDayShape(
         _ shape: DayShape, toVenue venueID: Venue.ID, day: Weekday, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
@@ -265,6 +300,19 @@ extension SupabaseRepository: SectionEightData {
         return try await inboxItems(forCamp: campID)
     }
 
+    func setPinned(
+        _ pinned: Bool, forItem itemID: InboxItem.ID, forCamp campID: Camp.ID
+    ) async throws -> [InboxItem] {
+        let updated: [InboxItemRecord] = try await db.update(
+            Relation.inboxItems,
+            set: ["pinned": .bool(pinned)],
+            where: PostgRESTQuery().eq("id", itemID),
+            returning: InboxItemRecord.self
+        )
+        guard !updated.isEmpty else { throw SycamoreError.unknownGroup }
+        return try await inboxItems(forCamp: campID)
+    }
+
     func inboxItems(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [InboxItem] {
         let records: [InboxItemRecord] = try await db.select(
             Relation.inboxItems,
@@ -302,6 +350,10 @@ extension SupabaseRepository: SectionEightData {
             "actor_id": .uuid(item.actorID),
             "player_id": .uuid(item.playerID),
             "group_id": .uuid(item.groupID),
+            // The column has existed since `section8_model_gaps` and was never written, so the
+            // app read a field it could not set and every note lost the block it was about.
+            "schedule_block_id": .uuid(item.scheduleBlockID),
+            "pinned": .bool(item.pinned),
             "resolved": .bool(item.resolved),
         ]
     }

@@ -41,7 +41,7 @@ struct BlockCourtCard: View {
             }
 
             if let pinned = block.notes.first {
-                pinnedNote(pinned)
+                pinnedNote(pinned.text)
                     .padding(.top, ScheduleMetrics.noteRuleNow)
             }
         }

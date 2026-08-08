@@ -51,6 +51,22 @@ protocol SectionEightData: Sendable {
         fromDay: Weekday, toDay: Weekday, venueID: Venue.ID, campID: Camp.ID
     ) async throws -> [ScheduleBlock]
 
+    /// Pins a line to a block. Returns the day, because the count on every other card is drawn
+    /// from the same read and a note added to one block renumbers nothing else — but the caller
+    /// should not have to know that.
+    ///
+    /// Admin-only, and the gate that counts is the RLS policy on `inbox_items`: a refusal
+    /// arrives as a 403 and is raised as `SycamoreError.notPermitted`.
+    func addBlockNote(
+        _ text: String, to block: ScheduleBlock, authorID: StaffMember.ID?, campID: Camp.ID
+    ) async throws -> [ScheduleBlock]
+
+    /// By id rather than by index. The list was re-read from the server and can have changed
+    /// between the tap and the write; an index would delete whatever had moved into that slot.
+    func deleteBlockNote(
+        _ noteID: InboxItem.ID, from block: ScheduleBlock, campID: Camp.ID
+    ) async throws -> [ScheduleBlock]
+
     // MARK: Inbox — `8r` / `8h`
     //
     // Two families, and the argument label is the whole difference: `forCamp:` spans the camp,
@@ -74,6 +90,14 @@ protocol SectionEightData: Sendable {
     func resolveInboxItem(_ itemID: InboxItem.ID, forCamp campID: Camp.ID) async throws -> [InboxItem]
 
     func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem]
+
+    /// Puts a row at the top of the Inbox, or takes it back down. Admin-only on the server.
+    ///
+    /// Separate from `resolveInboxItem` because the two say different things: resolving moves a
+    /// row into the day's history, and unpinning leaves it exactly where it was in the feed.
+    func setPinned(
+        _ pinned: Bool, forItem itemID: InboxItem.ID, forCamp campID: Camp.ID
+    ) async throws -> [InboxItem]
 
     /// One venue's rows. Superseded by `inboxItems(forCamp:)` — see above.
     func inboxItems(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [InboxItem]
@@ -271,6 +295,33 @@ extension InMemoryRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: venueID, day: toDay, campID: campID)
     }
 
+    func addBlockNote(
+        _ text: String, to block: ScheduleBlock, authorID: StaffMember.ID?, campID: Camp.ID
+    ) async throws -> [ScheduleBlock] {
+        guard let index = sectionEightBlocks.firstIndex(where: { $0.id == block.id }) else {
+            throw SycamoreError.unknownGroup
+        }
+        let author = (try? await camp(id: campID))?.staff.first { $0.id == authorID }
+        sectionEightBlocks[index].notes.append(
+            BlockNote(id: UUID(), text: text, authorName: author?.name, at: .now)
+        )
+        return try await scheduleBlocks(
+            forVenue: block.venueID, day: block.day, campID: campID
+        )
+    }
+
+    func deleteBlockNote(
+        _ noteID: InboxItem.ID, from block: ScheduleBlock, campID: Camp.ID
+    ) async throws -> [ScheduleBlock] {
+        guard let index = sectionEightBlocks.firstIndex(where: { $0.id == block.id }) else {
+            throw SycamoreError.unknownGroup
+        }
+        sectionEightBlocks[index].notes.removeAll { $0.id == noteID }
+        return try await scheduleBlocks(
+            forVenue: block.venueID, day: block.day, campID: campID
+        )
+    }
+
     /// The camp's venues are the filter, because an Inbox row reaches its camp through its venue
     /// — `inbox_items.site_id` → `sites.camp_id` is what the Postgres side joins on, and this has
     /// to answer the same question the same way.
@@ -297,6 +348,16 @@ extension InMemoryRepository: SectionEightData {
 
     func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
         sectionEightInbox.append(item)
+        return try await inboxItems(forCamp: campID)
+    }
+
+    func setPinned(
+        _ pinned: Bool, forItem itemID: InboxItem.ID, forCamp campID: Camp.ID
+    ) async throws -> [InboxItem] {
+        guard let index = sectionEightInbox.firstIndex(where: { $0.id == itemID }) else {
+            throw SycamoreError.unknownGroup
+        }
+        sectionEightInbox[index].pinned = pinned
         return try await inboxItems(forCamp: campID)
     }
 

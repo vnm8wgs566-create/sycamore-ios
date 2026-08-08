@@ -138,6 +138,9 @@ struct InboxItemRecord: Decodable, Sendable {
     var playerId: UUID?
     var groupId: UUID?
     var scheduleBlockId: UUID?
+    /// Defaulted rather than required, so a build that has not applied the migration adding the
+    /// column decodes the rest of the row instead of failing every Inbox read.
+    var pinned: Bool = false
     var resolved: Bool
     var createdAt: Date
 }
@@ -345,6 +348,7 @@ extension InboxItem {
             playerID: record.playerId,
             groupID: record.groupId,
             scheduleBlockID: record.scheduleBlockId,
+            pinned: record.pinned,
             resolved: record.resolved,
             createdAt: record.createdAt
         )

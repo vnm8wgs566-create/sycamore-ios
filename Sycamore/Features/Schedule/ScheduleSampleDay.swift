@@ -23,26 +23,32 @@ enum ScheduleSampleDay {
                 venueID: venueID, day: day, startsAt: TimeOfDay(9, 0), endsAt: TimeOfDay(10, 30),
                 title: "Skills rotation", detail: "Courts 1–3 · 22 players",
                 notes: [
-                    "Net on 4 is loose — Nass",
-                    "Cones on the service line, cart stays north",
-                    "Volley ladder after the forehand feeds",
+                    note("Net on 4 is loose", by: "Nass"),
+                    note("Cones on the service line, cart stays north"),
+                    note("Volley ladder after the forehand feeds"),
                 ]
             ),
             ScheduleBlock(
                 venueID: venueID, day: day, startsAt: TimeOfDay(10, 30), endsAt: TimeOfDay(10, 45),
                 title: "Water & regroup", detail: "15 min",
-                notes: ["shade tent is up"]
+                notes: [note("shade tent is up")]
             ),
             ScheduleBlock(
                 venueID: venueID, day: day, startsAt: TimeOfDay(10, 45), endsAt: TimeOfDay(12, 0),
                 title: "Match play", status: .needsCoach,
-                notes: ["Alina can referee court 2", "Winners stay on"]
+                notes: [note("Alina can referee court 2"), note("Winners stay on")]
             ),
             ScheduleBlock(
                 venueID: venueID, day: day, startsAt: TimeOfDay(12, 0), endsAt: TimeOfDay(13, 0),
                 title: "Lunch", detail: "Shade lawn",
-                notes: ["two nut allergies"]
+                notes: [note("two nut allergies")]
             ),
         ]
+    }
+
+    /// A note with a minted id, because a fixture has no server to get one from. Fresh per call
+    /// so two notes reading the same words are still two rows.
+    private static func note(_ text: String, by author: String? = nil) -> BlockNote {
+        BlockNote(id: UUID(), text: text, authorName: author, at: .now)
     }
 }
