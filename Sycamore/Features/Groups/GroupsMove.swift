@@ -46,15 +46,31 @@ struct GroupsMove: Equatable {
     let origin: CGRect
     /// Every place the kid could land, measured once at lift.
     ///
-    /// Captured rather than rebuilt each pass because the list is frozen for the duration: while
-    /// a kid is in the air a card header aims instead of folding, "+N more" is disabled, "Add a
-    /// group" is hidden, and the search field and chips are swapped out for the moving line. The
-    /// geometry these were measured from cannot move, so measuring it again every frame of
-    /// finger travel would produce the same array a hundred times a second.
+    /// The geometry these were measured from **does** move now — that is the whole of `8p`'s
+    /// drag. The rows shift aside to open a space, the card the kid came out of closes up by
+    /// one row and the card they are aimed at opens by one. Capturing the slots is what lets
+    /// the target survive all of that.
+    ///
+    /// It has to be a capture rather than a rebuild, and not merely for cheapness. The shift is
+    /// *caused by* the target, and the slots are what the target is picked from — so an array
+    /// rebuilt from the shifted layout would be chasing its own tail: aim at a boundary, the
+    /// rows move, the boundary moves, the nearest slot is now a different one, aim at that.
+    /// Frozen, a slot means one fixed thing for the length of the gesture: where that boundary
+    /// stood in the list at rest, which is the only state a drop can be measured from.
+    ///
+    /// The cheapness argument still holds on its own terms. Nothing else about the list changes
+    /// while a kid is in the air — a card header aims instead of folding, "+N more" is
+    /// disabled, "Add a group" is hidden, and the search field and chips are swapped out for
+    /// the moving line — so a rebuild would produce the same array a hundred times a second.
+    ///
+    /// The consequence is `GroupsGhost.top`: because a slot's y is stated against the layout
+    /// before the mover left it, one row height has to come off it to find where the space
+    /// actually opens. One line, derived there.
     let slots: [GroupsDropSlot]
 
     /// Offset from `origin`. Follows the finger while the handle is held; afterwards it is set
-    /// so the card sits centred on wherever the kid is now aimed.
+    /// so the card sits with its top on the space that has opened for the kid — see
+    /// `GroupsView.aim(at:)`.
     var translation: CGFloat = 0
     /// True only while the finger is actually down on the handle.
     var isDragging: Bool = false
@@ -95,7 +111,13 @@ struct GroupsMove: Equatable {
 struct GroupsDropSlot: Equatable, Hashable {
 
     let landing: GroupsLanding
-    /// The boundary's y in the list's coordinate space.
+    /// The boundary's y in the list's coordinate space, **in the layout as it stood at lift**.
+    ///
+    /// An *aiming* coordinate, not a drawing one. It is what `nearestSlot()` measures the
+    /// carried card against, and it stays fixed for the length of the gesture precisely so that
+    /// the rows are free to move. Where the space actually opens on screen is one row height
+    /// higher whenever this sits below the mover; `GroupsGhost.top` is that adjustment, and it
+    /// is the only thing that should ever be drawn from this number.
     let y: CGFloat
     /// The overall rank the kid takes if they land here — `Drops in at #9`.
     let rank: Int

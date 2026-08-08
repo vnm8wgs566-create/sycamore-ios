@@ -43,8 +43,9 @@ struct GroupCard: View {
     let onMoveEnded: () -> Void
     /// VoiceOver's equivalent of the drag: one place up or down inside this group.
     let onNudge: (PlayerRow, Int) -> Void
-    /// Every drawn row's rectangle, in the list's coordinate space. This is what the drop slots
-    /// are built from, so it includes the dashed gap left by the kid in the air.
+    /// Every drawn row's rectangle, in the list's coordinate space — the raw material for every
+    /// drop slot. The screen ignores these while a kid is in the air, because a slot is only
+    /// meaningful measured off the list at rest; see `GroupsView.cardView(_:)`.
     let onRowFrame: (Player.ID, CGRect) -> Void
 
     /// The design writes a court's rank band as "Group 1" and keeps "Court 1" for the place it
@@ -62,6 +63,23 @@ struct GroupCard: View {
     /// that changes nothing when it is pressed is worse than no chevron.
     private var isFoldable: Bool { card.rows.count > GroupsRules.previewRows + 1 }
     private var isExpanded: Bool { hiddenCount == 0 }
+
+    /// Where this card opens a space for the kid in the air, if it is the one they are aimed at.
+    private var ghostSeat: GroupsGhost.Seat? {
+        move.flatMap {
+            GroupsGhost.seat(aimedAt: $0.target, card: card.id, drawnRows: visibleRows)
+        }
+    }
+
+    /// Whether there is anything under the header at all: kids of the card's own, a "+N more"
+    /// row, or the ghost of a kid aimed at a card that draws neither.
+    ///
+    /// The same answer as `!seats.isEmpty` and stated separately on purpose — `body` runs on
+    /// every frame of a shift, the header asks this question too, and neither of them needs the
+    /// array built to be told no.
+    private var hasRowsSection: Bool {
+        !visibleRows.isEmpty || hiddenCount > 0 || ghostSeat != nil
+    }
 
     /// `Drops in at #9` while this card is the target, the head-count band otherwise.
     private var subtitle: String {
@@ -81,22 +99,30 @@ struct GroupCard: View {
             VStack(spacing: 0) {
                 header
 
-                if !visibleRows.isEmpty {
+                if hasRowsSection {
                     Hairline(color: Theme.hairlineSoft)
                         .padding(.horizontal, GroupsMetrics.cardPadding)
 
                     VStack(spacing: 0) {
-                        ForEach(visibleRows) { row in
-                            rowView(row)
-                                .onGeometryChange(for: CGRect.self) {
-                                    $0.frame(in: .named(GroupsSpace.list))
-                                } action: {
-                                    onRowFrame(row.id, $0)
-                                }
-                        }
-
-                        if hiddenCount > 0 {
-                            moreRow
+                        // A `switch` in a `ForEach` builder is `_ConditionalContent`, not
+                        // `AnyView` — it costs a branch in the view tree and nothing at
+                        // runtime. The identity that matters is `CardSeat.id`, which is what
+                        // keeps the ghost one view as it changes position rather than one
+                        // fading out beside another fading in.
+                        ForEach(seats) { seat in
+                            switch seat {
+                            case .row(let row):
+                                rowView(row)
+                                    .onGeometryChange(for: CGRect.self) {
+                                        $0.frame(in: .named(GroupsSpace.list))
+                                    } action: {
+                                        onRowFrame(row.id, $0)
+                                    }
+                            case .ghost(let move):
+                                ghost(move)
+                            case .more:
+                                moreRow
+                            }
                         }
                     }
                     // `padding-top:6px` under the rule, exactly as drawn. The foot is short of
@@ -176,7 +202,9 @@ struct GroupCard: View {
         .padding(.horizontal, GroupsMetrics.cardPadding)
         .padding(.top, GroupsMetrics.cardPadding)
         // `margin-top:10px` to the rule below, or the card's own 14 when there is no rule.
-        .padding(.bottom, visibleRows.isEmpty ? GroupsMetrics.cardPadding : GroupsMetrics.rowsGap)
+        // `hasRowsSection` rather than `visibleRows`, so a card that draws no kids of its own
+        // still opens a rows section when a kid is aimed at the back of it.
+        .padding(.bottom, hasRowsSection ? GroupsMetrics.rowsGap : GroupsMetrics.cardPadding)
         .frame(minHeight: HitTarget.minimum)
         .contentShape(.rect)
     }
@@ -188,6 +216,29 @@ struct GroupCard: View {
     }
 
     // MARK: Rows
+
+    /// Everything this card stacks under its rule, in order: its drawn kids, the ghost of the
+    /// one aimed at it, and "+N more".
+    ///
+    /// The ghost is a *seat in the flow* rather than an overlay, and that is the whole
+    /// mechanism — `ghost(_:)` below says why an `.offset` cannot stand in for it. Exactly one
+    /// row of height `H` gives its space up (`rowView`) and exactly one of height `H` arrives,
+    /// so a kid moving inside one group leaves that group's card the height it already was.
+    private var seats: [CardSeat] {
+        let ghost = move.map(CardSeat.ghost)
+        let seat = ghostSeat
+
+        var seats: [CardSeat] = []
+        for row in visibleRows {
+            if seat == .above(row.id), let ghost { seats.append(ghost) }
+            seats.append(.row(row))
+        }
+        if seat == .belowLastRow, let ghost { seats.append(ghost) }
+        if hiddenCount > 0 { seats.append(.more) }
+        // Below "+N more", not above it. See `GroupsGhost.Seat.backOfCard`.
+        if seat == .backOfCard, let ghost { seats.append(ghost) }
+        return seats
+    }
 
     private func rowView(_ row: PlayerRow) -> some View {
         let isHeld = move?.row.id == row.id
@@ -201,30 +252,76 @@ struct GroupCard: View {
             onMoveEnded: onMoveEnded,
             onNudge: { onNudge(row, $0) }
         )
-        // Hidden rather than replaced. The row owns the gesture that is carrying the kid, so
-        // swapping it for the gap would destroy the drag halfway through it; and it is what
-        // holds the space open, which is what keeps every slot below it where it was measured.
-        // `.opacity(0)` leaves a view in the accessibility tree, hence the explicit hide — the
-        // gap over it is the thing that should speak.
+        // Hidden rather than replaced. The row owns the gesture that is carrying the kid, and a
+        // view swapped out from under a live gesture takes the gesture with it — the drag would
+        // die halfway through itself. `.opacity(0)` leaves a view in the accessibility tree,
+        // hence the explicit hide as well: the ghost is the thing that should speak now.
+        //
+        // What has reversed is the space. This row used to *hold its space open*, and the
+        // argument for that was that it kept every slot below it where it had been measured.
+        // The slots hold still because they were captured at lift (`GroupsMove.slots`), not
+        // because the layout did — so the row is free to give its space up, which is what lets
+        // the rows below close over it and the card the kid came from shrink by one row.
+        //
+        // Negative padding rather than a frame. **Deliberately not**
+        // `.frame(height: isHeld ? 0 : nil)`: `nil → 0` is not interpolable, so the row would
+        // snap shut while its neighbours slid, and the two motions are meant to be one. A
+        // `CGFloat` of padding animates.
         .opacity(isHeld ? 0 : 1)
         .accessibilityHidden(isHeld)
-        .overlay { if isHeld { gap(for: row) } }
+        .padding(.bottom, isHeld ? -(move?.origin.height ?? 0) : 0)
     }
 
-    /// The design leaves a dashed gap where the kid was standing rather than closing the list
-    /// up: the space is being held for them, and closing it would say they had already gone.
-    private func gap(for row: PlayerRow) -> some View {
-        RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous)
-            .strokeBorder(
-                GroupsPalette.gapRule,
-                style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: GroupsMetrics.dash)
-            )
-            .frame(height: GroupsMetrics.gapHeight)
-            .padding(.horizontal, GroupsMetrics.cardPadding)
-            // Decoration over a live row: the handle underneath is still being held.
-            .allowsHitTesting(false)
-            .accessibilityElement()
-            .accessibilityLabel("Where \(row.player.displayName) was")
+    /// The kid, greyed, in the space that has opened for them.
+    ///
+    /// This replaces a dashed empty rectangle drawn over the row the kid *left*. That drawing
+    /// said "a space is being held here", which was true of where they came from and wrong
+    /// about where they are going — and where they are going is the question the gesture is
+    /// asking. So the plate is filled, its lip is solid, and the kid's name is in it.
+    ///
+    /// **Deliberately not an `.offset`,** and the reason is different in each of the three
+    /// cases it would have to cover:
+    ///
+    /// * *Cross-group*: the source card has to close up by a row and the target card to open by
+    ///   one. `.offset` is render-only by definition and cannot change a view's height. It
+    ///   fails outright.
+    /// * *Within-group*: the rows below the seat would be offset past the card's `.clipShape`,
+    ///   and the space vacated at the source would show as a hole at the card's foot.
+    /// * *Empty or folded card*: there is no row stack to offset in the first place.
+    ///
+    /// `rank: nil` deliberately. A numeral here either repeats the kid's old place — flatly
+    /// contradicting the "Drops in at #9" this very card's header is saying at that moment — or
+    /// asserts the new one beside rows that have not been renumbered yet, so two rows in one
+    /// card read `#9`. The empty numeral column is what "+N more" already uses to line up with
+    /// the names above it.
+    private func ghost(_ move: GroupsMove) -> some View {
+        let plate = RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous)
+
+        return GroupsRow(
+            rank: nil,
+            name: move.row.player.displayName,
+            nameColor: Theme.inkFaint
+        )
+        .padding(.leading, GroupsMetrics.cardPadding)
+        // The same trailing reservation a real row makes for the handle, so the greyed name
+        // breaks where the live one does rather than a handle's width later.
+        .padding(.trailing, HitTarget.minimum)
+        // The measured height of the row that closed — see `GroupsMetrics.ghostHeight` for why
+        // this is a measurement and the plate inside it is a token.
+        .frame(height: move.origin.height)
+        .background {
+            plate
+                .fill(GroupsPalette.ghostFill)
+                .overlay {
+                    plate.strokeBorder(GroupsPalette.ghostRule, lineWidth: BorderWidth.hairline)
+                }
+                .frame(height: GroupsMetrics.ghostHeight)
+                .padding(.horizontal, GroupsMetrics.cardPadding)
+        }
+        // The card carrying the kid is drawn over this, and the handle being held is elsewhere.
+        .allowsHitTesting(false)
+        .accessibilityElement()
+        .accessibilityLabel("Where \(move.row.player.displayName) will land")
     }
 
     /// `+3 more` — the folded rows, and the way back out of them.
@@ -246,6 +343,40 @@ struct GroupCard: View {
         )
         // A card that unfolded under a move would move every slot beneath it.
         .disabled(move != nil)
+    }
+}
+
+// MARK: - Seats
+
+/// One thing a card stacks under its rule.
+///
+/// Deliberately not `GroupsGhost.Seat`, which is the neighbouring idea and a different one:
+/// that says *where* the space opens, in the model's terms, and is what the arithmetic and the
+/// tests talk about. This is *what is drawn*, in order, and it is what `ForEach` walks.
+///
+/// It exists for its `id`. Without stable identity the ghost moving from one position to the
+/// next is a view removed and a different view inserted — it fades out and another fades in,
+/// which reads as two ghosts rather than one travelling. With it, `ForEach` recognises the same
+/// row in a new place and slides it there.
+private enum CardSeat: Identifiable {
+
+    case row(PlayerRow)
+    case ghost(GroupsMove)
+    case more
+
+    enum ID: Hashable {
+        case row(Player.ID)
+        /// One id however many places the ghost visits, which is the point.
+        case ghost
+        case more
+    }
+
+    var id: ID {
+        switch self {
+        case .row(let row): .row(row.id)
+        case .ghost: .ghost
+        case .more: .more
+        }
     }
 }
 
@@ -357,9 +488,19 @@ private struct GroupPlayerRow: View {
 
     /// Hold, then drag. The long press is what lets this win against the enclosing scroll view's
     /// pan, and it is also what makes an accidental brush of the handle harmless.
+    ///
+    /// Measured in `.global`, and that is not optional. The lifted row now gives its space up,
+    /// so when the kid is aimed *above* where they started, this handle's own row is pushed
+    /// down by one row height — and a `.local` drag reports travel relative to a view the drag
+    /// itself is moving. That is the classic SwiftUI feedback loop: the translation moves the
+    /// row, the row changes the translation, and the target oscillates between two slots.
+    ///
+    /// Behaviour-preserving everywhere nothing shifts. `GroupsView` disables scrolling while a
+    /// finger is on the handle, so for the duration of this gesture screen travel and list
+    /// travel are the same number.
     private var lift: some Gesture {
         LongPressGesture(minimumDuration: 0.2)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
             .updating($isHolding) { _, state, _ in state = true }
             .onChanged { value in
                 switch value {
@@ -430,4 +571,106 @@ private struct GroupCardPreviewHarness: View {
 #Preview("Group cards") {
     GroupCardPreviewHarness()
         .frame(width: 402, height: 760)
+}
+
+/// One folded card, posed at three of the seats `GroupsGhost` can pick.
+///
+/// `GroupCard` takes `move` as a parameter rather than reading it off the environment, which is
+/// the whole reason this is previewable at all — the screen owns the move, so a card can be
+/// handed one that no finger is holding. `RankView`'s drag lives in `@State` on the screen and
+/// cannot be posed like this.
+///
+/// The three are the ones worth looking at together: the ghost between two drawn rows, the
+/// ghost under the last drawn row (where a fold is hiding the kid it is anchored on), and the
+/// ghost at the back of the card — which is the one that sits *below* "+N more", because "above
+/// the fourth kid" and "at the back of the group" are different landings and drawing them in
+/// the same place would lose the difference.
+private struct GroupCardMovePreviewHarness: View {
+
+    let store = AppStore.preview
+
+    private struct Aim: Identifiable {
+        let id: Int
+        let title: String
+        /// Nil is the back of the card.
+        let anchor: Player.ID?
+    }
+
+    var body: some View {
+        let card = store.groupsSections
+            .flatMap(\.cards)
+            .first { $0.rows.count > GroupsRules.previewRows + 1 }
+
+        return ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.large) {
+                if let card {
+                    let visible = Array(card.rows.prefix(GroupsRules.previewRows))
+                    let aims = [
+                        Aim(id: 0, title: "Above a drawn row", anchor: visible[1].id),
+                        Aim(
+                            id: 1,
+                            title: "Below the last drawn row — the kid the fold is hiding",
+                            anchor: card.rows[GroupsRules.previewRows].id
+                        ),
+                        Aim(id: 2, title: "Back of the card, under “+N more”", anchor: nil),
+                    ]
+
+                    ForEach(aims) { aim in
+                        VStack(alignment: .leading, spacing: Spacing.tight) {
+                            Text(aim.title)
+                                .typeStyle(GroupsType.hint, color: Theme.inkMuted)
+
+                            GroupCard(
+                                card: card,
+                                summary: "\(card.rows.count) players",
+                                visibleRows: visible,
+                                move: move(in: card, mover: visible[0], anchor: aim.anchor),
+                                onToggle: {},
+                                onOpenPlayer: { _ in },
+                                onAim: {},
+                                onMoveBegan: { _ in },
+                                onMoveChanged: { _ in },
+                                onMoveEnded: {},
+                                onNudge: { _, _ in },
+                                onRowFrame: { _, _ in }
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, Spacing.gutter)
+            .padding(.vertical, Spacing.large)
+        }
+        .background(Theme.surfaceWarm)
+    }
+
+    /// The first drawn kid, in the air, aimed at `anchor`.
+    ///
+    /// `origin` is a 44pt box because that is what a row measures at the default type size, and
+    /// the ghost reserves exactly `origin.height` — so all three cards below come out the same
+    /// height as each other and as the card at rest. `slots` is empty: the card reads `target`,
+    /// `row` and `origin`, and never the array a real move aims with.
+    private func move(in card: GroupsCoachCard, mover: PlayerRow, anchor: Player.ID?) -> GroupsMove {
+        GroupsMove(
+            row: mover,
+            sourceGroupID: card.id,
+            nextRowID: nil,
+            origin: CGRect(x: 0, y: 0, width: 320, height: HitTarget.minimum),
+            slots: [],
+            target: GroupsDropSlot(
+                landing: GroupsLanding(
+                    groupID: card.id,
+                    venueID: card.group.venueID,
+                    anchor: anchor
+                ),
+                y: 0,
+                rank: mover.player.overallRank
+            )
+        )
+    }
+}
+
+#Preview("Group card — a kid in the air") {
+    GroupCardMovePreviewHarness()
+        .frame(width: 402, height: 900)
 }
