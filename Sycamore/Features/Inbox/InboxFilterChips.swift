@@ -25,7 +25,8 @@ struct InboxFilterChips: View {
 
 // MARK: - Previews
 
-#if DEBUG
+/// Unguarded, for the reason `InboxPreviewItems` sets out: the `#Preview` under it compiles in
+/// release whether or not the harness does.
 private struct InboxFilterChipsPreview: View {
     @State private var selection: InboxFilter = .all
 
@@ -40,7 +41,6 @@ private struct InboxFilterChipsPreview: View {
         .background(Theme.surface)
     }
 }
-#endif
 
 #Preview("Filter chips") {
     InboxFilterChipsPreview()

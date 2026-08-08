@@ -178,7 +178,9 @@ struct MoreRow: View {
 
 // MARK: - Previews
 
-#if DEBUG
+/// Unguarded, like every other harness in the design system. It was behind `#if DEBUG` while the
+/// `#Preview` below it was not, which compiled in debug and broke release —
+/// `Features/Inbox/InboxPreviewItems.swift` carries the reasoning and the rejected alternative.
 private struct MoreRowPreviewHarness: View {
     @State private var plate = false
     @State private var inline = false
@@ -210,7 +212,6 @@ private struct MoreRowPreviewHarness: View {
         .background(Theme.surfaceWarm)
     }
 }
-#endif
 
 #Preview("More rows") {
     MoreRowPreviewHarness()

@@ -114,11 +114,13 @@ struct InboxView: View {
 
 // MARK: - Previews
 
-#if DEBUG
 /// Seeds the repository *before* the screen mounts.
 ///
 /// `InboxView` reads in its own `.task`, so a preview that seeded alongside it would race it
 /// and usually lose — the screen would draw `8h` and then never re-read.
+///
+/// Unguarded, for the reason `InboxPreviewItems` sets out: the nine `#Preview` blocks under it
+/// compile in release whether or not the harness does, and eight of them name it.
 private struct InboxPreviewHarness: View {
 
     var filter: InboxFilter = .all
@@ -171,7 +173,6 @@ private struct InboxPreviewHarness: View {
         return store
     }
 }
-#endif
 
 #Preview("Inbox — 8r") {
     InboxPreviewHarness()

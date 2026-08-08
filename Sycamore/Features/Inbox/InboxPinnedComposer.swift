@@ -111,8 +111,10 @@ struct InboxPinnedComposer: View {
 
 // MARK: - Previews
 
-#if DEBUG
 /// A `#Preview` body cannot hold the `@State` the composer writes into, so the gallery is a view.
+///
+/// Unguarded, for the reason `InboxPreviewItems` sets out: the two `#Preview` blocks under it
+/// compile in release whether or not the gallery does.
 private struct InboxPinnedComposerGallery: View {
     @State private var empty = ""
     @State private var typed = "Court 4 net is loose — keep the little ones off it."
@@ -135,7 +137,6 @@ private struct InboxPinnedComposerGallery: View {
         .background(Theme.surfaceWarm)
     }
 }
-#endif
 
 #Preview("Pinned composer") {
     InboxPinnedComposerGallery()
