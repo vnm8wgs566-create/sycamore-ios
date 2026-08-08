@@ -99,6 +99,35 @@ struct ScheduleBlock: Identifiable, Hashable, Sendable, Codable {
         guard let first = notes.first else { return nil }
         return notes.count == 1 ? "1 note · \(first.text)" : "\(notes.count) notes"
     }
+
+    /// Who is running this block, in words: "Nass", "Nass & Alina", "Nass +2". Nil when nobody
+    /// is on it, which the design draws as "Needs a coach" rather than as an empty line.
+    ///
+    /// Takes the roster instead of storing the names, and that is the decision worth recording.
+    /// A name lives on `StaffMember`; a copy pinned to every block a person runs is a second copy
+    /// to keep in step, and renaming a coach in Setup would leave yesterday's spelling on the
+    /// timetable. `CourtCard.coachName` is the same field stored, for a reason that does not
+    /// apply here — that card is assembled by the repository from `coaches` in the same read, so
+    /// there is no later moment at which it could go stale. `StaffMember.assignment` is the
+    /// opposite case again and says so out loud: denormalised on purpose, "so a court chip draws
+    /// without walking the graph".
+    ///
+    /// `compactMap`, never a force-resolve. "Remove from camp" deactivates rather than deletes —
+    /// `SupabaseRepository.removeStaff` sets `active = false` — and every camp read filters
+    /// `.isTrue("active")`, so a departed coach keeps their `schedule_block_coaches` row and their
+    /// id will not be in `staff`. The foreign key's cascade cannot clean that up either, because
+    /// nothing in the app hard-deletes a coach. An unresolved id is therefore ordinary, not a bug,
+    /// and a block whose only coach has left reads "Needs a coach" — which is true.
+    func coachLine(in staff: [StaffMember]) -> String? {
+        let byID = Dictionary(staff.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let names = coachIDs.compactMap { byID[$0] }
+        return switch names.count {
+        case 0: nil
+        case 1: names[0]
+        case 2: "\(names[0]) & \(names[1])"
+        default: "\(names[0]) +\(names.count - 1)"
+        }
+    }
 }
 
 /// A line pinned to a block — "shade tent is up", "two nut allergies".
