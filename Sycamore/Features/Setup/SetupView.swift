@@ -543,9 +543,12 @@ private struct CampIdentityEditor: View {
 
     @FocusState private var isFocused: Bool
 
-    /// The same rule `CampDraft.isValid` applies on the way in. A camp with no name is not a
-    /// camp, and `camps.name` has a `char_length between 1 and 80` CHECK saying so.
-    private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// The same rule `CampDraft.isValid` applies on the way in — literally the same, now, rather
+    /// than a second copy of half of it. This used to test only for empty, so the rename field
+    /// would happily send an eighty-one character name to a column that refuses one.
+    private var isValid: Bool {
+        CampName.isValid(name.trimmingCharacters(in: .whitespaces))
+    }
 
     var body: some View {
         CardRow(

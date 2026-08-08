@@ -510,6 +510,11 @@ enum SampleData {
     /// Fills the ranks the design does not name. Every first name/initial pair is
     /// handed out at most once, and the name always matches the gender, so a coach
     /// reading a court sees a plausible roster rather than filler.
+    ///
+    /// A handful are `.x`, and that is deliberate rather than decorative. The camp had none at
+    /// all until now — every seeded kid was `.m` or `.f` — so the third gender mark was drawn,
+    /// tested and shipped without ever appearing on a screen anybody looked at, in the app or in
+    /// a preview. A fixture that cannot produce a state is a fixture that hides it.
     private static func fillerSeeds(
         count: Int, seed: UInt64, excluding taken: Set<String>
     ) -> [PlayerSeed] {
@@ -519,6 +524,11 @@ enum SampleData {
         }
         for name in girlNames {
             for initial in lastInitials { combinations.append((name, initial, .f)) }
+        }
+        // Drawn from both lists, because `.x` is an answer a camp gives about a kid and not a
+        // separate set of names. Few enough that a court still reads as a real roster.
+        for name in unspecifiedNames {
+            for initial in lastInitials { combinations.append((name, initial, .x)) }
         }
 
         var random = SeededRandom(seed: seed)
@@ -565,6 +575,19 @@ enum SampleData {
         "Ava", "Mia", "Zoe", "Nora", "Ruby", "Iris", "June", "Talia", "Sana", "Maya",
         "Nina", "Cleo", "Esme", "Willa", "Freya", "Anika", "Priya", "Hana", "Sadie",
         "Aisha", "Georgia", "Neve", "Tess", "Wren", "Yara",
+    ]
+
+    /// The kids whose gender column says `X`.
+    ///
+    /// A short list on purpose: with `lastInitials` behind it this is 108 of roughly 1,000
+    /// combinations, so a fifty-kid venue draws four or five and a court sees one now and then —
+    /// enough that the third mark is on screen in the ordinary run of using the app, not so many
+    /// that the fixture stops looking like a camp.
+    ///
+    /// Names that are given to children of any gender, rather than a third set of "other" names,
+    /// which would have made the fixture assert something about people that the column does not.
+    private static let unspecifiedNames = [
+        "Rio", "Sage", "Ari", "Quinn", "Remy", "Alex",
     ]
 
     private static let lastInitials = [

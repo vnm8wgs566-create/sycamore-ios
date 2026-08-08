@@ -100,7 +100,9 @@ extension GroupsRow where Trailing == EmptyView {
                 .font(.system(size: GroupsMetrics.handleGlyph, weight: .regular))
                 .foregroundStyle(Theme.glyphFaint)
         }
-        GroupsRow(rank: nil, name: "+3 more", nameStyle: GroupsType.moreRow, nameColor: Theme.inkFaint)
+        // "+3 more" is no longer a `GroupsRow` — see `MoreRow` — but the empty numeral column
+        // it used is still how an unranked row lines up with the ranked ones above it.
+        GroupsRow(rank: nil, name: "Waiting on a rank", nameColor: Theme.inkFaint)
 
         GroupsRow(
             rank: 3,

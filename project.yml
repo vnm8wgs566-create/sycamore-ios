@@ -34,17 +34,18 @@ targets:
     platform: iOS
     deploymentTarget: "18.0"
 
+    # `Config/` is deliberately not a source. The Info.plist and the entitlements are consumed by
+    # *path* — `INFOPLIST_FILE` and `CODE_SIGN_ENTITLEMENTS` below — and never by target
+    # membership, so the only thing including them here could do is ship a second copy inside
+    # the .app. See the note on `CODE_SIGN_ENTITLEMENTS` for why they had to leave `Sycamore/`.
     sources:
       - path: Sycamore
         excludes:
-          # Consumed via INFOPLIST_FILE; it must not also be copied in as a bundle resource.
-          - "Resources/Info.plist"
           # Instructions for dropping the Manrope faces in — documentation, not a resource.
-          # Without this the synchronised group ships it inside the .app.
+          # Without this the synchronised group ships it inside the .app. This one stays: its
+          # whole point is to sit where the fonts go, and a stray README in the bundle is a
+          # kilobyte of nothing rather than a signing claim.
           - "Resources/Fonts/README.md"
-          # Consumed via CODE_SIGN_ENTITLEMENTS. Entitlements are signed into the binary, so a
-          # copy sitting in the bundle would be a plain-text claim nobody reads.
-          - "Resources/Sycamore.entitlements"
 
     settings:
       base:
@@ -53,7 +54,7 @@ targets:
         # Sign In with Apple ticked, and the Apple provider's Client ID in Supabase. All four
         # are the same string; a mismatch in any of them is rejected at a different layer.
         PRODUCT_BUNDLE_IDENTIFIER: com.cjgimena.app
-        INFOPLIST_FILE: Sycamore/Resources/Info.plist
+        INFOPLIST_FILE: Config/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         # 1 = iPhone. The design is portrait phone only.
         TARGETED_DEVICE_FAMILY: "1"
@@ -70,6 +71,15 @@ targets:
         # One capability: Sign in with Apple. Without the entitlement the sheet never opens,
         # and since this project has no custom SMTP it is the only way a new person gets in
         # that does not depend on Supabase's shared mail server delivering.
-        # Kept out of `sources` above — see the exclude — and set on both configurations in
-        # the checked-in pbxproj, which is the file Xcode actually reads.
-        CODE_SIGN_ENTITLEMENTS: Sycamore/Resources/Sycamore.entitlements
+        #
+        # It lives in `Config/`, outside the synchronised group, and that location is the fix
+        # for a bug that came back four times. `Sycamore/` is a
+        # `PBXFileSystemSynchronizedRootGroup`: it takes everything under it as target
+        # membership by default, so while the entitlements sat in `Sycamore/Resources/` the only
+        # thing keeping a signing file out of the shipped bundle was one line of
+        # `membershipExceptions` in the pbxproj — which Xcode rewrote away on four separate
+        # occasions, silently, with no build error either time.
+        #
+        # An exception you have to keep restoring is not a fix. A file the group cannot see has
+        # nothing to except.
+        CODE_SIGN_ENTITLEMENTS: Config/Sycamore.entitlements

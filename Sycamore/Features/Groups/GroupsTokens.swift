@@ -59,9 +59,6 @@ enum GroupsType {
     /// `400 14` — a kid's name in a group card.
     static let playerName = TypeStyle.rowValue
 
-    /// `400 13.5` — "+3 more".
-    static let moreRow = TypeStyle.subtitle
-
     /// `400 12.5` — "Hold the handle to move a kid between groups".
     static let hint = TypeStyle.rowDetail
 

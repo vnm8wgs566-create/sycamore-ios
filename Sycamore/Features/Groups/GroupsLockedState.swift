@@ -39,7 +39,6 @@ struct GroupsLockedState: View {
     /// The design's fixed sizes, grown with the reader's type. Each is drawn *around* text —
     /// the padlock, the button's label, the initials in a disc — so pinning them is how a
     /// screen looks fine at the default setting and clips at the app's `.accessibility1` cap.
-    @ScaledMetric(relativeTo: .title2) private var lockDisc = GroupsMetrics.lockDisc
     @ScaledMetric(relativeTo: .body) private var actionHeight = GroupsMetrics.lockedActionHeight
     @ScaledMetric(relativeTo: .footnote) private var avatarSize = GroupsMetrics.lockedAvatar
 
@@ -82,17 +81,15 @@ struct GroupsLockedState: View {
     private var lockedCard: some View {
         Card(radius: GroupsMetrics.cardRadius, isDivided: false) {
             VStack(spacing: 0) {
-                Image(systemName: "lock")
-                    .font(.system(size: GroupsMetrics.lockGlyph, weight: .regular))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: lockDisc, height: lockDisc)
-                    // `#F6FAF7` on `#E4EDE7` — a green-tinted *surface*, which is a step lighter
-                    // than the `accentTint` that sits under accent-coloured copy.
-                    .background(Theme.accentSurface, in: Circle())
-                    .overlay {
-                        Circle().strokeBorder(Theme.accentSurfaceBorder, lineWidth: BorderWidth.hairline)
-                    }
-                    .accessibilityHidden(true)
+                // The padlock used to be a bare `GroupsMetrics.lockGlyph` inside a `@ScaledMetric`
+                // disc, so at the app's `.accessibility1` cap the ring grew and the glyph stayed
+                // where it was. `AccentDisc` scales both off one ramp, which is the fix.
+                AccentDisc(
+                    "lock",
+                    size: GroupsMetrics.lockDisc,
+                    glyph: GroupsMetrics.lockGlyph,
+                    relativeTo: .title2
+                )
 
                 Text("Groups open at eight kids.")
                     .typeStyle(GroupsType.lockedHeading, color: Theme.ink)

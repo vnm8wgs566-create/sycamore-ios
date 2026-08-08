@@ -19,10 +19,10 @@ import SwiftUI
 
 struct InboxAllClearCard: View {
 
-    /// The disc and its tick grow with the reader's text size; a 56pt mark above copy set at
-    /// `.accessibility1` reads as a bullet rather than as the subject of the card.
-    @ScaledMetric(relativeTo: .largeTitle) private var mark: CGFloat = InboxMetrics.allClearMark
-    @ScaledMetric(relativeTo: .largeTitle) private var markGlyph: CGFloat = InboxMetrics.allClearMarkGlyph
+    // The disc and its tick grow with the reader's text size — a 56pt mark above copy set at
+    // `.accessibility1` reads as a bullet rather than as the subject of the card. Both metrics
+    // now scale inside `AccentDisc`, on one ramp, which is what stops them drifting apart.
+
     /// The measure grows with the copy it holds. Left at a flat 250 it stopped being a line
     /// length and became a column three words wide.
     @ScaledMetric(relativeTo: .body) private var bodyWidth: CGFloat = InboxMetrics.allClearBodyWidth
@@ -30,18 +30,15 @@ struct InboxAllClearCard: View {
     var body: some View {
         Card(radius: InboxMetrics.cardRadius, isDivided: false) {
             VStack(spacing: 0) {
-                Circle()
-                    .fill(Theme.accentSurface)
-                    .frame(width: mark, height: mark)
-                    .overlay {
-                        Circle().strokeBorder(Theme.accentSurfaceBorder, lineWidth: BorderWidth.hairline)
-                    }
-                    .overlay {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: markGlyph, weight: .bold))
-                            .foregroundStyle(Theme.accent)
-                    }
-                    .accessibilityHidden(true)
+                AccentDisc(
+                    "checkmark",
+                    size: InboxMetrics.allClearMark,
+                    glyph: InboxMetrics.allClearMarkGlyph,
+                    // The one disc in the app whose glyph is bold: a hairline tick at 26pt
+                    // reads as a scratch rather than as the answer to "is there anything?".
+                    weight: .bold,
+                    relativeTo: .largeTitle
+                )
 
                 Text("All clear.")
                     .typeStyle(InboxType.allClearTitle, color: Theme.ink)

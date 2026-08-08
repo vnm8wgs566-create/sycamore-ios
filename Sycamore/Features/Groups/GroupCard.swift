@@ -227,21 +227,23 @@ struct GroupCard: View {
             .accessibilityLabel("Where \(row.player.displayName) was")
     }
 
-    /// `+3 more` — the folded rows, and the way into them.
+    /// `+3 more` — the folded rows, and the way back out of them.
+    ///
+    /// This used to be a `GroupsRow` in `inkFaint` with no caret, no "Show less" and nothing for
+    /// VoiceOver but the fragment "+3 more" — which read as a disabled label rather than as the
+    /// control it is, and gave a reader no way to know what there were three more *of*. It is
+    /// `MoreRow` now, the same row Overview and the Inbox draw.
     private var moreRow: some View {
-        Button(action: onToggle) {
-            GroupsRow(
-                rank: nil,
-                name: "+\(hiddenCount) more",
-                nameStyle: GroupsType.moreRow,
-                nameColor: Theme.inkFaint
-            )
-            .padding(.leading, GroupsMetrics.cardPadding)
-            .padding(.trailing, HitTarget.minimum)
-            .frame(minHeight: HitTarget.minimum)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
+        MoreRow(
+            hiddenCount: hiddenCount,
+            isExpanded: isExpanded,
+            noun: "kid",
+            nounPlural: "kids",
+            qualifier: "in \(card.group.label)",
+            // Indented to where the names start: the numeral column plus the card's own gutter.
+            metrics: .inline(indent: GroupsMetrics.numeralWidth + GroupsMetrics.cardPadding),
+            action: onToggle
+        )
         // A card that unfolded under a move would move every slot beneath it.
         .disabled(move != nil)
     }

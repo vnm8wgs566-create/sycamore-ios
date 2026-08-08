@@ -116,6 +116,12 @@ enum TodayCourts {
     /// puts one card on screen still does. Expressed through `rosters(in:)` rather than
     /// filtering the roll again, so there is one implementation of "who is on a court" and not
     /// two that can quietly drift apart.
+    ///
+    /// **Fixtures and tests only. Do not call this from a screen.** Sharing the implementation
+    /// is what makes it correct and also what makes it wasteful: it builds every court in the
+    /// camp and returns one, so asking it per card in a loop is quadratic in the roll. A view
+    /// wants `rosters(in:day:venueID:)` once, held for the pass, and `roster(for:from:…)` per
+    /// card — which is exactly what `OverviewScreen` does.
     static func roster(
         forCourt courtID: Group.ID,
         in camp: Camp,

@@ -15,6 +15,14 @@
 	  never registered with Apple — the scaffold set no DEVELOPMENT_TEAM, so it only ever built
 	  for the simulator, which signs ad-hoc and registers nothing. Nothing was claimed and
 	  nothing had to be released.
+
+	  This file lives in `Config/` rather than beside the app's other resources, and that is
+	  deliberate. `Sycamore/` is a synchronised root group, which takes everything under it into
+	  the target by default — so here it would ship inside the .app as a plain-text claim, and
+	  the only thing preventing that was one `membershipExceptions` line that Xcode deleted on
+	  four separate occasions without a word. Out here there is nothing to except. It is read by
+	  path, through CODE_SIGN_ENTITLEMENTS, which never wanted target membership in the first
+	  place.
 	-->
 	<key>com.apple.developer.applesignin</key>
 	<array>

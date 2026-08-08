@@ -28,12 +28,10 @@ struct ScheduleEmptyDayHero: View {
     let day: Weekday
     let onAdd: () -> Void
 
-    /// Disc and glyph grow together, off the one text style, so the glyph keeps its place inside
-    /// the ring rather than rattling around in it. Both scale rather than sitting at their drawn
-    /// sizes because a flat 52pt disc above copy set at `.accessibility1` reads as a bullet
-    /// rather than as the subject of the card.
-    @ScaledMetric(relativeTo: .title) private var markSize = ScheduleMetrics.emptyMark
-    @ScaledMetric(relativeTo: .title) private var markGlyph = ScheduleMetrics.emptyMarkGlyph
+    // The disc and its glyph scale inside `AccentDisc`, off one text style, so the glyph keeps
+    // its share of the ring at every type size — and a flat 52pt mark above copy set at
+    // `.accessibility1` does not end up reading as a bullet.
+
     @ScaledMetric(relativeTo: .body) private var copyWidth = ScheduleMetrics.emptyCopyWidth
     @ScaledMetric(relativeTo: .body) private var ctaHeight = ScheduleMetrics.emptyCtaHeight
 
@@ -52,19 +50,14 @@ struct ScheduleEmptyDayHero: View {
                 // `chevron.right` the design system draws everywhere; both are the swap to make
                 // the day the app ships a right-to-left locale.
                 //
-                // The treatment is the one `InboxAllClearCard` and `GroupsLockedState` draw: a
-                // full-opacity accent glyph on an `accentSurface` disc with a hairline ring.
-                // Those two and this one are the app's three hand-drawn empty states, and with
-                // this they finally read as one composition rather than as three.
-                Image(systemName: "calendar.day.timeline.left")
-                    .font(.system(size: markGlyph, weight: .regular))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: markSize, height: markSize)
-                    .background(Theme.accentSurface, in: Circle())
-                    .overlay {
-                        Circle().strokeBorder(Theme.accentSurfaceBorder, lineWidth: BorderWidth.hairline)
-                    }
-                    .accessibilityHidden(true)
+                // The treatment `InboxAllClearCard` and `GroupsLockedState` draw, which is now
+                // one view rather than three transcriptions of it. Those two and this one are
+                // the app's three hand-drawn empty states.
+                AccentDisc(
+                    "calendar.day.timeline.left",
+                    size: ScheduleMetrics.emptyMark,
+                    glyph: ScheduleMetrics.emptyMarkGlyph
+                )
 
                 Text("\(day.fullName) is empty.")
                     .typeStyle(ScheduleType.emptyHeading, color: Theme.ink)
@@ -107,9 +100,10 @@ struct ScheduleEmptyDayHero: View {
         .background(Theme.surfaceWarm)
 }
 
-/// The app caps Dynamic Type at `.accessibility1`, which is the setting the two `@ScaledMetric`s
-/// above are there for: at the cap the disc and its glyph should still be reading as the subject
-/// of the card rather than as a bullet above it.
+/// The app caps Dynamic Type at `.accessibility1`, which is the setting every `@ScaledMetric` on
+/// this card is there for: at the cap the disc and its glyph should still be reading as the
+/// subject of the card rather than as a bullet above it, and the sentence should still be a
+/// paragraph rather than a column.
 #Preview("Empty day — large type") {
     ScheduleEmptyDayHero(day: .fri, onAdd: {})
         .dynamicTypeSize(.accessibility1)

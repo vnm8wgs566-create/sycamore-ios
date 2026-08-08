@@ -376,7 +376,12 @@ extension TypeStyle {
     static let rankNumeral = TypeStyle(size: 13, weight: .regular)
 
     // Overlines
-    /// `600 11`, `+.08em`, uppercase — "HIGHER LEVEL".
+    /// `600 11`, `+.08em`, uppercase — "HIGHER LEVEL", a venue's subtitle in the earlier design.
+    ///
+    /// **No callers.** Kept rather than deleted because the data behind it exists — `VenueSheet`
+    /// collects the subtitle, prompting "Subtitle, e.g. Higher level" — and nothing has drawn it
+    /// since section 8 re-cut the venue row. It is the row to reach for when something does,
+    /// rather than a style to invent then. Delete it if the subtitle goes.
     static let venueLabel = TypeStyle(size: 11, weight: .semibold, trackingEm: 0.08, isUppercased: true)
     /// `600 11.5`, `+.06em`, uppercase — a staff row's role, "45 MORE IN SYCAMORE".
     static let overline = TypeStyle(size: 11.5, weight: .semibold, trackingEm: 0.06, isUppercased: true)
@@ -574,10 +579,29 @@ extension Text {
     ///
     /// A distinct spelling cannot shadow anything, so taking the `Text` flavour is now a choice
     /// at the call site rather than an accident of resolution. Reach for it only when the result
-    /// has to be a `Text` — `View.typeStyle(_:color:)` is the default everywhere else — and if
-    /// you need a run in an uppercase style, uppercase the string yourself, because that
-    /// limitation has not moved.
+    /// has to be a `Text` — `View.typeStyle(_:color:)` is the default everywhere else.
+    ///
+    /// **It still cannot case, and it now says so out loud.** `Text` has no `.textCase`, so an
+    /// `isUppercased` style handed to this method draws in sentence case — which is exactly the
+    /// bug the rename was written to kill, and `FormField` reopened the door by piping a
+    /// caller-supplied `TypeStyle` straight through to a `prompt:`. Nothing passes an uppercase
+    /// style today; the assertion is there so that the first thing that does finds out in a
+    /// debug run rather than in a screenshot months later.
+    ///
+    /// Deliberately not `string.uppercased()` at this layer, which would have made the two paths
+    /// structurally identical and was the obvious deeper fix. VoiceOver reads `.textCase` output
+    /// from the *original* sentence-case string and reads a literal run of capitals letter by
+    /// letter, so uppercasing here would trade a visible bug for an audible one at all 29 of the
+    /// sites the `View` path serves correctly. Loud beats silent; both beat a regression.
     func typeStyleRun(_ style: TypeStyle, color: Color? = nil) -> Text {
+        assert(
+            !style.isUppercased,
+            """
+            typeStyleRun cannot apply .textCase, so this style will draw in sentence case. \
+            Use View.typeStyle(_:color:) if the result can be a View, or uppercase the string \
+            at the call site if it genuinely has to be a Text.
+            """
+        )
         var text = self
             .font(.sycamore(style, scaledRelativeTo: style.textStyle))
             .tracking(style.tracking)

@@ -683,10 +683,38 @@ struct CampDraft: Hashable, Sendable {
     var venueCount: Int = 2
     var groupsPerVenue: Int = 6
 
-    var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// What `camps.name` should actually hold. A name is not its surrounding whitespace, and the
+    /// column's CHECK counts every character it is given — so `"  UCLA  "` spends four of its
+    /// eighty on nothing.
+    var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
+    var isValid: Bool { CampName.isValid(trimmedName) }
 
     static let venueRange = 1...8
     static let groupRange = 1...16
+}
+
+/// The one rule about what a camp may be called.
+///
+/// `camps.name text not null check (char_length(name) between 1 and 80)`. Both ends were being
+/// checked in two places and only the near one was checked at all: "Shape the camp" and Setup's
+/// rename each tested for empty and neither for long, so an eighty-one character name passed
+/// every gate on the device and failed at `insert` — after the whole onboarding flow, since the
+/// camp is not written until the end of it. One rule, stated once, next to the SQL it mirrors.
+enum CampName {
+
+    /// The CHECK, in Swift.
+    static let lengthLimits = 1...80
+
+    /// Counted in unicode scalars rather than in `String.count`.
+    ///
+    /// Postgres' `char_length` counts characters of the UTF-8 string; Swift's `count` counts
+    /// grapheme clusters, and one cluster can be many scalars — "👩‍👩‍👧" is one `Character` and seven
+    /// scalars. Counting the way Swift reads a string would have let a name of emoji through the
+    /// client and straight into the same failed insert this exists to prevent.
+    static func isValid(_ trimmed: String) -> Bool {
+        lengthLimits.contains(trimmed.unicodeScalars.count)
+    }
 }
 
 /// The whole graph for one camp. Loaded in one shot, mutated in one shot.
@@ -1111,7 +1139,9 @@ extension Camp {
     /// Screen 4's output: N venues, M courts each, no kids and no staff yet.
     static func make(from draft: CampDraft, inviteCode: String) -> Camp {
         var camp = Camp(
-            name: draft.name.trimmingCharacters(in: .whitespaces),
+            // The trimmed value, which is also what `isValid` measured — so the string that
+            // passed the gate is the string that reaches the column.
+            name: draft.trimmedName,
             sport: draft.sport,
             inviteCode: inviteCode,
             icon: Venue.iconOptions[0],

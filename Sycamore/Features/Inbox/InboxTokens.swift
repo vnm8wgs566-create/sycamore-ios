@@ -136,12 +136,9 @@ enum InboxMetrics {
     static let clearedOpacity: Double = 0.62
     /// The design draws four cleared rows as two and a "2 more".
     static let clearedCollapsedCount = 2
-    /// `padding:10px 13px` — that "2 more" row.
-    static let morePaddingV: CGFloat = 10
-    /// `gap:7px` between its caret and its label.
-    static let moreSpacing: CGFloat = 7
-    /// `font-size:14px` — the caret itself.
-    static let moreCaret: CGFloat = 14
+    // The "2 more" row's own padding, gap and caret moved to `MoreRowMetrics.plate` when the
+    // three folded lists stopped drawing three different rows. The CSS they came from is quoted
+    // there.
 }
 
 // MARK: - Type
@@ -167,8 +164,6 @@ enum InboxType {
     static let clearedDetail = TypeStyle.meta
     /// `600 13` — a filter chip.
     static let filterChip = TypeStyle.chip
-    /// `600 12.5` — "2 more".
-    static let moreLabel = TypeStyle.chipSoft
     /// `400 24/1.15 Newsreader`, `-.02em` — "All clear.".
     ///
     /// `8h` sets this `font:400 24px/1.15 Newsreader,Georgia,serif`, which is `profileName`

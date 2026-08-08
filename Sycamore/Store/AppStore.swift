@@ -239,6 +239,13 @@ struct GroupsSectionsKey: Hashable, Sendable {
     let searchText: String
 }
 
+/// The same for `AppStore.rankSections`, which reads less: Rank shows the whole ladder and takes
+/// none of the Groups filters, so the graph and the day are all of it.
+struct RankSectionsKey: Hashable, Sendable {
+    let campRevision: Int
+    let day: Weekday
+}
+
 struct RankSection: Identifiable, Hashable, Sendable {
     let id: Venue.ID
     let venue: Venue
@@ -286,9 +293,13 @@ final class AppStore {
     /// The loaded graph. Nil means we are still on the camp picker.
     ///
     /// Computed rather than stored so no mutation can slip past the revision counter:
-    /// reading it registers a dependency on `campRevision`, and writing it invalidates
-    /// the `groupsSections` memo. Observation behaves exactly as it did when this was a
-    /// plain stored property.
+    /// reading it registers a dependency on `campRevision`, and writing it drops both
+    /// section memos. Observation behaves exactly as it did when this was a plain stored
+    /// property.
+    ///
+    /// Dropping them is belt and braces — `campRevision` is part of both keys, so a stale entry
+    /// could never be returned — but a superseded graph has no business staying alive in a cache
+    /// until the next read happens to evict it.
     var camp: Camp? {
         get {
             _ = campRevision
@@ -298,6 +309,7 @@ final class AppStore {
             campStorage = newValue
             campRevision &+= 1
             groupsSectionsMemo = nil
+            rankSectionsMemo = nil
         }
     }
 
@@ -369,6 +381,11 @@ final class AppStore {
     /// view that is reading it.
     @ObservationIgnored
     private var groupsSectionsMemo: (key: GroupsSectionsKey, sections: [GroupsVenueSection])?
+
+    /// The same, for `rankSections`. Its key is smaller because Rank takes no filters — it is
+    /// always the complete ladder — so the graph and the day are the whole of what it reads.
+    @ObservationIgnored
+    private var rankSectionsMemo: (key: RankSectionsKey, sections: [RankSection])?
 
     init(repository: SycamoreRepository = InMemoryRepository()) {
         self.repository = repository
@@ -569,14 +586,53 @@ extension AppStore {
 
     /// One section per venue, in venue order, holding the whole 1…N ladder. The Groups
     /// filters deliberately do not apply here — Rank is always the complete list.
+    ///
+    /// Memoised, and for a sharper reason than `groupsSections` is. `RankView` writes its drag
+    /// state on every gesture callback, so its `body` re-runs at display rate for the whole of a
+    /// drag — and this property sat directly in it. Unmemoised it filtered and sorted the venue's
+    /// players *twice* per venue (once here, once inside `rankRangeLabel`) and then scanned the
+    /// entire attendance table twice per player, which is the one place in the app where a
+    /// recompute per frame was costing real work rather than a few microseconds.
     var rankSections: [RankSection] {
+        let key = RankSectionsKey(campRevision: campRevision, day: today)
+        if let memo = rankSectionsMemo, memo.key == key { return memo.sections }
+        let sections = computeRankSections()
+        rankSectionsMemo = (key, sections)
+        return sections
+    }
+
+    private func computeRankSections() -> [RankSection] {
         guard let camp else { return [] }
+
+        // The day's attendance, indexed once, rather than `isAway` and `leavesAt` each walking
+        // the whole table per kid. Same first-row-wins reading as `Camp.attendance(for:on:)`,
+        // for the same reason `TodayCourts.rosters` gives: two readings of one table that differ
+        // quietly are how they drift.
+        var attendance: [Player.ID: Attendance] = [:]
+        for record in camp.attendance where record.day == today {
+            if attendance[record.playerID] == nil { attendance[record.playerID] = record }
+        }
+
         return camp.orderedVenues.map { venue in
-            RankSection(
+            // Asked for once and used twice. `rankRangeLabel` filters and sorts the roll on its
+            // own, so calling it here would have been the second of two identical walks.
+            let players = camp.players(in: venue.id)
+            let ranks = players.map(\.overallRank)
+            let rangeLabel = ranks.min().map { "\($0)–\(ranks.max() ?? $0)" } ?? "—"
+
+            return RankSection(
                 id: venue.id,
                 venue: venue,
-                rangeLabel: camp.rankRangeLabel(for: venue.id),
-                rows: camp.players(in: venue.id).map { row(for: $0, rank: $0.overallRank) }
+                rangeLabel: rangeLabel,
+                rows: players.map { player in
+                    PlayerRow(
+                        id: player.id,
+                        player: player,
+                        rank: player.overallRank,
+                        isAway: attendance[player.id]?.present == false,
+                        leavesAt: attendance[player.id]?.leavesAt
+                    )
+                }
             )
         }
     }
@@ -992,11 +1048,7 @@ extension AppStore {
     func dismissSheet() { activeSheet = nil }
 
     func toggleCollapsed(_ groupID: Group.ID) {
-        if collapsedGroupIDs.contains(groupID) {
-            collapsedGroupIDs.remove(groupID)
-        } else {
-            collapsedGroupIDs.insert(groupID)
-        }
+        collapsedGroupIDs.toggle(groupID)
     }
 
     /// Dismisses the error banner. `perform` also clears `errorMessage` the moment the

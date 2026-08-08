@@ -49,7 +49,8 @@ struct OverviewCourtCard: View {
     /// 16 sits in the headline band, the one the 17pt title beside it rides.
     @ScaledMetric(relativeTo: .headline) private var caretSize = OverviewTheme.caretGlyph
     /// 13 sits in the callout band, alongside the marks at the end of a roster line.
-    @ScaledMetric(relativeTo: .callout) private var moreCaret = OverviewTheme.rosterGlyph
+    // The "+N more" caret scales inside `MoreRow` now, against the same `.callout` band this
+    // held it at.
 
     var body: some View {
         Card(
@@ -157,33 +158,15 @@ struct OverviewCourtCard: View {
     /// the court's own screen; making it fold the list would answer a question it has never
     /// asked.
     private func overflowRow(_ toggle: @escaping () -> Void) -> some View {
-        Button(action: toggle) {
-            HStack(spacing: OverviewTheme.rosterGap) {
-                Color.clear
-                    .frame(width: rankWidth, height: 0)
-                Text(isRosterExpanded ? "Show less" : "+\(roster.overflow) more")
-                    .typeStyle(OverviewTheme.rosterName, color: Theme.accent)
-                DisclosureChevron(
-                    systemName: isRosterExpanded ? "chevron.up" : "chevron.down",
-                    size: moreCaret,
-                    color: Theme.accent
-                )
-                .accessibilityHidden(true)
-                Spacer(minLength: 0)
-            }
-            .padding(.vertical, OverviewTheme.rosterRowPadding)
-            // The design's row is 19pt of type and a finger needs 44. The drawn line stays
-            // exactly where it was and the touch grows around it, as every Groups row does.
-            .frame(minHeight: HitTarget.minimum)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        // "+3 more" is a fragment. Read out on its own after three children's names it is not
-        // obvious what there are three more of, and the count has to inflect.
-        .accessibilityLabel(
-            isRosterExpanded
-                ? Text("Show fewer kids on this court")
-                : Text("Show ^[\(roster.overflow) more kid](inflect: true) on this court")
+        MoreRow(
+            hiddenCount: roster.overflow,
+            isExpanded: isRosterExpanded,
+            noun: "kid",
+            nounPlural: "kids",
+            qualifier: "on this court",
+            // Indented to the rank column so the label starts under the names, not their numbers.
+            metrics: .inline(indent: rankWidth),
+            action: toggle
         )
     }
 
