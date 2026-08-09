@@ -42,6 +42,9 @@ struct GroupsView: View {
     /// Card and row rectangles in `GroupsSpace.list` — the raw material for every drop slot.
     @State private var cardFrames: [Group.ID: CGRect] = [:]
     @State private var rowFrames: [Player.ID: CGRect] = [:]
+    /// Whether the enrolment flow is up. Presented **here** rather than through
+    /// `store.activeSheet` or a `PushedScreen` case — see `enrolmentFlow`.
+    @State private var isEnrolling = false
 
     var body: some View {
         @Bindable var store = store
@@ -66,6 +69,7 @@ struct GroupsView: View {
         // gives this screen its own page colour; see the PR for why it is not `Theme.grouped`.
         .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { moveBar }
+        .fullScreenPresentation(isPresented: $isEnrolling) { enrolmentFlow }
         .animation(Motion.fold(reduceMotion: reduceMotion), value: move == nil)
         // A filter that changes under a kid in the air can take their group off the screen.
         .onChange(of: store.searchText) { move = nil }
@@ -85,10 +89,45 @@ struct GroupsView: View {
     @ViewBuilder
     private func content(_ entries: [GroupsEntry], venue: Venue?) -> some View {
         if isLocked {
-            GroupsLockedState(store: store)
+            GroupsLockedState(store: store, onAddKids: beginEnrolment)
         } else {
             list(entries, venue: venue)
         }
+    }
+
+    // MARK: - Enrolment
+
+    /// `8c` and everything past it, over the whole frame.
+    ///
+    /// Presented from this view rather than through the store, and there are two rejected
+    /// alternatives worth naming.
+    ///
+    /// **Not `ActiveSheet`.** That slot is presented by `MainTabView` (`RootView.swift:95`), and
+    /// Camp settings — the other entry point — is itself presented by `MainTabView`. Asking it to
+    /// present would open the flow *behind* the screen that asked for it. `BlockEditorSheet`
+    /// (`:26-33`) reached the same conclusion for the same reason.
+    ///
+    /// **Not a new `PushedScreen` case.** `pushedScreen` is a single slot (`AppStore.swift:79`)
+    /// that Camp settings already occupies, and evicting it is survivable — but with two entry
+    /// points the *return address* varies, and carrying it in the payload would make
+    /// `PushedScreen.id` encode a destination as well as a screen, which is not what the comment
+    /// at `AppStore.swift:109-112` says `id` is for.
+    ///
+    /// The venue is the selected chip's, which is what makes "add kids" mean "add kids *here*".
+    @ViewBuilder
+    private var enrolmentFlow: some View {
+        if let venueID = selectedVenue?.id {
+            EnrolmentFlowView(venueID: venueID) { isEnrolling = false }
+                .environment(store)
+        }
+    }
+
+    /// Guarded on there being a venue, so the cover above can never come up with nothing in it and
+    /// no way out. A camp always has at least one (`CampDraft.venueRange` starts at 1), so this is
+    /// a guard against the impossible rather than a state anybody reaches.
+    private func beginEnrolment() {
+        guard selectedVenue != nil else { return }
+        isEnrolling = true
     }
 
     private func list(_ entries: [GroupsEntry], venue: Venue?) -> some View {
@@ -108,6 +147,7 @@ struct GroupsView: View {
                 }
 
                 addGroupRow(venue)
+                addKidsRow
             }
             // The shift: rows sliding aside to open a space, the card the kid left closing up
             // by one row, the card they are aimed at opening by one. Keyed on the *target*
@@ -177,37 +217,70 @@ struct GroupsView: View {
     @ViewBuilder
     private func addGroupRow(_ venue: Venue?) -> some View {
         if move == nil, let venue {
-            let shape = RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous)
-
-            Button {
+            dashedRow("plus", title: "Add a group", hint: "Adds a group to \(venue.name)") {
                 Task { await addGroup(to: venue) }
-            } label: {
-                HStack(spacing: GroupsMetrics.addGroupGap) {
-                    Image(systemName: "plus")
-                        .font(.system(size: GroupsMetrics.addGroupGlyph, weight: .regular))
-                        .accessibilityHidden(true)
-                    Text("Add a group")
-                        .typeStyle(GroupsType.addGroup)
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(Theme.accent)
-                .padding(GroupsMetrics.cardPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: HitTarget.minimum)
-                // The design fills this white and then dashes the border. Without the fill it
-                // reads as a hole in the list rather than as the next card along.
-                .background(Theme.surface, in: shape)
-                .overlay {
-                    shape.strokeBorder(
-                        Theme.accentBorder,
-                        style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: GroupsMetrics.dash)
-                    )
-                }
-                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Adds a group to \(venue.name)")
         }
+    }
+
+    /// The way to add a kid **above** eight, which is most of the season.
+    ///
+    /// `GroupsLockedState`'s call to action is the only other route in, and the locked state only
+    /// draws below eight kids (`GroupsTokens.swift:276`) — so without this row the answer to "how
+    /// do I add a kid?" is "delete seven of them first". A permanent row at the foot of the list,
+    /// beside the one that adds a group, because both are "add something to this venue" and the
+    /// foot of the list is where the design already puts that.
+    ///
+    /// Hidden mid-move for the same reason `addGroupRow` is: nothing new appears under a kid in
+    /// the air.
+    @ViewBuilder
+    private var addKidsRow: some View {
+        if move == nil, let venue = selectedVenue {
+            dashedRow(
+                "person.badge.plus",
+                title: "Add kids",
+                hint: "Imports a roster or adds a kid to \(venue.name)",
+                action: beginEnrolment
+            )
+        }
+    }
+
+    /// The design's white-filled, dashed-bordered call to action at the foot of the list. Two rows
+    /// draw it; the chrome is written once so they cannot drift a point apart.
+    private func dashedRow(
+        _ systemImage: String,
+        title: String,
+        hint: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous)
+
+        return Button(action: action) {
+            HStack(spacing: GroupsMetrics.addGroupGap) {
+                Image(systemName: systemImage)
+                    .font(.system(size: GroupsMetrics.addGroupGlyph, weight: .regular))
+                    .accessibilityHidden(true)
+                Text(title)
+                    .typeStyle(GroupsType.addGroup)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Theme.accent)
+            .padding(GroupsMetrics.cardPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: HitTarget.minimum)
+            // The design fills this white and then dashes the border. Without the fill it reads
+            // as a hole in the list rather than as the next card along.
+            .background(Theme.surface, in: shape)
+            .overlay {
+                shape.strokeBorder(
+                    Theme.accentBorder,
+                    style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: GroupsMetrics.dash)
+                )
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(hint)
     }
 
     /// The search can be narrowed to nothing and a venue can have no groups in it yet, and a

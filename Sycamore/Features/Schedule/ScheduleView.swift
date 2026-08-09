@@ -93,7 +93,10 @@ struct ScheduleView: View {
             BlockEditorSheet(draft: draft, onClose: { editing = nil })
                 .environment(store)
         }
-        .blockDetailCover(item: $openedBlock) { block in
+        // `8l` takes the whole frame and draws its own way out. The iOS-only `fullScreenCover` and
+        // its macOS stand-in are in `fullScreenPresentation`, shared with the app's two other
+        // covers rather than restated here.
+        .fullScreenPresentation(item: $openedBlock) { block in
             BlockDetailView(
                 block: block,
                 isCurrent: block.id == currentBlockID,
@@ -261,24 +264,6 @@ private struct ScheduleLoad: Equatable {
     let campID: Camp.ID?
     let venueID: Venue.ID?
     let day: Weekday
-}
-
-// MARK: - Presenting `8l`
-
-private extension View {
-    /// A cover on iOS, a sheet everywhere else. `fullScreenCover` is iOS-only, and everything
-    /// under `Sycamore/` has to typecheck for macOS as well — see `Package.swift`.
-    @ViewBuilder
-    func blockDetailCover<Content: View>(
-        item: Binding<ScheduleBlock?>,
-        @ViewBuilder content: @escaping (ScheduleBlock) -> Content
-    ) -> some View {
-        #if os(iOS)
-        fullScreenCover(item: item, content: content)
-        #else
-        sheet(item: item, content: content)
-        #endif
-    }
 }
 
 // MARK: - Previews

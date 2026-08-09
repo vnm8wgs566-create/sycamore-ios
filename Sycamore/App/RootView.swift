@@ -104,9 +104,11 @@ struct MainTabView: View {
                 .environment(store)
                 .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
         }
-        // One slot, two presentations — see `Binding.presenting(fullScreen:)`.
+        // One slot, two presentations — see `Binding.presenting(fullScreen:)`. The cover half goes
+        // through `fullScreenPresentation`, which is where the iOS-only `fullScreenCover` and its
+        // macOS stand-in now live for all three of the app's covers.
         .sheet(item: $store.pushedScreen.presenting(fullScreen: false), content: pushedView)
-        .pushedScreenCover(item: $store.pushedScreen.presenting(fullScreen: true), content: pushedView)
+        .fullScreenPresentation(item: $store.pushedScreen.presenting(fullScreen: true), content: pushedView)
     }
 
     // MARK: The selected tab
@@ -206,23 +208,6 @@ private extension Binding where Value == PushedScreen? {
                 }
             }
         )
-    }
-}
-
-private extension View {
-    /// A cover on iOS, a sheet everywhere else. `fullScreenCover` is iOS-only, and everything
-    /// under `Sycamore/` has to typecheck for macOS as well — see `ScheduleView`, which presents
-    /// `8l` the same way and for the same reason.
-    @ViewBuilder
-    func pushedScreenCover<Content: View>(
-        item: Binding<PushedScreen?>,
-        @ViewBuilder content: @escaping (PushedScreen) -> Content
-    ) -> some View {
-        #if os(iOS)
-        fullScreenCover(item: item, content: content)
-        #else
-        sheet(item: item, content: content)
-        #endif
     }
 }
 

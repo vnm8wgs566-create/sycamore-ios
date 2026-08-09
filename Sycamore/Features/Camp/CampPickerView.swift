@@ -64,19 +64,14 @@ struct CampPickerView: View {
 
     /// Both camp screens draw their own header, so the stack's bar stays hidden.
     private var screen: some View {
-        let stack = VStack(spacing: 0) {
+        VStack(spacing: 0) {
             header
             Hairline(color: Theme.hairline)
             content
         }
         // `#F8F9F8`, the page colour behind every section 8 screen.
         .background(Theme.surfaceWarm)
-
-        #if os(iOS)
-        return stack.toolbar(.hidden, for: .navigationBar)
-        #else
-        return stack
-        #endif
+        .hidesNavigationBar()
     }
 
     // MARK: Header

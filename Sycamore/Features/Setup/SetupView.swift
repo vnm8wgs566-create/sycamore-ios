@@ -47,6 +47,16 @@ struct SetupView: View {
     /// the old code is already in somebody's texts, and there is no putting it back.
     @State private var isConfirmingRoll = false
 
+    /// Whether the enrolment flow is up. Presented locally rather than through `store.activeSheet`
+    /// or `pushedScreen`: this screen is *itself* presented by `MainTabView`, so asking that view
+    /// to present the flow would open it behind this one. `GroupsView.enrolmentFlow` records the
+    /// whole argument and the second rejected alternative.
+    ///
+    /// A cover over a sheet is legal — the recorded constraint (`BlockDetailView.swift:66`) is
+    /// that a cover cannot be presented over a *cover*, and `PushedScreen.isFullScreen` is false
+    /// for `.campSettings`.
+    @State private var isImportingRoster = false
+
     /// Whether the camp's name row is open for editing. It swaps itself for a field in place
     /// rather than pushing a screen the design does not draw — the same call `8s`'s emergency
     /// number row makes.
@@ -76,9 +86,23 @@ struct SetupView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // `#F8F9F8` — the same warm page as `8s`, which this arrives on top of.
         .background(Theme.surfaceWarm)
+        .fullScreenPresentation(isPresented: $isImportingRoster) { enrolmentFlow }
         // The copy has no visible confirmation beyond the word "Copied" swapping in, which a
         // reader looking at the code rather than the header will miss.
         .sensoryFeedback(.success, trigger: inviteCopied) { _, copied in copied }
+    }
+
+    // MARK: - Importing a roster
+
+    /// `8c` and everything past it. The venue is the camp's first, which is where `8c` already
+    /// says everybody who has not been asked goes — this screen has no chip row to mean anything
+    /// else by.
+    @ViewBuilder
+    private var enrolmentFlow: some View {
+        if let venueID = store.camp?.orderedVenues.first?.id {
+            EnrolmentFlowView(venueID: venueID) { isImportingRoster = false }
+                .environment(store)
+        }
     }
 
     // MARK: - Header
@@ -181,6 +205,21 @@ struct SetupView: View {
             Card(radius: Radius.settingsCard) {
                 ForEach(camp.orderedVenues) { venue in
                     venueRow(venue, in: camp)
+                }
+
+                // The second way into the enrolment flow, and the one for the admin who is not
+                // standing on Groups. A camp's roster changes every week — a new sign-up list,
+                // a walk-in, somebody who did not come back — and "where the camp is set up" is
+                // where a person looks for that.
+                //
+                // Already admin-gated: `body` draws this whole block only for an admin (`:67`).
+                SettingsRow(
+                    "Import a roster",
+                    icon: "arrow.up.doc",
+                    iconColor: Theme.accent,
+                    subtitle: "A sign-up list, read against the kids already here"
+                ) {
+                    isImportingRoster = true
                 }
 
                 // The design closes this row with a caret. It goes nowhere — it partitions the

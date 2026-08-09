@@ -49,16 +49,14 @@ struct CreateCampView: View {
     @State private var swipe = SwipeRevealState<VenueShape.ID>()
 
     var body: some View {
-        // `fullScreenCover` on the phone, where bringing in the week is the whole job and a card
-        // that can be swiped away mid-import is not; `sheet` on the Mac, which has no cover.
-        #if os(iOS)
-        return screen
-            .toolbar(.hidden, for: .navigationBar)
-            .fullScreenCover(isPresented: $isBringingInTheWeek) { flow }
-        #else
-        return screen
-            .sheet(isPresented: $isBringingInTheWeek) { flow }
-        #endif
+        // The whole frame on the phone, where bringing in the week is the whole job and a card
+        // that can be swiped away mid-import is not; a sheet on the Mac, which has no cover. Both
+        // halves of that, and the navigation bar this screen draws its own header instead of, are
+        // `FullScreenPresentation`'s — the same two modifiers `RootView`, `ScheduleView` and the
+        // enrolment flow reach for.
+        screen
+            .hidesNavigationBar()
+            .fullScreenPresentation(isPresented: $isBringingInTheWeek) { flow }
     }
 
     private var screen: some View {
