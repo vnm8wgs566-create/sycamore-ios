@@ -18,6 +18,14 @@
 //  is all absent — which is what makes "your court first, the rest quiet" one card rather than
 //  two.
 //
+//  ── The block's note is no longer drawn here ─────────────────────────────────────────────────
+//
+//  This card used to carry one: the first note off the running block, on your own court and
+//  nowhere else. Both halves of that were wrong. A block runs across the venue, so its note is not
+//  a fact about one court — pinning it to yours meant a coach on Court 3 could not see the allergy
+//  written against the morning — and drawing `notes.first` silently dropped the rest. Both now sit
+//  on `RunningBlockCard`, above the courts, where a note about the block is about the block.
+//
 
 import SwiftUI
 
@@ -34,10 +42,9 @@ struct OverviewCourtCard: View {
     /// overflow a roster already carried, so `overflow == 0` stops meaning "open" the moment a
     /// roster arrives that was short of the court to begin with.
     var isRosterExpanded: Bool = false
-    /// The note hanging off the block running here — "Cross-court forehand feeds, then a
-    /// volley ladder." Nil is the ordinary case.
-    var note: String?
-    /// Opens the coach's staff card. Nil leaves the pill inert, for a court nobody has.
+    /// What the coach pill does: opens their staff card, or — on a court nobody has — opens the
+    /// picker that puts somebody on it, which the pill draws as a `+`. Nil leaves it inert, for a
+    /// card carrying a coach the camp cannot resolve. `OverviewScreen.coachAction(for:)` decides.
     var onOpenCoach: (() -> Void)?
     /// Opens and folds the court's list. Nil on a court small enough to draw whole, which is
     /// what keeps the card from offering a control that would change nothing.
@@ -70,13 +77,6 @@ struct OverviewCourtCard: View {
                 }
 
                 header
-
-                if let note {
-                    rule
-                    Text(note)
-                        .typeStyle(OverviewTheme.cardNote, color: Theme.inkWarm)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
 
                 if !roster.isEmpty {
                     rule
@@ -284,7 +284,6 @@ private struct OverviewCourtCardPreviewHarness: View {
         roster: OverviewFixtures.roster(
             for: OverviewFixtures.drills, limit: OverviewTheme.rosterPreview
         ),
-        note: OverviewFixtures.blockNote,
         onOpenCoach: {},
         onToggleRoster: {}
     )
