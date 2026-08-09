@@ -178,9 +178,19 @@ struct CampPickerView: View {
                     }
                 }
             } else if store.memberships.isEmpty {
-                // No inline loading state here: `RootView` lays the full-screen seed fall over
-                // this whole view while `isWorking`, so a second one underneath it would only
-                // ever be drawn behind the first.
+                // Still no inline loading state, and no longer because something else is drawing
+                // one: the seed fall that used to lie over this whole view while `isWorking` has
+                // gone (`FallingSeeds.swift`). The reason now is that nothing reaches this branch
+                // *while* it is waiting. `FirstRunView` holds a frame of its own until the
+                // memberships settle (`FirstRunStep.notYet`), and `8u` is opened from inside a
+                // camp, which is not somewhere you can be without one.
+                //
+                // It is reached when the list settled at nothing, and — `FirstRunStep.CampList
+                // .failed` — when it never settled at all, which is the case a spinner would seem
+                // to be for. It is not: a fetch that has already been given up on is not one a
+                // spinner should be promising. What that reader needs is on screen already, in
+                // this view's own content — the failure printed at `:140`, the code field, "Create
+                // a camp", and the `.task` above trying the fetch once more of its own accord.
                 noCamps
             } else {
                 VStack(alignment: .leading, spacing: 0) {
