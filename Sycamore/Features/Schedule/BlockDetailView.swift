@@ -30,6 +30,11 @@ struct BlockDetailView: View {
     /// The block the camp is in the middle of. Handed down rather than recomputed so this cover
     /// and the card behind it can never name different blocks as current.
     let isCurrent: Bool
+    /// The block this one clashes with, or nil — handed down for the same reason `isCurrent` is,
+    /// and it matters more here: this is the screen somebody opens *by tapping the amber line*,
+    /// and a cover that then said nothing about it would be the one place the flag leads to a
+    /// dead end. See `ScheduleConflicts` for where the answer is worked out.
+    var conflict: ScheduleBlock?
     let onClose: () -> Void
 
     /// The editor, presented from here rather than through `store.activeSheet`.
@@ -110,6 +115,8 @@ struct BlockDetailView: View {
             Text(subtitle)
                 .typeStyle(ScheduleType.blockDetail, color: Theme.inkMuted)
                 .padding(.top, ScheduleMetrics.headerSubtitleGap)
+
+            clashLine
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Spacing.header)
@@ -123,6 +130,22 @@ struct BlockDetailView: View {
     private var subtitle: String {
         guard let detail = block.detail, !detail.isEmpty else { return block.timeLabel }
         return "\(block.timeLabel) · \(detail)"
+    }
+
+    /// The same amber sentence the card on `8k` carries, under the same times it is about.
+    ///
+    /// `ScheduleBlock.clashLine`, so the screen that opens off the flag says the words the flag
+    /// said. It is a statement and not a control: the way out of a clash is the two time menus in
+    /// the editor, which the `⋯` above already reaches, and a second route to them here would be
+    /// a button that only appears when something is wrong.
+    @ViewBuilder
+    private var clashLine: some View {
+        if let conflict {
+            Text(conflict.clashLine)
+                .typeStyle(ScheduleType.blockDetail, color: Theme.warning)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, ScheduleMetrics.courtMetaGap)
+        }
     }
 
     private var statusLine: some View {

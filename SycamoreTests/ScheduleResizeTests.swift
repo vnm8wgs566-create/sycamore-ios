@@ -15,6 +15,12 @@
 //  end of a round trip. And `theGridIsBlockClocks` is the only thing keeping this file's `step`
 //  and the editor's own quarter-hour menu from drifting apart.
 //
+//  The neighbour tests are gone with the neighbour. A drag used to clamp at the next block's start
+//  and it does not any more — `ScheduleResize.swift`'s header argues that at length, and
+//  `aDragMayNowCrossTheNextBlock` is what pins it, because a clamp quietly coming back is a
+//  refusal nothing on screen would announce. What the rule became is `BlockRules`, and its tests
+//  are in `BlockEditorDraftTests` beside the other rules the schedule holds itself to.
+//
 
 import Foundation
 import Testing
@@ -27,15 +33,12 @@ struct ScheduleResizeTests {
     private let travel = ScheduleResizePlan.travel
     private let step = ScheduleResizePlan.step
 
-    /// A 9:00–10:00 block with nothing after it, which is the shape most of these ask about.
+    /// A 9:00–10:00 block, which is the shape most of these ask about.
     private func plan(
         from startsAt: TimeOfDay = TimeOfDay(9, 0),
-        to endsAt: TimeOfDay = TimeOfDay(10, 0),
-        nextStart: TimeOfDay? = nil
+        to endsAt: TimeOfDay = TimeOfDay(10, 0)
     ) -> ScheduleResizePlan {
-        ScheduleResizePlan(
-            startsAt: startsAt, endsAt: endsAt, nextStart: nextStart, travelPerStep: travel
-        )
+        ScheduleResizePlan(startsAt: startsAt, endsAt: endsAt, travelPerStep: travel)
     }
 
     // MARK: The grid it snaps to
@@ -133,70 +136,31 @@ struct ScheduleResizeTests {
         #expect(live.endsAt == TimeOfDay(10, 15))
     }
 
-    // MARK: The neighbour
+    // MARK: The neighbour, which is no longer a wall
 
-    @Test("A block cannot be dragged past the start of the next one")
-    func clampsAtTheNeighbour() {
-        var live = plan(nextStart: TimeOfDay(10, 30))
-        live.drag(by: travel * 20)
+    /// The judgement call this change made, asserted rather than described: the drag refuses
+    /// nothing that the block editor's two time menus would accept.
+    ///
+    /// Built from the sample Tuesday so the neighbour is a real one — `Skills rotation` runs
+    /// 9:00–10:30 with `Water & regroup` starting at 10:30 — and dragged well past it. A clamp
+    /// creeping back in would be a second answer to a question `BlockRules.overlap(with:in:)`
+    /// already answers, and the disagreement would be invisible: a wall does not announce itself.
+    @Test("A drag may now cross the next block's start, and the flag is what catches it")
+    func aDragMayNowCrossTheNextBlock() {
+        let day = ScheduleSampleDay.blocks(venueID: SampleData.sycamore.id)
+        var skills = day[1]
 
-        #expect(live.endsAt == TimeOfDay(10, 30))
-    }
+        var live = plan(from: TimeOfDay(9, 0), to: TimeOfDay(10, 30))
+        live.drag(by: travel * 4)
+        #expect(skills.startsAt == TimeOfDay(9, 0))
+        #expect(skills.endsAt == TimeOfDay(10, 30))
+        #expect(live.endsAt == TimeOfDay(11, 30))
 
-    @Test("It may end exactly when the next block begins — abutting is not overlapping")
-    func abutsTheNeighbour() {
-        var live = plan(nextStart: TimeOfDay(10, 30))
-        live.drag(by: travel * 2)
-
-        #expect(live.endsAt == TimeOfDay(10, 30))
-    }
-
-    @Test("A neighbour that starts off the grid is still the wall, to the minute")
-    func clampsAtAnOffGridNeighbour() {
-        // Snapping after clamping would round 10:20 down to 10:15 and leave the block five
-        // minutes short of a gap it is allowed to fill.
-        var live = plan(nextStart: TimeOfDay(10, 20))
-        live.drag(by: travel * 20)
-
-        #expect(live.endsAt == TimeOfDay(10, 20))
-    }
-
-    @Test("A day that already overlaps can be dragged shorter but not longer")
-    func anExistingOverlapOnlyImproves() {
-        // 9:00–10:30 with the next block starting at 10:00. Nothing in Swift or Postgres stops
-        // this being written, so the plan has to cope with finding it.
-        var longer = plan(to: TimeOfDay(10, 30), nextStart: TimeOfDay(10, 0))
-        longer.drag(by: travel * 4)
-        #expect(longer.endsAt == TimeOfDay(10, 30))
-
-        var shorter = plan(to: TimeOfDay(10, 30), nextStart: TimeOfDay(10, 0))
-        shorter.drag(by: -travel * 2)
-        #expect(shorter.endsAt == TimeOfDay(10, 0))
-    }
-
-    @Test("The next block is the earliest start after this one, whatever order the day arrives in")
-    func findsTheNeighbour() {
-        let venueID = SampleData.sycamore.id
-        let day = ScheduleSampleDay.blocks(venueID: venueID)
-        let skills = day[1]
-
-        #expect(ScheduleResizePlan.nextStart(after: skills, in: day) == TimeOfDay(10, 30))
-        #expect(ScheduleResizePlan.nextStart(after: skills, in: day.reversed()) == TimeOfDay(10, 30))
-        // The last block of the day has no wall but the day's own end.
-        #expect(ScheduleResizePlan.nextStart(after: day[4], in: day) == nil)
-    }
-
-    @Test("A finished block is still a wall — it occupies its time whether or not it draws a card")
-    func aDoneBlockStillClamps() {
-        let venueID = SampleData.sycamore.id
-        let day = ScheduleSampleDay.blocks(venueID: venueID)
-        // The 8:30 drop-off is `.done`. A block before it must still stop at 8:30.
-        let earlier = ScheduleBlock(
-            venueID: venueID, day: .tue, startsAt: TimeOfDay(8, 0), endsAt: TimeOfDay(8, 15),
-            title: "Set up"
-        )
-
-        #expect(ScheduleResizePlan.nextStart(after: earlier, in: day) == TimeOfDay(8, 30))
+        // …and the day that produces says so, on both cards, rather than the drag having refused.
+        skills.endsAt = live.endsAt
+        let after = day.map { $0.id == skills.id ? skills : $0 }
+        #expect(BlockRules.overlap(with: skills, in: after)?.title == "Water & regroup")
+        #expect(ScheduleConflicts(day: after)[day[2].id]?.title == "Skills rotation")
     }
 
     // MARK: The day's bounds
@@ -225,7 +189,6 @@ struct ScheduleResizeTests {
         var live = ScheduleResizePlan(
             startsAt: TimeOfDay(9, 0),
             endsAt: TimeOfDay(10, 0),
-            nextStart: nil,
             dayEnd: TimeOfDay(12, 0),
             travelPerStep: travel
         )
@@ -241,7 +204,6 @@ struct ScheduleResizeTests {
         var doubled = ScheduleResizePlan(
             startsAt: TimeOfDay(9, 0),
             endsAt: TimeOfDay(10, 0),
-            nextStart: nil,
             travelPerStep: travel * 2
         )
         doubled.drag(by: travel * 2)
@@ -278,23 +240,20 @@ struct ScheduleResizeTests {
     func endsAfterStart() {
         let starts = [TimeOfDay(7, 0), TimeOfDay(9, 0), TimeOfDay(12, 37), TimeOfDay(19, 45)]
         let lengths = [5, 15, 45, 90]
-        let neighbours: [TimeOfDay?] = [nil, TimeOfDay(9, 0), TimeOfDay(13, 0), TimeOfDay(6, 0)]
 
         for startsAt in starts {
             for minutes in lengths {
                 let end = TimeOfDay((startsAt.id + minutes) / 60, (startsAt.id + minutes) % 60)
-                for nextStart in neighbours {
-                    // Strided coarsely on purpose. Both clamps bite long before ±600, so the
-                    // corners are reached either way, and a finer sweep is thousands of `#expect`
-                    // macro evaluations buying nothing.
-                    for points in stride(from: CGFloat(-600), through: 600, by: 47) {
-                        var live = plan(from: startsAt, to: end, nextStart: nextStart)
-                        live.drag(by: points)
+                // Strided coarsely on purpose. Both clamps bite long before ±600, so the corners
+                // are reached either way, and a finer sweep is thousands of `#expect` macro
+                // evaluations buying nothing.
+                for points in stride(from: CGFloat(-600), through: 600, by: 47) {
+                    var live = plan(from: startsAt, to: end)
+                    live.drag(by: points)
 
-                        let settled = live.endsAt
-                        #expect(settled > startsAt)
-                        #expect(BlockRules.endsAfterStart(startsAt: startsAt, endsAt: settled))
-                    }
+                    let settled = live.endsAt
+                    #expect(settled > startsAt)
+                    #expect(BlockRules.endsAfterStart(startsAt: startsAt, endsAt: settled))
                 }
             }
         }
@@ -306,7 +265,6 @@ struct ScheduleResizeTests {
         // again writes nothing, even on a day the app itself could not have produced.
         let awkward = [
             plan(to: TimeOfDay(9, 5)),
-            plan(to: TimeOfDay(10, 30), nextStart: TimeOfDay(9, 30)),
             plan(from: TimeOfDay(19, 0), to: TimeOfDay(21, 0)),
             plan(from: TimeOfDay(6, 3), to: TimeOfDay(6, 4)),
         ]
@@ -331,8 +289,8 @@ struct ScheduleResizeTests {
 
     @Test("The rotor stops at the same walls the finger does")
     func adjustingClamps() {
-        let againstNeighbour = plan(nextStart: TimeOfDay(10, 15))
-        #expect(againstNeighbour.adjusted(by: 8) == TimeOfDay(10, 15))
+        let againstTheDayEnd = plan(from: TimeOfDay(19, 30), to: TimeOfDay(19, 45))
+        #expect(againstTheDayEnd.adjusted(by: 8) == ScheduleResizePlan.dayEnd)
 
         let againstStart = plan()
         #expect(againstStart.adjusted(by: -8) == TimeOfDay(9, 15))
@@ -340,7 +298,7 @@ struct ScheduleResizeTests {
 
     @Test("At a wall the rotor returns the resting end, which is what stops it writing")
     func adjustingAtAWallWritesNothing() {
-        let stuck = plan(nextStart: TimeOfDay(10, 0))
+        let stuck = plan(from: TimeOfDay(19, 45), to: ScheduleResizePlan.dayEnd)
 
         #expect(stuck.adjusted(by: 1) == stuck.restingEnd)
     }

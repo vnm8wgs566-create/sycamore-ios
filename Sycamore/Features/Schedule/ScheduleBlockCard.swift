@@ -14,6 +14,10 @@
 //  what is left in this file is the gesture that feeds it and the two things a person sees while
 //  dragging. The card itself does **not** grow — see `resizeReadout`.
 //
+//  The design does not draw the amber clash line either, and for a plainer reason: nothing in the
+//  app could produce a clash to draw when `8k` was transcribed. It is drawn in the vocabulary the
+//  screen already has for a problem rather than in one of its own — see `conflictLine`.
+//
 
 import SwiftUI
 
@@ -31,9 +35,12 @@ struct ScheduleBlockCard: View {
     /// to decide `.scrollDisabled`.
     @Binding var resizingID: ScheduleBlock.ID?
 
-    /// The start of the block that follows this one, which is as far as this one's end may be
-    /// dragged. Nil on the last block of the day. See `ScheduleResizePlan.nextStart(after:in:)`.
-    var nextStart: TimeOfDay?
+    /// The block this one clashes with, or nil. Drawn as the amber line under the card's grey one.
+    ///
+    /// Handed down rather than worked out here, because working it out is a walk of the whole day
+    /// and this view is drawn once per block: see `ScheduleConflicts`, which is where the walk
+    /// happens and where its cost is argued.
+    var conflict: ScheduleBlock?
 
     let onOpen: () -> Void
     /// The block's new end, once. Called on release and never during the drag — `AppStore.perform`
@@ -61,10 +68,12 @@ struct ScheduleBlockCard: View {
             doneRow
         } else {
             card
-                // A time, a title, a grey line, a rule, a glyph, a note and a count are seven
-                // runs SwiftUI would otherwise read out in order. One sentence instead.
+                // A time, a title, a grey line, an amber one, a rule, a glyph, a note and a count
+                // are eight runs SwiftUI would otherwise read out in order. One sentence instead.
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(block.accessibilityLine(isCurrent: isCurrent))
+                .accessibilityLabel(
+                    block.accessibilityLine(isCurrent: isCurrent, conflict: conflict)
+                )
                 .accessibilityHint("Opens the block")
                 .accessibilityAddTraits(.isButton)
                 .contentShape(.rect)
@@ -100,6 +109,12 @@ struct ScheduleBlockCard: View {
     ///
     /// No handle either. A block that has already been run is not one whose length is still a
     /// question, and the row it collapses to has no edge to grab.
+    ///
+    /// No clash flag either, which is a decision and not an omission. A finished block still
+    /// *causes* one — `BlockRules` reads status not at all, so a done drop-off still occupies its
+    /// courts and still flags whatever was laid over it — but flagging the drop-off itself would
+    /// be an amber line about a morning that has already happened, on a row the design gives no
+    /// card and no affordance. The block somebody can still move is the one that says so.
     private var doneRow: some View {
         HStack(spacing: Spacing.medium) {
             Text(block.gutterLabel)
@@ -113,7 +128,7 @@ struct ScheduleBlockCard: View {
         }
         .padding(.horizontal, ScheduleMetrics.rowInset)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(block.accessibilityLine(isCurrent: false))
+        .accessibilityLabel(block.accessibilityLine(isCurrent: false, conflict: nil))
     }
 
     // MARK: Still to come
@@ -152,6 +167,8 @@ struct ScheduleBlockCard: View {
                     .padding(.top, ScheduleMetrics.detailGap)
             }
 
+            conflictLine
+
             if !block.notes.isEmpty {
                 Hairline(color: Theme.hairlineSoft)
                     .padding(.top, ruleGap)
@@ -170,6 +187,33 @@ struct ScheduleBlockCard: View {
             )
         }
         .contentShape(shape)
+    }
+
+    /// The flag: one amber line saying what this block runs into.
+    ///
+    /// Below the grey second line rather than instead of it. `subtitle` already gives up `detail`
+    /// to say "Needs a coach" when a block has nobody on it, and a block can be short a coach
+    /// *and* laid over another one — two different problems that would take turns being invisible
+    /// if they shared a row.
+    ///
+    /// **Plain amber copy, not `WarningPill`.** That component was checked first, being the
+    /// newest member of this vocabulary — and `Theme.swift:217-221` is explicit that the
+    /// tint-and-label pair belongs to "exactly four screens — `8d`, `8i`, `8j`, `8r`", while plain
+    /// `warning` text on no fill is what section 8's own `8k` uses for "Needs a coach". A pill
+    /// also sets `.lineLimit(1)`, and this line has to name another block and its span, which is a
+    /// sentence rather than a word. So the flag is the line already on this card, in the colour
+    /// that card already spends on a problem.
+    ///
+    /// No glyph, for the same reason: the amber line directly above it has none either, and a
+    /// warning triangle on one of two identically-coloured lines would read as a distinction
+    /// between them that is not there.
+    @ViewBuilder
+    private var conflictLine: some View {
+        if let conflict {
+            Text(conflict.clashLine)
+                .typeStyle(ScheduleType.blockDetail, color: Theme.warning)
+                .padding(.top, ScheduleMetrics.detailGap)
+        }
     }
 
     /// The current block pins its first note and counts the rest; every other block only says
@@ -221,7 +265,7 @@ struct ScheduleBlockCard: View {
     /// rather than given one that would have to invent an end before it could move it.
     private var restingPlan: ScheduleResizePlan? {
         block.endsAt.map {
-            ScheduleResizePlan(startsAt: block.startsAt, endsAt: $0, nextStart: nextStart)
+            ScheduleResizePlan(startsAt: block.startsAt, endsAt: $0)
         }
     }
 
@@ -418,6 +462,10 @@ private struct ScheduleBlockCardPreviewHarness: View {
         // The design's clock, so the preview marks the block `8k` marks rather than whichever one
         // the machine's afternoon happens to land in.
         let currentID = ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41))?.id
+        // Rebuilt on every pass here, unlike on the screen, and that is the right trade in a
+        // preview: there is no clock ticking behind it, and a flag that appeared only after a
+        // reload would be the one thing this harness exists to show.
+        let conflicts = ScheduleConflicts(day: blocks)
 
         return ScrollView {
             VStack(spacing: ScheduleMetrics.blockGap) {
@@ -426,10 +474,10 @@ private struct ScheduleBlockCardPreviewHarness: View {
                         block: block,
                         isCurrent: block.id == currentID,
                         resizingID: $resizingID,
-                        nextStart: ScheduleResizePlan.nextStart(after: block, in: blocks),
+                        conflict: conflicts[block.id],
                         onOpen: {},
                         // No store in a preview, so the resize lands in the array directly —
-                        // enough to see the clamp at the next block bite.
+                        // enough to drag one block over the next and watch both go amber.
                         onResize: { end in
                             guard let index = blocks.firstIndex(where: { $0.id == block.id })
                             else { return }

@@ -42,6 +42,16 @@ struct ScheduleView: View {
     /// a resize is a vertical drag, and the scroll view would otherwise take it.
     @State private var resizingID: ScheduleBlock.ID?
 
+    /// Which of the day's blocks are laid over which — held rather than computed in `body`,
+    /// because `body` re-runs on every tick of the app's clock and this does not change with it.
+    /// `ScheduleConflicts` argues the cost; the `.onChange` below is what keeps it honest.
+    ///
+    /// The honest cost of holding it is one pass: a write lands, `body` draws the new day against
+    /// the index built for the old one, and `.onChange` then rebuilds and draws again. A block
+    /// added a moment ago is flagged one frame late, which is the same frame the row itself
+    /// appears in and is not a thing anybody has seen.
+    @State private var conflicts = ScheduleConflicts(day: [])
+
     /// The block `8l` is showing. Re-resolved from the store after every write, so the cover
     /// survives its own edits and closes itself when the block is deleted.
     @State private var openedBlock: ScheduleBlock?
@@ -155,9 +165,18 @@ struct ScheduleView: View {
             BlockDetailView(
                 block: block,
                 isCurrent: block.id == currentBlockID,
+                conflict: conflicts[block.id],
                 onClose: { openedBlock = nil }
             )
             .environment(store)
+        }
+        // Re-derived from the day and from nothing else, which is what makes a held value safe
+        // here rather than a second source of truth: a morning that has not changed cannot have
+        // changed which of its blocks clash. `initial: true` because the first day to land arrives
+        // as a change from nothing, and a screen that only flagged its *second* day would be a bug
+        // nobody could reproduce twice.
+        .onChange(of: blocks, initial: true) { _, day in
+            conflicts = ScheduleConflicts(day: day)
         }
         // The cover reads its block from this binding rather than from the store, so a write
         // made inside it has to come back out: re-resolving redraws the cover after "Mark done"
@@ -256,22 +275,22 @@ struct ScheduleView: View {
                 .padding(.horizontal, Spacing.gutter)
                 .padding(.top, ScheduleMetrics.emptyListTop)
         } else {
-            // Both of these were being asked once *per card*. `currentBlockID` is the expensive
-            // one and always was: it reads the wall clock through `Calendar` and filters the day,
-            // so a twelve-block morning paid for twelve calendar round trips to mark one card.
+            // Asked once for the list rather than once per card, which is where it was: it reads
+            // the wall clock through `Calendar` and filters the day, so a twelve-block morning
+            // paid for twelve calendar round trips to mark one card.
             let currentID = currentBlockID
-            let day = blocks
 
             LazyVStack(spacing: ScheduleMetrics.blockGap) {
-                ForEach(day) { block in
+                ForEach(blocks) { block in
                     ScheduleBlockCard(
                         block: block,
                         isCurrent: block.id == currentID,
                         resizingID: $resizingID,
-                        // Still recomputed per card, and that one is worth it: the day is a
-                        // handful of blocks, and a neighbour read off the list as it stands cannot
-                        // go stale between a write landing and the next card being drawn.
-                        nextStart: ScheduleResizePlan.nextStart(after: block, in: day),
+                        // Looked up rather than worked out, and the same habit again. This
+                        // argument used to be a per-card walk of the whole day for the card's
+                        // neighbour; the clash question is that walk with a set intersection
+                        // inside it, so it happens once a day in `ScheduleConflicts` instead.
+                        conflict: conflicts[block.id],
                         onOpen: { openedBlock = block },
                         onResize: { end in resize(block, to: end) }
                     )
