@@ -233,9 +233,19 @@ struct RankView: View {
             .frame(width: 22, height: 38)
             // Drawn size unchanged; the outer frame only carries the tap.
             .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+            // One shape, not two. The second `.contentShape(Rectangle())` was the same rect
+            // said again in the older spelling, and only the outer one ever applied.
             .contentShape(.rect)
-            .contentShape(Rectangle())
-            .gesture(dragGesture(for: row))
+            // Opens the kid, as the row underneath does. The handle takes the hit for this whole
+            // 44pt column, so without this a tap on the right-hand end of any row in the ladder
+            // did nothing — see `GroupCard.handle`, which had the same hole for the same reason
+            // and carries the argument for composing the two exclusively rather than attaching
+            // them side by side.
+            .gesture(
+                dragGesture(for: row).exclusively(
+                    before: TapGesture().onEnded { store.pushedScreen = .player(row.id) }
+                )
+            )
             .accessibilityLabel("Reorder \(row.player.displayName)")
     }
 

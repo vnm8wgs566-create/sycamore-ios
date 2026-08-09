@@ -481,7 +481,31 @@ private struct GroupPlayerRow: View {
             // Drawn size unchanged; the outer frame only carries the touch.
             .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
             .contentShape(.rect)
-            .gesture(lift)
+            // A tap here opens the kid, exactly as a tap anywhere else on the row does.
+            //
+            // This reverses the reasoning above `.padding(.trailing, HitTarget.minimum)`, which
+            // reserved this column so "a finger reaching for the handle can never open the kid
+            // instead". True, and it cost more than it bought: the handle sits *over* the row
+            // and claims the hit, so the reserved column did not merely fail to open the kid —
+            // it swallowed the tap entirely. A quarter of the width of every row in every group
+            // card did nothing at all, silently, which is most of what "unresponsive at times"
+            // turned out to mean.
+            //
+            // `exclusively(before:)` rather than two independent gestures on one view, and the
+            // difference is not stylistic. `TapGesture` has no maximum duration, so attached
+            // separately it would still succeed on the release of a *long* press — lifting the
+            // kid and then opening them, on one touch. Composed exclusively, the tap is only
+            // offered the touch once the long press has definitively failed, which is precisely
+            // "let go before 0.2s". Two outcomes, never both.
+            //
+            // The accidental-open the old comment worried about was really an accidental
+            // *drag* — a brush of the handle — and `lift`'s 0.2s minimum still answers that,
+            // unchanged.
+            .gesture(
+                lift.exclusively(
+                    before: TapGesture().onEnded { if !isAiming { onOpen() } }
+                )
+            )
             .accessibilityLabel("Move \(row.player.displayName)")
             .accessibilityHint("Picks the kid up. Aim at a group, then drop.")
     }
