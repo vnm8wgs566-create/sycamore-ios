@@ -2,7 +2,7 @@
 //  FormField.swift
 //  Sycamore
 //
-//  The app's one text input, and the four boxes the design draws around it.
+//  The app's one text input, and the six boxes the design draws around it.
 //
 //  Five screens had hand-rolled the same thing: a `ZStack` holding a grey `Text` behind an empty
 //  `TextField`, plus a `.contentShape` and an `.onTapGesture` so the box would take a tap. Three
@@ -29,7 +29,7 @@ import SwiftUI
 
 // MARK: - Metrics
 
-/// The box around the input. The design draws four of them, and each is a preset here rather
+/// The box around the input. The design draws six of them, and each is a preset here rather
 /// than eight arguments at the call site.
 struct FormFieldMetrics: Sendable {
     /// Plate behind the field. `nil` where the design lets the screen's own background show
@@ -100,6 +100,42 @@ struct FormFieldMetrics: Sendable {
         glyphGap: 9, glyphSize: 17,
         promptColor: Theme.searchPlaceholder, minimumHeight: nil
     )
+
+    /// A venue's name and subtitle — `border:1.5px solid #EAEBEE;border-radius:13px;padding:13px`
+    /// (`design/Sycamore Flow.dc.html:477`).
+    ///
+    /// Not `.sheetBox`, which is the other field-in-a-sheet and is a *different* box: `#E4E5E9` at
+    /// 1px. Screen 11 draws a heavier rule in a lighter grey, and `VenueSheet` had a private
+    /// `SheetField` drawing exactly that and nothing else in the app could reach it — which is the
+    /// duplication this file's header was written to end. Now that "Shape the camp" edits a venue
+    /// too, it is the second caller, and a preset is what the second caller costs.
+    ///
+    /// The design gives the subtitle `padding:12px 13px` and the name `13px`; one number here,
+    /// because a 1pt difference between two fields stacked 9pt apart is the kind of drift a
+    /// preset exists to stop rather than to preserve. Grown to 44 for the same reason `.sheetBox`
+    /// is: the shorter of the two fields lands a point or two under it on its own.
+    static let venueBox = FormFieldMetrics(
+        fill: Theme.surface, border: Theme.strokeAlt, borderWidth: BorderWidth.input,
+        radius: Radius.tile,
+        horizontalPadding: 13, verticalPadding: 13,
+        promptColor: Theme.inkFaint, minimumHeight: HitTarget.minimum
+    )
+
+    /// A box sized to three digits rather than to a line of prose.
+    ///
+    /// The `#F1F2F5` plate at radius 11 that a stepper's track is drawn on (`IntakeStepper.swift:46`),
+    /// because that is what it stands in for: "Kids at most" reaches 384 and "Coaches at least" 64,
+    /// and a stepper is two hundred taps away from either. Sitting it in the stepper's own plate is
+    /// what says "this is the control on this row" without inventing a fifth kind of box.
+    ///
+    /// The width is the caller's — `.frame(width:)` outside the chrome — because it is the one
+    /// thing that differs by what is counted, and the gutters here are what stop a centred number
+    /// touching the edge of that frame.
+    static let numberBox = FormFieldMetrics(
+        fill: Theme.fill, border: nil, radius: Radius.control,
+        horizontalPadding: Spacing.small, verticalPadding: 9,
+        promptColor: Theme.inkFaint, minimumHeight: HitTarget.minimum
+    )
 }
 
 // MARK: - Chrome
@@ -158,8 +194,13 @@ extension View {
 /// parameter can never reach the `LocalizedStringKey` overload even if the `verbatim:` below were
 /// ever dropped. Anything holding an `@` or a URL-ish token is at risk, so both stay.
 ///
-/// The value colour is not a parameter. All five sites draw it in `Theme.ink` and there is no
-/// design in which a field's own text is anything else.
+/// The value colour is a parameter, and it defaults to the answer six of the seven sites want.
+/// It was pinned to `Theme.ink` on the grounds that "there is no design in which a field's own
+/// text is anything else" — screen 11's subtitle is: `500 14px` in `#71757E`
+/// (`design/Sycamore Flow.dc.html:478`), a filled value rather than a placeholder, and it is drawn
+/// a step back because it is the quieter half of a two-field block. Not folded into
+/// `FormFieldMetrics`, because the two fields sharing that block share the box and differ only
+/// here.
 struct FormField: View {
     @Binding var text: String
     /// The example value shown while the field is empty.
@@ -174,6 +215,8 @@ struct FormField: View {
     /// sheet sets its placeholder at `400` against the field's `500`. `nil` follows the value,
     /// which is what SwiftUI does unaided.
     var promptType: TypeStyle?
+    /// What the value is drawn in. Ink everywhere but a venue's subtitle.
+    var valueColor: Color
     /// Leading SF Symbol.
     var icon: String?
     /// Focus lives with the caller, not in here. Two screens put the keyboard down before they
@@ -188,6 +231,7 @@ struct FormField: View {
         metrics: FormFieldMetrics = .outlined,
         type: TypeStyle = .fieldValue,
         promptType: TypeStyle? = nil,
+        valueColor: Color = Theme.ink,
         icon: String? = nil,
         focus: FocusState<Bool>.Binding
     ) {
@@ -197,6 +241,7 @@ struct FormField: View {
         self.metrics = metrics
         self.type = type
         self.promptType = promptType
+        self.valueColor = valueColor
         self.icon = icon
         self.focus = focus
     }
@@ -221,7 +266,7 @@ struct FormField: View {
     private var input: some View {
         TextField("", text: $text, prompt: promptText)
             .textFieldStyle(.plain)
-            .typeStyle(type, color: Theme.ink)
+            .typeStyle(type, color: valueColor)
             .focused(focus)
             .accessibilityLabel(label)
     }
@@ -243,7 +288,7 @@ struct FormField: View {
 // MARK: - Previews
 
 /// Every preset side by side, empty and filled. Each field needs its own `@FocusState`, which a
-/// `#Preview` body cannot declare five of, so the gallery is a view.
+/// `#Preview` body cannot declare seven of, so the gallery is a view.
 ///
 /// Drawn in shared type rows rather than in the feature aliases the real screens pass
 /// (`.intakeFieldTitle`, `.onTheDayValue`, `.intakeJoinCode`). Those are one-line aliases onto
@@ -255,12 +300,16 @@ private struct FormFieldGallery: View {
     @State private var code = ""
     @State private var collector = ""
     @State private var search = "Austin"
+    @State private var venueName = "Main Courts"
+    @State private var maxKids = "48"
 
     @FocusState private var emailFocus: Bool
     @FocusState private var campNameFocus: Bool
     @FocusState private var codeFocus: Bool
     @FocusState private var collectorFocus: Bool
     @FocusState private var searchFocus: Bool
+    @FocusState private var venueNameFocus: Bool
+    @FocusState private var maxKidsFocus: Bool
 
     var body: some View {
         ScrollView {
@@ -320,6 +369,30 @@ private struct FormFieldGallery: View {
                         icon: "magnifyingglass",
                         focus: $searchFocus
                     )
+                }
+
+                labelled("venueBox — a venue's name") {
+                    FormField(
+                        "Venue name",
+                        text: $venueName,
+                        label: "Venue name",
+                        metrics: .venueBox,
+                        type: .fieldTitle,
+                        focus: $venueNameFocus
+                    )
+                }
+
+                labelled("numberBox — kids at most") {
+                    FormField(
+                        "48",
+                        text: $maxKids,
+                        label: "Kids at most",
+                        metrics: .numberBox,
+                        type: .stepperValue,
+                        focus: $maxKidsFocus
+                    )
+                    .frame(width: 72)
+                    .multilineTextAlignment(.center)
                 }
             }
             .padding(Spacing.hero)
