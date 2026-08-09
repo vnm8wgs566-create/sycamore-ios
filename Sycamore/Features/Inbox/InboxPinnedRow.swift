@@ -70,11 +70,18 @@ struct InboxPinnedRow: View {
 
     /// The design's `⋯`, as `BlockDetailView` already spells it.
     ///
-    /// Deliberately not a swipe. `.swipeActions` exists only on a `List` row and the Inbox is a
-    /// `ScrollView` of `Card`s — nothing in this app is a `List` — so a swipe here would be a
-    /// hand-rolled drag gesture competing with the scroll view for the same finger, undiscoverable
-    /// and unavailable to VoiceOver without the named action above anyway. The `⋯` is already this
-    /// codebase's answer to "this row has a write on it", and it is visible rather than hidden.
+    /// Deliberately not a swipe, but no longer for the reason this comment used to give. It said a
+    /// hand-rolled swipe "would be a drag gesture competing with the scroll view for the same
+    /// finger" — true of a vertical drag, which is the only kind this app had when that was
+    /// written, and false of a horizontal one, which separates from a scroll by direction.
+    /// `DesignSystem/SwipeToDelete` is that swipe, and its header carries the argument.
+    ///
+    /// What survives is the part specific to this row. Unpinning is not destructive — it takes the
+    /// row out of this section and leaves it in the feed exactly where it was — and a hidden
+    /// gesture is the wrong weight for a reversible act. The `⋯` is this codebase's answer to
+    /// "this row has a write on it", the design draws one here, and it is visible rather than
+    /// hidden. `SwipeToDelete` would also be the wrong shape: it offers one destructive action and
+    /// nothing else.
     private var unpinMenu: some View {
         Menu {
             // Not `role: .destructive`. Unpinning takes the row out of this section and leaves it

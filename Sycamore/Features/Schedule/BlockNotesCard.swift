@@ -100,11 +100,18 @@ struct BlockNotesCard: View {
         }
     }
 
-    /// A `⋯` menu rather than a trailing swipe. `swipeActions` is a `List` modifier and there is no
-    /// `List` on `8l` — the whole screen is a `ScrollView` of `Card`s — so a swipe here would have
-    /// to be hand-built from a drag gesture inside a vertical scroll, which is the one gesture
-    /// conflict a hand-built swipe always loses. The menu is also the control the design already
-    /// uses for "the other things you can do to this thing", at the top of this very screen.
+    /// A `⋯` menu rather than a trailing swipe.
+    ///
+    /// `swipeActions` is still unavailable — it is a `List` modifier and there is no `List` under
+    /// `Sycamore/` — but the second half of this comment used to say a hand-built swipe "always
+    /// loses" the gesture conflict, and that has since been shown to be a claim about *vertical*
+    /// drags. A horizontal one is separable by direction; `DesignSystem/SwipeToDelete` is one, and
+    /// its header carries the argument and the design provenance.
+    ///
+    /// The menu stays because of what it is attached to, not because of what is possible. This
+    /// card lives inside a horizontally-paged screen and a note is one line among several a coach
+    /// reads mid-session; the menu is also the control the design already uses for "the other
+    /// things you can do to this thing", at the top of this very screen.
     private func deleteMenu(for note: BlockNote) -> some View {
         Menu {
             Button("Delete note", role: .destructive) { delete(note) }
