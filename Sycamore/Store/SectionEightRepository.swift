@@ -92,7 +92,57 @@ protocol SectionEightData: Sendable {
     /// into the day's history, so it returns the whole list rather than one row.
     func resolveInboxItem(_ itemID: InboxItem.ID, forCamp campID: Camp.ID) async throws -> [InboxItem]
 
+    /// Writes a row the reader composed — today, an admin's pinned message.
+    ///
+    /// Admin-gated on the server, which is the difference between this and `logActivity` below:
+    /// `pinned` is an admin-only column, so a 403 here really is somebody being told no and is
+    /// renamed to say so. Its one caller is `AppStore.addPinnedMessage`, which sets exactly that
+    /// flag.
+    ///
+    /// **The offline build keeps the `createdAt` it is handed and Postgres does not** —
+    /// `inboxRow(_:)` omits `created_at`, so the column's `now()` default wins
+    /// (`SupabaseRepository+SectionEight.swift:583-590`). No caller of *this* overload backdates
+    /// a row, so nothing can see the difference through this door; the one that does is the
+    /// venue-scoped `addInboxItem(_:campID:)` below, and its note explains why it stays that way.
     func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem]
+
+    /// Records something that has just happened, as an `.activity` row on the feed.
+    ///
+    /// Its writers are `AppStore`'s four day-running intents — away, early pick-up, a kid moved,
+    /// a coach assigned — and each writes its row inside the same `perform` as the camp write it
+    /// describes, so the graph and the feed cannot drift apart.
+    ///
+    /// Separate from `addInboxItem` rather than a call to it, for two reasons that pull the same
+    /// way:
+    ///
+    /// **The row is stamped where it lands, not where it was composed.** Postgres stamps
+    /// `created_at` itself and throws away whatever the client sent; the offline build honoured
+    /// the client's value, so one door answered a question two ways depending on which build you
+    /// were running. That is not cosmetic — `8r` cuts its headings on `createdAt` at noon and
+    /// five (`InboxBucket.swift:31-37`), so a device whose clock has drifted an hour would file
+    /// its own morning under everybody else's afternoon. Both implementations stamp on arrival
+    /// now, which is the way round a server can enforce: a phone can lie about the time and
+    /// `now()` cannot.
+    ///
+    /// **It is not an admin write and must not be reported as one.** `addInboxItem` is gated
+    /// because it may set `pinned`; an activity row never does, and a coach marking a kid away
+    /// who was told "Only an admin can do that." would go looking for an admin over a permission
+    /// they already hold. See the Postgres implementation.
+    ///
+    /// An activity row is never actionable either, so it carries no `actionLabel` — the column's
+    /// own CHECK admits one only on `needs_action`.
+    ///
+    /// Answers with the camp's whole Inbox, like every other write in this protocol. Cheaper
+    /// would be to hand back the one row just written: `PostgRESTClient.insert` has no
+    /// `returning:` overload the way `update` and `delete` do (`PostgRESTClient.swift:41`, `:76`,
+    /// `:89`),
+    /// so the Postgres side spends a second round trip re-reading rows it mostly already had, and
+    /// that read has no `limit` on it. **Deliberately not fixed here.** Adding the overload
+    /// changes shared infrastructure every relation inserts through, `addInboxItem` and
+    /// `addBlockNote` already pay exactly the same cost, and making one of the three cheap in a
+    /// different shape from the other two is how a client grows two ways of doing one thing. It
+    /// wants doing for all of them at once.
+    func logActivity(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem]
 
     /// Puts a row at the top of the Inbox, or takes it back down. Admin-only on the server.
     ///
@@ -111,6 +161,14 @@ protocol SectionEightData: Sendable {
 
     /// Answers with the new row's *venue*, not its camp. Superseded by
     /// `addInboxItem(_:forCamp:)`.
+    ///
+    /// **The one door that takes a caller at their word about `createdAt`, and the one build that
+    /// can.** `InboxView`'s preview harness (`InboxView.swift:167`) seeds the design's morning
+    /// through here at eight, twenty-one and forty minutes back and 16:20 yesterday, and a door
+    /// that stamped all of them `.now` would collapse `8r`'s own feed into a single heading and
+    /// leave the design impossible to preview. Postgres would discard those timestamps, so this
+    /// is a difference only the offline build can express — which is exactly what a seeding door
+    /// is for, and why the running app writes through `logActivity` instead.
     func addInboxItem(_ item: InboxItem, campID: Camp.ID) async throws -> [InboxItem]
 }
 
@@ -470,9 +528,28 @@ extension InMemoryRepository: SectionEightData {
         return try await inboxItems(forCamp: campID)
     }
 
+    /// Keeps the row's own `createdAt`, which is the one thing Postgres will not do — see the
+    /// protocol for who needs that and why nothing in the running app is that caller.
     func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
         sectionEightInbox.append(item)
         return try await inboxItems(forCamp: campID)
+    }
+
+    /// Stamped here rather than trusted from the caller, so this build answers the same question
+    /// the same way Postgres does. See the protocol for the drifted-clock case that decided it.
+    ///
+    /// `.now` and not the app's `AppClock`: the clock is `@MainActor` and this is an actor, and
+    /// the tick it exists for is about *redrawing* a screen once a minute rather than about when
+    /// a row happened. A row happens when it is written.
+    ///
+    /// The stamp is the whole of the difference, so the storing is left to `addInboxItem` rather
+    /// than written out again — two copies of "append it and re-read" is how the next thing added
+    /// to one of them (a sort, a duplicate check) reaches only half the rows. The Postgres pair
+    /// cannot share this way: there, `addInboxItem` carries an admin gate this must not have.
+    func logActivity(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        var row = item
+        row.createdAt = .now
+        return try await addInboxItem(row, forCamp: campID)
     }
 
     func setPinned(
