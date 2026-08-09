@@ -7,10 +7,10 @@
 //  design's own morning on screen without a repository behind it. `OverviewView` is the half
 //  that loads.
 //
-//  The order down the page is the design's: a pinned note if there is one, then your own court
-//  under "Your court", then everything else under "Other courts". An admin has no court of
-//  their own, so both headings fall away and the list is simply every court in rank order —
-//  which is `8i`, exactly.
+//  The order down the page is the design's, with one card added at the top of it: whatever an
+//  admin has pinned, then the block the venue is inside, then your own court under "Your court",
+//  then everything else under "Other courts". An admin has no court of their own, so the two
+//  headings fall away and the list is simply every court in rank order — which is `8i`, exactly.
 //
 //  Every card lists its kids. The design draws exactly one detailed card per frame and this
 //  screen took that literally: it named a single "detailed" court and handed every other card
@@ -20,6 +20,16 @@
 //  opens it in place — the design's frames survive as the folded state of a screen that can now
 //  also be opened.
 //
+//  ── The two writes this screen offers ────────────────────────────────────────────────────────
+//
+//  It had none, and was a read of a morning nobody could act on. It has two now, and they are the
+//  two states it was already drawing and could not fix: a court with no coach (`CourtCoachPicker`,
+//  behind the `+` on an empty pill) and a day with no blocks (`BlockEditorSheet`, behind the call
+//  to action). Deliberately no more than that. Every other gap on this screen already belongs to a
+//  screen that owns it — a court's status to the court screen, a block's coaches to the editor on
+//  Schedule — and turning each of them into an entrance is how a screen you read becomes a screen
+//  you administer.
+//
 
 import SwiftUI
 
@@ -28,12 +38,22 @@ struct OverviewScreen: View {
     let store: AppStore
     /// Every court at the venue, in rank order.
     let courts: [CourtCard]
-    /// The note pinned above them. Nil draws no banner.
-    var pinnedNote: InboxItem?
-    /// The note hanging off the block running on your court.
-    var blockNote: String?
-    /// "Skills rotation · until 10:30" — the line under the screen's title.
-    var nowLine: String?
+    /// The block the venue is inside, unpacked. Nil draws no card — either nothing has started or
+    /// the day is over.
+    var now: OverviewNow?
+    /// The notes an admin has pinned, newest first. Empty draws no banners.
+    var pinnedNotes: [InboxItem] = []
+    /// Whether the day has been read and has no blocks on it at all, which is the one state the
+    /// call to action is for. See `OverviewView.todaysBlocks(for:)` — nil there is "nobody has
+    /// looked yet" and arrives here as `false`, because an unread day is not an empty one.
+    var dayIsUnscheduled: Bool = false
+    /// `Sycamore · 4 courts` — what goes under the screen's title when no block is running.
+    ///
+    /// Only the fallback, not the whole line. The running block's "Skills rotation · until 10:30"
+    /// is `now.headerLine`, which this screen already has in hand — taking both meant passing the
+    /// same fact twice in two shapes, and a caller could hand over a header line that named a
+    /// different block from the card underneath it.
+    var venueLine: String?
 
     /// Courts the reader has opened past their first few kids.
     ///
@@ -42,6 +62,19 @@ struct OverviewScreen: View {
     /// depends on it, and the default is the *folded* card — so an empty set means what it looks
     /// like it means.
     @State private var expandedCourtIDs: Set<Group.ID> = []
+
+    /// The court whose coach is being picked, and the block being composed.
+    ///
+    /// Held here rather than on `store.activeSheet`, which is the position `BlockEditorSheet` and
+    /// `ScheduleView` already take about the same two sheets: `ActiveSheet` lives in the file every
+    /// feature merges, and two callers each owning their own state is simpler than one slot they
+    /// take turns in.
+    ///
+    /// Two `.sheet` modifiers on one view, which `RootView.swift:101` and `:110` already rely on.
+    /// They are reached from different controls and each closes before the other can open, so the
+    /// pair is never both non-nil — which is the only thing stacked sheets are unhappy about.
+    @State private var assigningCoachTo: CourtCoachRequest?
+    @State private var addingBlock: BlockEditorDraft?
 
     /// A card opening is a change of position, which is precisely what Reduce Motion is about.
     /// The rows still arrive; they simply stop travelling.
@@ -58,7 +91,15 @@ struct OverviewScreen: View {
             VStack(spacing: 0) {
                 StatusBarMock()
 
-                ScreenHeader(title: "Overview", subtitle: nowLine, initials: store.avatarInitials) {
+                // The block's line while one is running, the venue's when none is. Pinned up here
+                // as well as drawn on the card below, and deliberately: the scroll runs under this
+                // header, so this is the copy that still answers "what is on now" once a reader has
+                // scrolled past the card to find their child's court.
+                ScreenHeader(
+                    title: "Overview",
+                    subtitle: now?.headerLine ?? venueLine,
+                    initials: store.avatarInitials
+                ) {
                     store.pushedScreen = .profile
                 }
             }
@@ -68,15 +109,25 @@ struct OverviewScreen: View {
 
             ScrollView {
                 LazyVStack(spacing: OverviewTheme.cardGap) {
-                    if let pinnedNote {
-                        PinnedNoteBanner(text: text(of: pinnedNote)) {
+                    // First, because a pin is an interruption: "Court 4 net is loose" is the one
+                    // thing on this screen that is about to go wrong, and it outranks the block
+                    // that is merely running.
+                    ForEach(pinnedNotes) { note in
+                        PinnedNoteBanner(text: text(of: note)) {
                             store.selectedTab = .inbox
                         }
                     }
 
+                    theBlock
+
                     if let myCourt {
                         card(for: myCourt, isMine: true, from: rosters)
-                        otherCourtsHeading
+                        // Only when there are some. A venue with one court, and it is yours, used
+                        // to draw "OTHER COURTS" over nothing at all — a heading VoiceOver
+                        // announces as a landmark leading to an empty region.
+                        if !otherCourts.isEmpty {
+                            otherCourtsHeading
+                        }
                     }
 
                     ForEach(otherCourts) { court in
@@ -102,6 +153,39 @@ struct OverviewScreen: View {
         // other fold in the app. On the set rather than on a card, because the cards are drawn
         // in a loop and there is nothing per-card to hang it off.
         .sensoryFeedback(.selection, trigger: expandedCourtIDs)
+        .sheet(item: $assigningCoachTo) { request in
+            CourtCoachPicker(
+                store: store, courtID: request.id, onClose: { assigningCoachTo = nil }
+            )
+        }
+        .sheet(item: $addingBlock) { draft in
+            // The composer Schedule uses, not a second one. A block written from here lands in
+            // `store.scheduleBlocks`, which is the list this screen reads — so the call to action
+            // is replaced by the card it was asking for, without a tab switch or a re-read.
+            BlockEditorSheet(draft: draft, onClose: { addingBlock = nil })
+                .environment(store)
+        }
+    }
+
+    // MARK: What is happening now
+
+    /// The running block, or the invitation to write one.
+    ///
+    /// The two are mutually exclusive by construction: a day with no blocks on it can have none
+    /// running. They are drawn as one `if`/`else if` all the same, so the middle case — a scheduled
+    /// day between blocks, or after its last — draws neither rather than being told its day is
+    /// empty.
+    ///
+    /// The call to action is gated on there being courts. A venue with none is a more fundamental
+    /// hole and has its own answer at the foot of the screen; offering to write a block for a venue
+    /// with nowhere to run it would be two empty states arguing about which problem to fix first.
+    @ViewBuilder
+    private var theBlock: some View {
+        if let now {
+            RunningBlockCard(now: now, onOpenCoach: { store.present(.staff($0)) })
+        } else if dayIsUnscheduled, !courts.isEmpty {
+            OverviewEmptyDayHero(day: store.today, onAdd: addBlock)
+        }
     }
 
     // MARK: Which court is whose
@@ -117,23 +201,24 @@ struct OverviewScreen: View {
         return courts.first { $0.id == myCourtID }
     }
 
+    /// Everything but your own court, with the running block's courts floated to the front.
+    ///
+    /// Your court stays first regardless. It is first because it is yours, which is a fact about
+    /// the reader; the block's ordering is a fact about the morning, and the two are not in
+    /// competition — a coach standing on Court 3 during a warm-up on Courts 1–2 still wants their
+    /// own card at the top.
+    ///
+    /// `preferring` is a sort and not a filter; see `OverviewNow`. On the blocks the app writes
+    /// today `courtIDs` is always empty and this is the identity, which is exactly what it should
+    /// be until the editor that populates the column lands.
     private var otherCourts: [CourtCard] {
-        guard let myCourt else { return courts }
-        return courts.filter { $0.id != myCourt.id }
+        let rest = myCourt.map { mine in courts.filter { $0.id != mine.id } } ?? courts
+        return now?.preferring(rest) ?? rest
     }
 
     // MARK: Pieces
 
     /// One card, with its court's list already cut to what the card should draw.
-    ///
-    /// **The note no longer takes the roster's room.** This screen used to fold your own court
-    /// to three kids instead of five whenever a block note was hanging off it, on the argument
-    /// that the note took the room the last two lines would have had. That argument was about a
-    /// card with one chance to show its list: whatever it left out was gone. Now every card
-    /// draws a preview and the rest is one tap away, so the note and the roster are no longer
-    /// competing for the same room — and the old rule had the sign backwards besides. A note
-    /// only ever hangs off *your* court, so it made the one card you care most about the one
-    /// listing fewest kids.
     private func card(
         for court: CourtCard, isMine: Bool, from rosters: [Group.ID: CourtRoster]
     ) -> some View {
@@ -150,8 +235,7 @@ struct OverviewScreen: View {
             isMine: isMine,
             roster: roster,
             isRosterExpanded: isExpanded,
-            note: isMine ? blockNote : nil,
-            onOpenCoach: openCoach(court),
+            onOpenCoach: coachAction(for: court),
             // A court small enough to draw whole gets no control. `isFoldable` asks
             // `GroupsRules.visibleCount` the same question the fold answers, so the row and the
             // list can never disagree about whether there is anything behind it.
@@ -174,11 +258,32 @@ struct OverviewScreen: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    /// Only a coach the camp actually knows gets a tappable pill; a card carrying a name from
-    /// a stale read has nothing to open.
-    private func openCoach(_ court: CourtCard) -> (() -> Void)? {
-        guard let coachID = court.coachID, store.staffMember(coachID) != nil else { return nil }
-        return { store.present(.staff(coachID)) }
+    /// What the coach pill does, which is now two different things.
+    ///
+    /// A court with a coach opens their staff card, as before. A court with **nobody** opens the
+    /// picker that puts somebody on it — the pill draws itself as a `+` when it is handed an action
+    /// with no name, so this closure is the whole of the difference between an inert grey capsule
+    /// and the way to fix what it is complaining about.
+    ///
+    /// A card carrying a coach id the camp cannot resolve still gets nothing, which is the rule
+    /// that was already here and it survives for a sharper reason than before: a stale name has
+    /// nothing to open, *and* the court is not free, so offering to fill it would be offering to
+    /// take it off whoever the read thinks is on it.
+    ///
+    /// **The court's standing coach wins over the block's, deliberately.** `OverviewNow` reads
+    /// `block.coachIDs` and draws it a few cards up; this pill reads `coaches.group_id`, and when
+    /// they disagree the pill keeps saying what the court says. They answer different questions —
+    /// who has this court all day, against who is running this one block, which can be two people
+    /// on a block that spans three courts — and the deciding argument is that this pill is now a
+    /// control over exactly one of them. Let the block's coaches win here and the `+` would write
+    /// `coaches.group_id`, the pill would go on reading `schedule_block_coaches`, and assigning
+    /// somebody would appear to do nothing at all.
+    private func coachAction(for court: CourtCard) -> (() -> Void)? {
+        if let coachID = court.coachID {
+            guard store.staffMember(coachID) != nil else { return nil }
+            return { store.present(.staff(coachID)) }
+        }
+        return { assigningCoachTo = CourtCoachRequest(id: court.id) }
     }
 
     /// The note's own words, not the line about who pinned it.
@@ -192,14 +297,25 @@ struct OverviewScreen: View {
         }
     }
 
+    /// Opens the composer on today, at this venue.
+    ///
+    /// The same act `ScheduleView.addBlock` performs and by the same route — nothing is written
+    /// until somebody has said what the block is called. `store.today` rather than a day this
+    /// screen chose: Overview has no day picker and is only ever about the day you are standing in.
+    private func addBlock() {
+        guard let venueID = store.readVenueID else { return }
+        addingBlock = BlockEditorDraft(creatingIn: venueID, day: store.today)
+    }
+
     // MARK: Empty state
 
     /// Not in the design — every frame there is drawn on a camp in full swing. A venue with no
     /// courts is a real state all the same, and the answer to it is the screen that fixes it.
     ///
-    /// The system's own empty state rather than a hand-set one, as everywhere else in the app:
-    /// it is already announced as such to VoiceOver, and it is the one thing on this screen with
-    /// no design to be exact to.
+    /// The system's own empty state rather than a hand-set one, and unlike the no-blocks card above
+    /// it that is the right shape here: a court is shaped in camp settings, on another screen and
+    /// behind an admin, so there is no action to put on this card. `ScheduleEmptyDayHero.swift:8-11`
+    /// draws the same line between the two kinds of nothing.
     private var emptyState: some View {
         ContentUnavailableView {
             Label("No courts yet", systemImage: "square.split.2x2")
@@ -216,8 +332,8 @@ struct OverviewScreen: View {
     OverviewScreen(
         store: OverviewFixtures.adminStore,
         courts: OverviewFixtures.courts,
-        pinnedNote: OverviewFixtures.pinnedNote,
-        nowLine: OverviewFixtures.nowLine
+        now: OverviewFixtures.now,
+        pinnedNotes: [OverviewFixtures.pinnedNote]
     )
     .showsMockStatusBar()
 }
@@ -226,15 +342,36 @@ struct OverviewScreen: View {
     OverviewScreen(
         store: OverviewFixtures.coachStore,
         courts: OverviewFixtures.courts,
-        pinnedNote: OverviewFixtures.pinnedNote,
-        blockNote: OverviewFixtures.blockNote,
-        nowLine: OverviewFixtures.nowLine
+        now: OverviewFixtures.now,
+        pinnedNotes: [OverviewFixtures.pinnedNote]
+    )
+    .showsMockStatusBar()
+}
+
+/// More than one pin, which is the state the screen used to drop on the floor.
+#Preview("Overview — two pins") {
+    OverviewScreen(
+        store: OverviewFixtures.adminStore,
+        courts: OverviewFixtures.courts,
+        now: OverviewFixtures.now,
+        pinnedNotes: OverviewFixtures.pinnedNotes
+    )
+    .showsMockStatusBar()
+}
+
+/// The call to action: courts in full swing, and nobody has written the day down.
+#Preview("Overview — nothing scheduled") {
+    OverviewScreen(
+        store: OverviewFixtures.adminStore,
+        courts: OverviewFixtures.courts,
+        dayIsUnscheduled: true,
+        venueLine: OverviewFixtures.venueLine
     )
     .showsMockStatusBar()
 }
 
 #Preview("Overview — no courts") {
-    OverviewScreen(store: OverviewFixtures.adminStore, courts: [])
+    OverviewScreen(store: OverviewFixtures.adminStore, courts: [], dayIsUnscheduled: true)
         .showsMockStatusBar()
 }
 
@@ -245,9 +382,8 @@ struct OverviewScreen: View {
     OverviewScreen(
         store: OverviewFixtures.coachStore,
         courts: OverviewFixtures.courts,
-        pinnedNote: OverviewFixtures.pinnedNote,
-        blockNote: OverviewFixtures.blockNote,
-        nowLine: OverviewFixtures.nowLine
+        now: OverviewFixtures.now,
+        pinnedNotes: [OverviewFixtures.pinnedNote]
     )
     .showsMockStatusBar()
     .environment(\.dynamicTypeSize, .accessibility1)
@@ -257,8 +393,8 @@ struct OverviewScreen: View {
     OverviewScreen(
         store: OverviewFixtures.adminStore,
         courts: OverviewFixtures.courts,
-        pinnedNote: OverviewFixtures.pinnedNote,
-        nowLine: OverviewFixtures.nowLine
+        now: OverviewFixtures.now,
+        pinnedNotes: [OverviewFixtures.pinnedNote]
     )
     .showsMockStatusBar()
     .preferredColorScheme(.dark)

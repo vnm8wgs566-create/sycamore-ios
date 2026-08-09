@@ -61,5 +61,10 @@ enum Relation {
     /// because the design writes "Nass & Alina" on one card — a block can have more than one
     /// coach on it, and a single column could only ever say the first of them.
     static let scheduleBlockCoaches = "schedule_block_coaches"
+    /// Which courts a block runs on. A join table for the same reason its sibling above is one —
+    /// a block runs on several courts and a single column could name only the first — and the
+    /// replacement for the courts that used to live inside `schedule_blocks.detail`, where nothing
+    /// could read them back.
+    static let scheduleBlockCourts = "schedule_block_courts"
     static let inboxItems = "inbox_items"
 }

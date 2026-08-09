@@ -4,9 +4,10 @@
 //
 //  `8k` — Schedule, and `8f` — its empty state. "One card per block."
 //
-//  The day chips run Mon–Fri and the blocks below them are the camp's morning in time order.
-//  Which of the two screens draws is not a mode: it is whether `schedule_blocks` has anything
-//  for the day you are standing on. An empty Friday is a real answer, not a loading state.
+//  The day chips are the days the *camp* runs — `Camp.days`, not the calendar's five — and the
+//  blocks below them are that day's morning in time order. Which of the two screens draws is not
+//  a mode: it is whether `schedule_blocks` has anything for the day you are standing on. An empty
+//  Friday is a real answer, not a loading state.
 //
 //  The design is careful about the empty day in a way worth preserving: it does not get a shrug,
 //  it gets one obvious action ("Add the first block") and three shapes to start from. Somebody
@@ -22,13 +23,24 @@ import SwiftUI
 struct ScheduleView: View {
 
     @Environment(AppStore.self) private var store
-    /// Opens on today rather than on the design's Friday. `8f` happens to depict a Friday, but
-    /// the day a person wants when they open Schedule is the one they are standing in.
-    @State private var selectedDay: Weekday = .today
+
+    /// The day the chips have been tapped onto, and nil until one has been.
+    ///
+    /// Nil rather than `.today` seeded at init, which is what this was and what made the screen
+    /// open on Wednesday forever: `Weekday.today` was a stub, and even once it was not, a `@State`
+    /// initialiser runs before the camp has landed — so the opening day would have been decided
+    /// without the one fact that decides it. Held as "what somebody picked" and resolved in
+    /// `selectedDay` instead, so no effect has to keep the two in step.
+    @State private var pickedDay: Weekday?
+
     /// Which day `store.scheduleBlocks` is currently holding, so a day's blocks are never drawn
     /// under another day's chip. Nil until the first read lands, which is what keeps an empty
     /// Tuesday from flashing `8f` on its way to `8k`.
     @State private var loadedDay: Weekday?
+
+    /// The block whose bottom edge has a finger on it. The list stops scrolling while it does —
+    /// a resize is a vertical drag, and the scroll view would otherwise take it.
+    @State private var resizingID: ScheduleBlock.ID?
 
     /// The block `8l` is showing. Re-resolved from the store after every write, so the cover
     /// survives its own edits and closes itself when the block is deleted.
@@ -41,6 +53,32 @@ struct ScheduleView: View {
     /// simpler than one slot they take turns in. Nothing is added to `ActiveSheet`.
     @State private var editing: BlockEditorDraft?
 
+    /// The days this camp actually opens, and the chips the row draws.
+    ///
+    /// Falls back to Monday–Friday twice over — for a camp that has not loaded yet, and for one
+    /// holding the empty set. `CampDays.isValid` is what the camp editor refuses on
+    /// (`Models.swift:212-214`), but nothing stops a row written before that check existed, and a
+    /// chip row with nothing in it is a screen with no way back into itself.
+    private var campDays: CampDays {
+        let days = store.camp?.days ?? .weekdays
+        return days.isValid ? days : .weekdays
+    }
+
+    /// The day being shown: what somebody picked, or the day to open on.
+    ///
+    /// A tap wins — unless the camp has since stopped running that day, in which case the chip it
+    /// selected is no longer drawn and the list underneath would be a day nobody can see or leave.
+    /// Resolving it here rather than correcting `pickedDay` in an `onChange` is what keeps this a
+    /// question with one answer instead of two `@State`s that must never disagree.
+    private var selectedDay: Weekday {
+        if let pickedDay, campDays.contains(pickedDay) { return pickedDay }
+        // Today when the camp runs today, otherwise the next day it does — see
+        // `CampDays.openingDay(from:)`. The fallback is unreachable, `campDays` never being the
+        // empty set, but that method is honest about a camp with no days and this is the only
+        // honest answer to it.
+        return campDays.openingDay(from: store.today) ?? store.today
+    }
+
     private var blocks: [ScheduleBlock] {
         loadedDay == selectedDay ? store.scheduleBlocks : []
     }
@@ -48,8 +86,15 @@ struct ScheduleView: View {
     /// The block the camp is in the middle of, by the clock rather than by which one somebody
     /// remembered to mark done. Shared with Overview and the repository so the two tabs cannot
     /// name different blocks as current.
+    ///
+    /// `store.timeOfDay`, not `TimeOfDay.now()`. Reading the wall clock directly gives an answer
+    /// that is correct once and then held: nothing tells a view to look again, so the highlight
+    /// stayed on the 11:00 block into the afternoon until something else happened to invalidate
+    /// the screen. `store.timeOfDay` is the app's one ticking clock, so the current block moves
+    /// on its own — and, since Overview now reads the same value, the two tabs cannot drift apart
+    /// while both are open, which is the thing this comment already claimed.
     private var currentBlockID: ScheduleBlock.ID? {
-        ScheduleBlock.running(in: blocks, at: .now())?.id
+        ScheduleBlock.running(in: blocks, at: store.timeOfDay)?.id
     }
 
     /// `5 blocks`, and nothing at all on a day with none — the design only draws the count on
@@ -79,8 +124,18 @@ struct ScheduleView: View {
             ScrollView {
                 day
                     .padding(.bottom, Spacing.tabBarClearance)
+                    // Named on the list's own content, so it moves with the blocks rather than
+                    // with the screen: a `.local` drag is measured against a view inside a scroll
+                    // view and is only trustworthy while nothing moves it. `RankView.swift:106`
+                    // and `:353` are the template. The name belongs to `ScheduleResizePlan`,
+                    // whose `drag(by:)` is what assumes it.
+                    .coordinateSpace(name: ScheduleResizePlan.listSpace)
             }
             .scrollIndicators(.hidden)
+            // A resize is a vertical drag on a vertical scroll. The 0.2s hold in front of it is
+            // what wins the arbitration; this is what stops the list sliding for the rest of the
+            // gesture. `RankView.swift:116` does both for the same reason.
+            .scrollDisabled(resizingID != nil)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.surfaceWarm)
@@ -111,27 +166,54 @@ struct ScheduleView: View {
             guard let open = openedBlock else { return }
             openedBlock = day.first { $0.id == open.id }
         }
+        // The last way a resize can be left half-torn-down. `ScheduleBlockCard` nets its own
+        // cancelled gestures, but a card that is *removed* mid-drag never runs that net at all —
+        // a second finger on a day chip, or the block being deleted from `8l` — and the id it
+        // left behind would hold `.scrollDisabled` on for the rest of the session. `blocks` is
+        // the drawn list rather than the store's, so switching day empties it immediately.
+        .onChange(of: blocks) { _, day in
+            guard let resizing = resizingID, !day.contains(where: { $0.id == resizing }) else {
+                return
+            }
+            resizingID = nil
+        }
         .sensoryFeedback(.selection, trigger: selectedDay)
     }
 
     // MARK: Day chips
 
-    /// Five equal chips, the same row Early pick-up draws. `.day` metrics carry no horizontal
-    /// padding by design — the width is meant to come from `fillsWidth`, and without it the
-    /// chips shrink-wrap their labels and the row reads as five different-sized buttons.
+    /// One equal chip per day the camp runs, in the row Early pick-up draws. `.day` metrics carry
+    /// no horizontal padding by design — the width is meant to come from `fillsWidth`, and without
+    /// it the chips shrink-wrap their labels and the row reads as a set of different-sized buttons.
+    ///
+    /// This drew all seven weekdays' worth of calendar — `Weekday.allCases` — which was five chips
+    /// while `Weekday` stopped at Friday and became seven the day it did not. Neither number was
+    /// ever the right one: a swim club that runs Saturday mornings was being offered a Wednesday
+    /// it does not open on, and had no chip for the day it does.
+    ///
+    /// Deliberately not a horizontal `ScrollView` for the seven-day case. Seven chips is the
+    /// widest this row goes and they fit at the default text sizes; a scrolling row would have to
+    /// give up `fillsWidth`, which is the thing keeping the days a row of equal chips rather than
+    /// a ragged line, and it would put a horizontal pan inside a screen that now also owns a
+    /// vertical one.
     ///
     /// The chip is drawn by `Chip` and pressed by the button around it: `.day` stands about
     /// 39pt tall, so the frame outside it carries the tap up to the 44pt minimum without moving
     /// a pixel of what is drawn.
     private var dayChips: some View {
-        HStack(spacing: Spacing.tight) {
-            ForEach(Weekday.allCases) { day in
+        // Resolved once for the row rather than twice per chip. `selectedDay` walks the camp's
+        // days and can reach the clock, and the loop below asked it fourteen times to draw seven
+        // chips.
+        let selected = selectedDay
+
+        return HStack(spacing: Spacing.tight) {
+            ForEach(campDays.ordered) { day in
                 Button {
-                    selectedDay = day
+                    pickedDay = day
                 } label: {
                     Chip(
                         day.shortName,
-                        isSelected: day == selectedDay,
+                        isSelected: day == selected,
                         selectedTone: .accent,
                         metrics: .day,
                         fillsWidth: true
@@ -141,7 +223,7 @@ struct ScheduleView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(day.fullName)
-                .accessibilityAddTraits(day == selectedDay ? .isSelected : [])
+                .accessibilityAddTraits(day == selected ? .isSelected : [])
             }
         }
         // `Spacing.header`, so the picker keeps its edges under the title's. Both are inside the
@@ -174,11 +256,25 @@ struct ScheduleView: View {
                 .padding(.horizontal, Spacing.gutter)
                 .padding(.top, ScheduleMetrics.emptyListTop)
         } else {
+            // Both of these were being asked once *per card*. `currentBlockID` is the expensive
+            // one and always was: it reads the wall clock through `Calendar` and filters the day,
+            // so a twelve-block morning paid for twelve calendar round trips to mark one card.
+            let currentID = currentBlockID
+            let day = blocks
+
             LazyVStack(spacing: ScheduleMetrics.blockGap) {
-                ForEach(blocks) { block in
-                    ScheduleBlockCard(block: block, isCurrent: block.id == currentBlockID) {
-                        openedBlock = block
-                    }
+                ForEach(day) { block in
+                    ScheduleBlockCard(
+                        block: block,
+                        isCurrent: block.id == currentID,
+                        resizingID: $resizingID,
+                        // Still recomputed per card, and that one is worth it: the day is a
+                        // handful of blocks, and a neighbour read off the list as it stands cannot
+                        // go stale between a write landing and the next card being drawn.
+                        nextStart: ScheduleResizePlan.nextStart(after: block, in: day),
+                        onOpen: { openedBlock = block },
+                        onResize: { end in resize(block, to: end) }
+                    )
                 }
 
                 addBlockRow
@@ -247,6 +343,17 @@ struct ScheduleView: View {
         editing = BlockEditorDraft(creatingIn: venueID, day: selectedDay)
     }
 
+    /// A dragged bottom edge, written once.
+    ///
+    /// The whole block goes back, not a patch of it: `updateScheduleBlock` takes a `ScheduleBlock`
+    /// and the repository writes the row, so anything dropped here would be cleared on the server.
+    /// The same reasoning `BlockEditorDraft` carries `status` and `notes` through for.
+    private func resize(_ block: ScheduleBlock, to endsAt: TimeOfDay) {
+        var updated = block
+        updated.endsAt = endsAt
+        Task { await store.updateScheduleBlock(updated) }
+    }
+
     private func apply(_ shape: DayShape) {
         Task { await store.applyDayShape(shape, day: selectedDay) }
     }
@@ -271,7 +378,10 @@ private struct ScheduleLoad: Equatable {
 /// Seeds the day through the repository before showing the screen — `InMemoryRepository`'s
 /// storage is actor-isolated, so the blocks have to be written before the first read.
 private struct SchedulePreview: View {
-    var day: Weekday = .today
+    /// The day the screen will actually open on for the preview camp, rather than `.today` — a
+    /// preview run at a weekend seeded Saturday, opened Monday and drew an empty state that has
+    /// nothing to do with the code being looked at.
+    var day: Weekday = CampDays.weekdays.openingDay() ?? .mon
     var seeded: Bool = true
 
     @State private var store = AppStore.preview
@@ -297,7 +407,7 @@ private struct SchedulePreview: View {
 }
 
 #Preview("Schedule — populated") {
-    SchedulePreview(day: .today)
+    SchedulePreview()
 }
 
 #Preview("Schedule — empty") {

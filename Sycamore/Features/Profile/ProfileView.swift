@@ -9,9 +9,17 @@
 //  design's, and the swipe down is the sheet's. There is no tab bar to clear at the bottom.
 //
 //  The screen is three cards and two buttons. "On today" is where you are standing right now.
-//  "You" is the account — the two things you can change, the one you cannot, and the switch.
-//  "Camps" is the way out to `8u Manage camps` and `8t Camp settings`. Then sign out and delete,
-//  side by side at the bottom so neither is a mis-tap away from the list above.
+//  "You" is the account — the things you can change, the one you cannot, the switch, and the one
+//  that is somebody else's to grant. "Camps" is the way out to `8u Manage camps` and `8t Camp
+//  settings`. Then sign out and delete, side by side at the bottom so neither is a mis-tap away
+//  from the list above.
+//
+//  Your name is the newest of the things you can change, and it is the one that had been missing.
+//  The header has always drawn it in 26pt serif with "No name yet" behind it, and there was
+//  nowhere in the app to answer that — `Account.displayName` was written once, by Apple, on the
+//  first authorisation an Apple ID ever gives (`AppStore.swift:766-772`), and an account created
+//  by email had no name at all. It edits in place through `InlineRowEditor`, the same box the
+//  emergency number opens, rather than pushing a screen the design does not draw.
 //
 
 import SwiftUI
@@ -45,6 +53,12 @@ struct ProfileView: View {
     /// Whether the emergency-number row is open for editing. It swaps itself for a field in
     /// place rather than pushing a screen the design does not draw.
     @State private var isEditingPhone = false
+
+    /// The same, for the name. Two flags rather than one `editingRow` enum: they are answered by
+    /// two different rows and nothing needs them to be mutually exclusive — a person who opened
+    /// both and then typed in one has done nothing wrong, and closing the other for them would be
+    /// the screen taking a decision it was not asked for.
+    @State private var isEditingName = false
 
     /// Mirrors `account.notificationsEnabled`. `SycamoreToggle` wants a real binding, and a
     /// `Binding(get:set:)` built in `body` would be rebuilt on every pass; this is the state the
@@ -345,10 +359,38 @@ struct ProfileView: View {
 
     // MARK: You
 
-    /// One thing you are told, one you can change, one you can switch, and one that is somebody
-    /// else's to grant. The endings say which is which: a value, a caret, a switch, a lock.
+    /// Two things you can change, one you are told, one you can switch, and one that is somebody
+    /// else's to grant. The endings say which is which: a caret, a value, a switch, a lock.
+    ///
+    /// The name is the newest row and it leads, because it is the line the header above draws in
+    /// 26pt serif — the first thing on the screen, and until now the only thing on it nobody
+    /// could change. It was written once, by Apple, on the first authorisation an Apple ID ever
+    /// gives the app (`AppStore.swift:766-772`), and never again: a person who signed in by email
+    /// had no name at all and read "No name yet" under their own initials with nothing to tap.
     private var youCard: some View {
         Card(radius: Radius.settingsCard) {
+            SwiftUI.Group {
+                if isEditingName {
+                    // Seeded from the account it is handed, the same as the phone row below —
+                    // there is no draft on this view for either of them.
+                    InlineRowEditor(
+                        title: "Your name",
+                        field: .name,
+                        value: store.account?.displayName ?? "",
+                        onCancel: { isEditingName = false },
+                        onSave: commitName
+                    )
+                } else {
+                    SettingsRow(
+                        "Your name",
+                        subtitle: nameDetail,
+                        accessory: .chevron
+                    ) {
+                        isEditingName = true
+                    }
+                }
+            }
+
             // No caret, because there is nothing behind it. An address is the account's identity
             // and changing it is a re-verification, not an inline edit.
             SettingsRow("Email", accessory: .value(emailValue))
@@ -358,8 +400,10 @@ struct ProfileView: View {
                 if isEditingPhone {
                     // Seeded from the account it is handed, so the row no longer has to prime a
                     // draft before opening the editor — it is rebuilt each time it appears.
-                    EmergencyPhoneEditor(
-                        phone: store.account?.emergencyPhone ?? "",
+                    InlineRowEditor(
+                        title: "Emergency phone",
+                        field: .emergencyPhone,
+                        value: store.account?.emergencyPhone ?? "",
                         onCancel: { isEditingPhone = false },
                         onSave: commitPhone
                     )
@@ -395,6 +439,26 @@ struct ProfileView: View {
     private var roleValue: String {
         guard let role = store.role else { return "Locked" }
         return "\(role.displayName), locked"
+    }
+
+    /// What the closed row says under "Your name" — the name itself, or the absence of one.
+    ///
+    /// The header above says "No name yet" in the place a name goes, which is a statement; this
+    /// is under a caret, so it is an instruction. Different sentences for the same fact on
+    /// purpose: the two rows are read in different moods.
+    private var nameDetail: String {
+        let name = store.account?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "Add one · how the camp sees you" : name
+    }
+
+    /// Trimmed, and empty is allowed — clearing a name is a real edit, the same way clearing the
+    /// emergency number is. `Account.displayName` is not optional, so an empty one is the empty
+    /// string, and both the header and the row above already know how to say so.
+    private func commitName(_ typed: String) {
+        guard var account = store.account else { return }
+        account.displayName = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        isEditingName = false
+        Task { await store.updateAccount(account) }
     }
 
     private func commitPhone(_ typed: String) {
@@ -525,39 +589,113 @@ private struct AvatarWell: View {
     }
 }
 
-// MARK: - Emergency phone editor
+// MARK: - A row in edit mode
 
-/// The emergency-number row in edit mode: the same title, with the detail line replaced by a
-/// field and the caret replaced by the two buttons that resolve it.
+/// The chrome a settings row wears while it is being changed: the same title, with the detail
+/// line replaced by a field and the caret replaced by the two buttons that resolve it.
 ///
 /// The design never draws this state — it draws a caret and stops — so it is built out of the
 /// pieces the design does specify: the sheet field's 13pt radius over the `grouped` plate, and
 /// the header pill for the actions.
-private struct EmergencyPhoneEditor: View {
+///
+/// One type for both rows that have one. It was `EmergencyPhoneEditor`, privately, until the name
+/// row needed the identical box; the first pass at sharing kept two thin wrappers around a common
+/// chrome view, and the two wrappers were then the same fifty lines twice over — the same
+/// `@State`, the same `@FocusState`, the same seeding init, the same body, and an `input`
+/// differing in a prompt and three keyboard modifiers. A third editable row would have been a
+/// third copy. This is the argument `FormField.swift` makes at length about the five screens that
+/// had each hand-rolled a text input, applied one file down.
+///
+/// **Deliberately not `FormField` itself**, which is that shared input and would be the obvious
+/// answer. Its `FormFieldMetrics` presets are the boxes the design draws, and none of them is this
+/// one — a `grouped` plate with no rule at 12/8 — so reaching for it means either adding a preset
+/// to the design system for a box only Profile draws, or redrawing the emergency number in a box
+/// the design does not put it in. Both are worse than the field below.
+private struct InlineRowEditor: View {
+
+    /// What is being typed.
+    ///
+    /// A closed set of two rather than a `@ViewBuilder` for the field, because the part that
+    /// differs is the *keyboard* — and a keyboard cannot be handed over as a view:
+    /// `keyboardType`, `textContentType` and `textInputAutocapitalization` are modifiers on the
+    /// `TextField` itself and are iOS-only. Named here as presets, the way `FormFieldMetrics`
+    /// names the design's boxes, rather than as five more arguments.
+    enum Field {
+        case emergencyPhone
+        case name
+
+        /// The example shown while the field is empty. Drawn with `Text(verbatim:)` for the same
+        /// reason every other placeholder in the app is: a bare literal is a `LocalizedStringKey`,
+        /// SwiftUI parses those as Markdown, and Markdown autolinks anything address-shaped
+        /// (`FormField.swift:185-196`).
+        var prompt: String {
+            switch self {
+            case .emergencyPhone: "(310) 555-0106"
+            case .name: "Priya Nandan"
+            }
+        }
+
+        #if os(iOS)
+        var keyboard: UIKeyboardType {
+            switch self {
+            case .emergencyPhone: .phonePad
+            case .name: .default
+            }
+        }
+
+        var contentType: UITextContentType {
+            switch self {
+            case .emergencyPhone: .telephoneNumber
+            case .name: .name
+            }
+        }
+
+        /// A phone number has no capitals; a name is capitalised by word.
+        var capitalisation: TextInputAutocapitalization {
+            switch self {
+            case .emergencyPhone: .never
+            case .name: .words
+            }
+        }
+        #endif
+    }
+
+    let title: String
+    let field: Field
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
 
     /// Held here rather than bound up to `ProfileView`, which is eleven computed `some View`
     /// properties, five `@ScaledMetric`s and a handful of store reads inlined into one body. A
     /// draft living up there meant every character of a phone number rebuilt the whole screen to
-    /// redraw one field. This editor is the only thing that reads the number while it is being
-    /// typed. The file already had the reasoning — `:52` argues it for the notifications
-    /// toggle — and simply had not applied it here.
+    /// redraw one field. This editor is the only thing that reads the value while it is being
+    /// typed. The file already had the reasoning — `:52` argues it for the notifications toggle —
+    /// and simply had not applied it here.
+    ///
+    /// Seeded from what it is handed, so the row it replaces has no draft to prime before opening
+    /// it: this is rebuilt from the account each time it appears.
     @State private var text: String
-
-    let onCancel: () -> Void
-    let onSave: (String) -> Void
 
     @FocusState private var isFocused: Bool
 
-    init(phone: String, onCancel: @escaping () -> Void, onSave: @escaping (String) -> Void) {
-        _text = State(initialValue: phone)
+    init(
+        title: String,
+        field: Field,
+        value: String,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (String) -> Void
+    ) {
+        self.title = title
+        self.field = field
         self.onCancel = onCancel
         self.onSave = onSave
+        _text = State(initialValue: value)
     }
 
     var body: some View {
         CardRow(spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: 13, alignment: .top) {
             VStack(alignment: .leading, spacing: Spacing.small) {
-                Text("Emergency phone")
+                Text(title)
                     .typeStyle(.rowLabel, color: Theme.ink)
 
                 input
@@ -572,36 +710,47 @@ private struct EmergencyPhoneEditor: View {
                 HStack(spacing: Spacing.small) {
                     Spacer(minLength: 0)
                     Pill("Cancel", tone: .outline, horizontalPadding: 13, verticalPadding: 8, action: onCancel)
-                    // An emergency number is optional, so clearing it is a real edit and Save is
-                    // always live.
-                    Pill(
-                        "Save", tone: .accent, horizontalPadding: 13, verticalPadding: 8,
-                        action: { onSave(text) }
-                    )
+                    // Both values this draws are optional — an emergency number and a display
+                    // name can each be cleared — so emptying the field is a real edit and Save is
+                    // always live. A gate here would be a control that refuses without saying so.
+                    Pill("Save", tone: .accent, horizontalPadding: 13, verticalPadding: 8, action: save)
                 }
             }
         }
+        // The tap that opened this row *was* the request to type, so the keyboard comes up with
+        // the field. Deliberately unlike `YourNameView`, which is a whole screen arriving on its
+        // own and lets the reader read the question before the keyboard covers half of it.
         .onAppear { isFocused = true }
+    }
+
+    private func save() {
+        onSave(text)
     }
 
     private var input: some View {
         let base = TextField(
             "",
             text: $text,
-            prompt: Text(verbatim: "(310) 555-0106").foregroundStyle(Theme.inkFaint)
+            prompt: Text(verbatim: field.prompt).foregroundStyle(Theme.inkFaint)
         )
         .textFieldStyle(.plain)
         .typeStyle(.fieldValue, color: Theme.ink)
         .focused($isFocused)
+        // Off for both. On the name it is the one that matters: a surname the dictionary has
+        // never seen is a surname, not a typo, and having it quietly rewritten is worse here than
+        // anywhere else in the app.
         .autocorrectionDisabled()
-        .accessibilityLabel("Emergency phone")
-        .onSubmit { onSave(text) }
+        // The row's own title. Once the caret is gone the field carries no visible label of its
+        // own, and "text field" is not the name of a control.
+        .accessibilityLabel(title)
+        .onSubmit(save)
 
+        // Every one of these travels down the environment to the `TextField`.
         #if os(iOS)
         return base
-            .keyboardType(.phonePad)
-            .textContentType(.telephoneNumber)
-            .textInputAutocapitalization(.never)
+            .keyboardType(field.keyboard)
+            .textContentType(field.contentType)
+            .textInputAutocapitalization(field.capitalisation)
             .submitLabel(.done)
         #else
         return base
@@ -622,5 +771,18 @@ private struct EmergencyPhoneEditor: View {
 /// to stand on, so "On today" says so.
 #Preview("8s Profile — admin, no court") {
     ProfileView(store: .previewAdmin)
+        .showsMockStatusBar()
+}
+
+/// An account with nothing in `displayName` — everyone who has ever signed in by email. The
+/// header says "No name yet" and the row underneath now offers to fix it, which is the state
+/// this screen used to draw as a dead end.
+#Preview("8s Profile — no name yet") {
+    let store = AppStore.preview
+    var account = SampleData.account
+    account.displayName = ""
+    store.auth = .signedIn(account)
+
+    return ProfileView(store: store)
         .showsMockStatusBar()
 }

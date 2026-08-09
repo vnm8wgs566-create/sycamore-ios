@@ -62,6 +62,14 @@ struct SetupView: View {
     /// number row makes.
     @State private var isEditingIdentity = false
 
+    /// The same, for the row under it: which days the camp opens.
+    ///
+    /// Two flags rather than one `enum` of "the row being edited", which would say only-one-at-a
+    /// -time in the type. Nothing needs it said: the two editors write different columns, so both
+    /// open at once is untidy rather than wrong, and an enum would have rewritten three existing
+    /// call sites to add a second row.
+    @State private var isEditingDays = false
+
     init(store: AppStore) {
         self.store = store
     }
@@ -540,7 +548,29 @@ struct SetupView: View {
                             subtitle: camp.sport.displayName,
                             accessory: .chevron
                         ) {
-                            beginEditingIdentity(camp)
+                            beginEditingIdentity()
+                        }
+                    }
+                }
+
+                // The operating week, in the row under the camp's own name — the two facts the
+                // Season card can actually change, in the order somebody would say them. It is
+                // asked first on `8b` while the camp is being drawn; this is where a swim club
+                // that has just added a Saturday says so.
+                SwiftUI.Group {
+                    if isEditingDays {
+                        CampDaysEditor(
+                            days: camp.days,
+                            onCancel: { isEditingDays = false },
+                            onSave: commitDays
+                        )
+                    } else {
+                        SettingsRow(
+                            "Days the camp runs",
+                            subtitle: camp.days.summaryLine,
+                            accessory: .chevron
+                        ) {
+                            isEditingDays = true
                         }
                     }
                 }
@@ -564,8 +594,10 @@ struct SetupView: View {
     }
 
     /// Opens the editor. It seeds itself from the camp it is handed, so there is no draft here
-    /// to prime — and nothing on this screen to invalidate while somebody is typing into it.
-    private func beginEditingIdentity(_ camp: Camp) {
+    /// to prime — and nothing on this screen to invalidate while somebody is typing into it. That
+    /// is also why it takes no camp any more: the argument was left over from the draft this
+    /// screen used to hold, and had been ignored since the editor started seeding itself.
+    private func beginEditingIdentity() {
         isEditingIdentity = true
     }
 
@@ -578,6 +610,21 @@ struct SetupView: View {
         guard !name.isEmpty else { return }
         isEditingIdentity = false
         Task { await store.renameCamp(name: name, sport: sport) }
+    }
+
+    /// The same shape one row down, and with no guard in front of it.
+    ///
+    /// There is no empty week for one to catch: `CampDaysPicker` will not switch the last day
+    /// off, so the only value that could arrive here is one the picker cannot produce. A guard
+    /// would turn that impossible bug into a Save button that silently does nothing, which is
+    /// worse than the 400 `camps_camp_days_check` would raise — the two repositories say the
+    /// same, in the doc comments on `setCampDays`.
+    ///
+    /// The two Season editors write different columns, so nothing here has to close the other
+    /// one first: neither carries a field the other would post back.
+    private func commitDays(_ days: CampDays) {
+        isEditingDays = false
+        Task { await store.setCampDays(days) }
     }
 }
 
@@ -700,6 +747,75 @@ private struct CampIdentityEditor: View {
             }
         }
         .sensoryFeedback(.selection, trigger: sport)
+    }
+}
+
+// MARK: - Camp days editor
+
+/// Which days the camp opens, edited in place.
+///
+/// `CampIdentityEditor`'s shape above, with the chips in place of the field: seeded from what it
+/// is handed, its state its own, and the chosen week handed back through `onSave`. That is not
+/// styling — the reason is the one that file gives, that a draft on `SetupView` re-runs seventeen
+/// computed properties per tap, and a set of days is four taps for a camp that runs Tue/Thu.
+///
+/// Cancel and Save rather than writing on each tap, for the same four taps: every one of them
+/// would be a PATCH and a whole camp back, and three of the four would describe a week nobody
+/// meant to have — Mon–Fri on its way to Sat/Sun passes through some odd shapes.
+private struct CampDaysEditor: View {
+
+    @State private var days: CampDays
+
+    let onCancel: () -> Void
+    let onSave: (CampDays) -> Void
+
+    init(days: CampDays, onCancel: @escaping () -> Void, onSave: @escaping (CampDays) -> Void) {
+        _days = State(initialValue: days)
+        self.onCancel = onCancel
+        self.onSave = onSave
+    }
+
+    /// `Mon–Fri · 5 days a week`, and at the floor `Wed · at least one day`.
+    ///
+    /// The second half is where the picker's refusal is explained — at a single day the last chip
+    /// stops answering, and a tap that does nothing is a mystery unless something on screen says
+    /// why. Both readings come from `CampDays` rather than being written here, so the sentence
+    /// cannot come to differ between the screen that sets the week up and the one that changes it;
+    /// `8b`'s summary row draws the same two properties.
+    private var caption: String {
+        "\(days.summaryLine) · \(days.countLine)"
+    }
+
+    var body: some View {
+        CardRow(
+            spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: 13, alignment: .top
+        ) {
+            VStack(alignment: .leading, spacing: Spacing.small) {
+                Text("Days the camp runs")
+                    .typeStyle(.rowLabel, color: Theme.ink)
+
+                CampDaysPicker(days: $days)
+
+                Text(caption)
+                    .typeStyle(.rowSubtitleSmall, color: Theme.inkFaint)
+
+                HStack(spacing: Spacing.small) {
+                    Spacer(minLength: 0)
+                    Pill(
+                        "Cancel", tone: .outline,
+                        horizontalPadding: 13, verticalPadding: 8, action: onCancel
+                    )
+                    // No disabled state to draw. The name field above can be emptied and this
+                    // cannot: the picker refuses to switch the last day off, so there is no
+                    // invalid week for Save to have to refuse.
+                    Pill(
+                        "Save", tone: .accent,
+                        horizontalPadding: 13, verticalPadding: 8,
+                        action: { onSave(days) }
+                    )
+                }
+            }
+        }
     }
 }
 

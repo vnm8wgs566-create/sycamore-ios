@@ -21,9 +21,27 @@ enum OverviewFixtures {
 
     static let camp = SampleData.uclaTennisCamp
 
-    /// The design's day is a Wednesday, which is the day `SampleData` writes its attendance
-    /// for — pinned rather than taken from the clock so a preview reads the same on a Sunday.
-    static let day: Weekday = .wed
+    /// The day these fixtures are built for, which is now simply today.
+    ///
+    /// **A stopgap, not a decision.** It was pinned to Wednesday — the design's own day, and the
+    /// only day `SampleData` writes attendance for — "so a preview reads the same on a Sunday".
+    /// That held while `Weekday.today` was itself stubbed to Wednesday. It is real now, and
+    /// `OverviewScreen` builds its rosters with `store.today`: a pinned fixture day means six days
+    /// out of seven the cards say "8 players" from Wednesday's register while the list under them
+    /// is drawn from today's, so `+N more` stops adding up to the head-count above it. That
+    /// arithmetic is the one thing `OverviewRosterTests` exists to protect, and a preview quietly
+    /// breaking it is a preview teaching the wrong shape.
+    ///
+    /// This trades a preview that was wrong six days a week for one that is *different* seven days
+    /// a week, and what it loses is the thing the frame exists to show: nine on the roll, one away,
+    /// "8 players" over a list and a `+3 more`. That now only appears on a Wednesday.
+    ///
+    /// The real fix is upstairs and one line: `AppStore.clock` is `let clock = AppClock()` with no
+    /// injection point, even though `AppClock.init(now:)` already takes a date for exactly this
+    /// purpose. Make the store's clock settable and this returns to `.wed`, the store is pinned to
+    /// a Wednesday morning, and `runningBlock`'s fixed 9:30–10:30 becomes honest rather than merely
+    /// unused. `AppStore.swift` belongs to another unit; until it moves, this.
+    static var day: Weekday { .today }
 
     private static var sycamoreCourts: [Group] { camp.groups(in: SampleData.sycamore.id) }
 
@@ -53,8 +71,26 @@ enum OverviewFixtures {
         venueID: SampleData.sycamore.id,
         kind: .note,
         title: "Nass pinned a note",
-        detail: "Court 4 net is loose — keep the little ones off it."
+        detail: "Court 4 net is loose — keep the little ones off it.",
+        pinned: true
     )
+
+    /// A second pin, which the design never draws and the screen has to survive.
+    ///
+    /// The whole point of the fixture: Overview used to banner `inboxItems.first { $0.pinned }` and
+    /// silently drop everything behind it, so the state this makes visible is the one that had no
+    /// way of being seen.
+    static let pinnedNotes: [InboxItem] = [
+        pinnedNote,
+        InboxItem(
+            venueID: SampleData.sycamore.id,
+            kind: .note,
+            title: "Dana pinned a note",
+            detail: "Shade tent is up on the lawn — water breaks there, not by the fence.",
+            pinned: true,
+            createdAt: .now.addingTimeInterval(-31 * 60)
+        ),
+    ]
 
     /// The notes written against Court 1 — what the court screen lists under its own heading.
     ///
@@ -83,11 +119,82 @@ enum OverviewFixtures {
         ),
     ]
 
-    /// The note under your own court's header on `8j`.
-    static let blockNote = "Cross-court forehand feeds, then a volley ladder. Cones on the service line."
+    /// What the running block says to do — the block's own `detail`.
+    ///
+    /// It used to be the note drawn under your own court's header on `8j`, which is where the
+    /// design puts it and where `OverviewCourtCard` no longer draws anything: a block runs across
+    /// the venue, so what it says to do is not a fact about one court. It is the instruction on
+    /// `RunningBlockCard` now, above all four of them.
+    private static let blockNote = "Cross-court forehand feeds, then a volley ladder. Cones on the service line."
 
-    /// The line under the screen's title.
-    static let nowLine = "Skills rotation · until 10:30"
+    /// The block the design's morning is inside — `8i`'s "Skills rotation · until 10:30", with the
+    /// three things the header line has nowhere to put: who is on it, what it says, and the notes.
+    ///
+    /// Its times are fixed rather than arranged around the clock, and that is safe because nothing
+    /// resolves this: `OverviewNow` is built from the block directly, and the previews hand the
+    /// result to `OverviewScreen` as an argument. `OverviewView` is the half that asks
+    /// `ScheduleBlock.running(in:at:)` what time it is, and it has a repository behind it.
+    private static let runningBlock = ScheduleBlock(
+        venueID: SampleData.sycamore.id,
+        day: day,
+        startsAt: TimeOfDay(9, 30),
+        endsAt: TimeOfDay(10, 30),
+        title: "Skills rotation",
+        detail: blockNote,
+        notes: [
+            BlockNote(
+                id: UUID(),
+                text: "Two nut allergies in the group — nothing shared from the snack table.",
+                authorName: "Nass",
+                at: .now.addingTimeInterval(-24 * 60)
+            ),
+            BlockNote(
+                id: UUID(),
+                text: "Ball machine is on Court 1 until 11 — keep the far tramlines clear.",
+                authorName: "Dana",
+                at: .now.addingTimeInterval(-9 * 60)
+            ),
+        ],
+        coachIDs: blockCoachIDs
+    )
+
+    /// The two the block names, resolved out of the camp so the pills draw real people.
+    ///
+    /// The people first and their ids from them, rather than the other way round: written as ids
+    /// this resolved two coaches, threw the coaches away, and then rebuilt an index over the whole
+    /// staff list to find the same two again.
+    private static var blockCoaches: [StaffMember] {
+        [sycamoreCourts.first, sycamoreCourts.dropFirst().first]
+            .compactMap { $0.flatMap { camp.coach(forGroup: $0.id) } }
+    }
+
+    private static var blockCoachIDs: [StaffMember.ID] { blockCoaches.map(\.id) }
+
+    /// `8i`'s morning, unpacked — the card's full state.
+    static var now: OverviewNow {
+        OverviewNow(block: runningBlock, coaches: blockCoaches)
+    }
+
+    /// The other end of the card: a block that is only a title and a time. Every camp has these —
+    /// a lunch, a briefing — and the card has to read as a card without a single optional filled in.
+    static var bareNow: OverviewNow {
+        OverviewNow(
+            block: ScheduleBlock(
+                venueID: SampleData.sycamore.id,
+                day: day,
+                startsAt: TimeOfDay(12, 0),
+                endsAt: nil,
+                title: "Lunch"
+            ),
+            coaches: []
+        )
+    }
+
+    /// What the header says on a day with nothing running — `OverviewView.venueLine`'s answer,
+    /// which is what an unscheduled day and a finished one both get. The running block's own line
+    /// is `now.headerLine` and `OverviewScreen` composes it where it draws it, so there is no
+    /// fixture for that half to drift from.
+    static let venueLine = "Sycamore · 4 courts"
 
     static func roster(for card: CourtCard, limit: Int) -> CourtRoster {
         TodayCourts.roster(forCourt: card.id, in: camp, day: day, limit: limit)

@@ -140,6 +140,15 @@ protocol SycamoreRepository: SectionEightData {
     /// nothing wrong. `rollInviteCode` is how a code changes.
     func renameCamp(name: String, sport: Sport, campID: Camp.ID) async throws -> Camp
 
+    /// `8t`'s "Days the camp runs" — the row under it.
+    ///
+    /// Its own intent rather than a third argument to `renameCamp`, for the reason that method
+    /// takes two fields rather than a `Camp`: a write says what moved. A days row that also sent
+    /// the name and the sport could undo a rename made from another device between this screen's
+    /// last read and this write, and would make every days edit re-read the camp picker's
+    /// projection — which stores the name and cannot hold the days at all.
+    func setCampDays(_ days: CampDays, campID: Camp.ID) async throws -> Camp
+
     /// `8t`'s "Roll a new code".
     ///
     /// Keeps the three letters and moves the four digits: the letters are the camp's initials
@@ -504,6 +513,20 @@ actor InMemoryRepository: SycamoreRepository {
         }
     }
 
+    /// Written as given, the way `campDaysRow` sends it. This repository stands in for Postgres,
+    /// and quietly correcting an empty week here would hide from previews and tests exactly the
+    /// bug `camps_camp_days_check` exists to catch.
+    ///
+    /// Through `mutate` like every other camp write, though not for the reason `renameCamp` is:
+    /// `Membership` has no field the days can reach, so the projection refresh at the end of it
+    /// is a no-op here. It costs a dictionary walk offline; `AppStore` is where the equivalent
+    /// refresh is a network round trip, and that one is skipped.
+    func setCampDays(_ days: CampDays, campID: Camp.ID) async throws -> Camp {
+        try mutate(campID) { camp in
+            camp.days = days
+        }
+    }
+
     func rollInviteCode(campID: Camp.ID) async throws -> Camp {
         // Every other camp's code. Postgres has a UNIQUE index on `camps.invite_code` and
         // `SupabaseRepository` finds a collision by being rejected; here the whole set is in
@@ -645,7 +668,11 @@ actor InMemoryRepository: SycamoreRepository {
 
     // MARK: Plumbing
 
-    private func mutate(_ campID: Camp.ID, _ edit: (inout Camp) throws -> Void) throws -> Camp {
+    /// Internal rather than private, the way `sectionEightBlocks` above it is and for the same
+    /// reason: `SectionEightRepository.swift` holds half of this actor's conformance, and every
+    /// camp-graph write in it needs the one path that reindexes and refreshes the projections.
+    /// `camps` itself stays private — this is the only door.
+    func mutate(_ campID: Camp.ID, _ edit: (inout Camp) throws -> Void) throws -> Camp {
         guard var camp = camps[campID] else { throw SycamoreError.unknownCamp }
         try edit(&camp)
         camp.reindex()

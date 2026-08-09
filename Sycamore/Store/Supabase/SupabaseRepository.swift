@@ -246,6 +246,7 @@ actor SupabaseRepository: SycamoreRepository {
                 inviteCode: campRecord.inviteCode,
                 icon: campRecord.icon,
                 tint: PostgresEnum.tint(campRecord.tint),
+                days: campRecord.days,
                 venues: sites.map(Venue.init),
                 players: players.map { Player($0, overallRank: 0, courtRank: 0) }
             )
@@ -324,6 +325,7 @@ actor SupabaseRepository: SycamoreRepository {
             inviteCode: campRecord.inviteCode,
             icon: campRecord.icon,
             tint: PostgresEnum.tint(campRecord.tint),
+            days: campRecord.days,
             venues: siteRecords.map(Venue.init)
         )
         let siteIDs = siteRecords.map(\.id)
@@ -565,6 +567,23 @@ actor SupabaseRepository: SycamoreRepository {
             try await db.update(
                 Relation.camps,
                 set: Self.campRow(name: trimmed, sport: sport),
+                where: PostgRESTQuery().eq("id", campID)
+            )
+            return try await camp(id: campID)
+        }
+    }
+
+    /// The same PATCH one row down, and no guard beside it.
+    ///
+    /// `renameCamp` catches an empty name because the field above can produce one; nothing can
+    /// produce an empty week — `CampDaysPicker` refuses to switch the last day off — so the only
+    /// way a 0 reaches here is a bug in that picker, and `camps_camp_days_check` naming itself is
+    /// how a bug should be heard about. Substituting a default would write days nobody chose.
+    func setCampDays(_ days: CampDays, campID: Camp.ID) async throws -> Camp {
+        try await serialised(campID) {
+            try await db.update(
+                Relation.camps,
+                set: Self.campDaysRow(days),
                 where: PostgRESTQuery().eq("id", campID)
             )
             return try await camp(id: campID)

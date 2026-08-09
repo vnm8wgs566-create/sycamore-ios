@@ -33,18 +33,39 @@ enum InboxPreviewItems {
 
     /// - Parameter venueID: the venue the rows belong to, so a preview can seed the same one
     ///   the screen will go on to ask for.
+    ///
+    /// Every row here is an **offset from `now`**, which it was not. Three of them used to be
+    /// clock times — 9:44, 9:31, 9:12, built from the day's midnight — so the feed under them
+    /// read "This morning" at four in the afternoon, at ten at night, and for ever. That is the
+    /// one thing `InboxBucket` exists to stop a screen doing (`InboxBucket.swift:5-9`), and the
+    /// fixture meant to demonstrate it was quietly the counter-example.
+    ///
+    /// Offsets are what the design already used for half the file anyway, and the whole mock is
+    /// one clock: the top ask is drawn "8 min" old, the one under it forty, and 9:52 less those
+    /// forty minutes is exactly the 9:12 the last feed row was written at. So the morning is
+    /// 8, 21 and 40 minutes back, which is the same picture with a clock that moves.
+    ///
+    /// Near a boundary the morning genuinely splits — a preview opened at 12:05 puts the eight
+    /// minute-old row under "This afternoon" and the forty minute-old one under "This morning".
+    /// That is not a flaw in the fixture; it is the screen being right, and it is only visible
+    /// at all now that the fixture can reach noon.
     static func morning(
         venueID: Venue.ID,
         now: Date = .now,
         calendar: Calendar = .current
     ) -> [InboxItem] {
-        let midnight = calendar.startOfDay(for: now)
-        func at(_ hour: Int, _ minute: Int, daysAgo: Int = 0) -> Date {
-            calendar.date(
-                byAdding: DateComponents(day: -daysAgo, hour: hour, minute: minute),
-                to: midnight
-            ) ?? midnight
+        func minutesAgo(_ minutes: Int) -> Date {
+            now.addingTimeInterval(-Double(minutes) * 60)
         }
+
+        // Yesterday's row is the one that still wants a clock time, because the hour is the only
+        // part of it that does not matter: any time yesterday draws the same "Yesterday" heading,
+        // and the design's 16:20 is what it says on the row. The last use of the day's own
+        // midnight, so it is worked out here rather than through a helper nothing else calls.
+        let midnight = calendar.startOfDay(for: now)
+        let yesterdayAfternoon = calendar.date(
+            byAdding: DateComponents(day: -1, hour: 16, minute: 20), to: midnight
+        ) ?? midnight
 
         // Stand-ins for the people and courts the rows reference. Which of these are filled in
         // matters — `InboxIconTile` reads them to pick the glyph and its tint.
@@ -59,44 +80,53 @@ enum InboxPreviewItems {
                 detail: "Nass asked",
                 actionLabel: "Review",
                 actorID: nass, playerID: austin,
-                // Relative rather than a clock time: this row's second line is an age, and the
-                // design draws it at eight minutes old.
-                createdAt: now.addingTimeInterval(-8 * 60)
+                // The two rows the design labels by age rather than by clock — "8 min", "40 min"
+                // — and the pair the rest of the morning is now measured against.
+                createdAt: minutesAgo(8)
             ),
             InboxItem(
                 venueID: venueID, kind: .needsAction,
                 title: "LATC is 2 coaches short",
                 detail: "10:45 match play · unassigned",
                 actionLabel: "Assign",
-                createdAt: now.addingTimeInterval(-40 * 60)
+                createdAt: minutesAgo(40)
             ),
+            // The one row here whose sentence the app itself now writes differently. `8r` draws
+            // "Mum collects at the gate", and there is no field on `InboxItem` for who collects
+            // a kid — so `AppStore.pickupActivity` writes the day and the court instead, and
+            // spells the time `2:30pm`. The design's line is kept as the scenery it is; the row
+            // beneath it is the shape the shipped one has.
             InboxItem(
                 venueID: venueID, kind: .activity,
                 title: "Serene Chu leaves at 2:30",
                 detail: "Mum collects at the gate · today",
                 playerID: serene,
-                createdAt: at(9, 44)
+                createdAt: minutesAgo(8)
             ),
             InboxItem(
                 venueID: venueID, kind: .note,
                 title: "Hubert · Court 2",
                 detail: "Two in sandals, benched until shoes turn up",
                 groupID: court2,
-                createdAt: at(9, 31)
+                createdAt: minutesAgo(21)
             ),
+            // Written "Dana · 9:12" until the timestamps above it started moving, at which point
+            // a clock time typed into the second line was a number that disagreed with the row it
+            // was on. `AppStore.awayActivity` never wrote one — the court and the author are what
+            // it puts there, and the feed's own heading is where the time lives.
             InboxItem(
                 venueID: venueID, kind: .activity,
                 title: "Jonah Reyes marked away",
-                detail: "Dana · 9:12",
-                actorID: dana, playerID: jonah,
-                createdAt: at(9, 12)
+                detail: "Court 2 · by Dana",
+                actorID: dana, playerID: jonah, groupID: court2,
+                createdAt: minutesAgo(40)
             ),
             InboxItem(
                 venueID: venueID, kind: .activity,
                 title: "Rank order published",
                 detail: "Sycamore · 6 groups · by Nass",
                 actorID: nass,
-                createdAt: at(16, 20, daysAgo: 1)
+                createdAt: yesterdayAfternoon
             ),
         ]
     }

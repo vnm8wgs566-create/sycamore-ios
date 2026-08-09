@@ -51,6 +51,22 @@ protocol SectionEightData: Sendable {
         fromDay: Weekday, toDay: Weekday, venueID: Venue.ID, campID: Camp.ID
     ) async throws -> [ScheduleBlock]
 
+    /// The block editor's "put every kid on these courts" and "divide them evenly".
+    ///
+    /// Returns the camp rather than the day's blocks, and is the one method on this protocol that
+    /// does. It writes no block: the courts were saved a moment ago by `addScheduleBlock` or
+    /// `updateScheduleBlock`, and what moves here is where the kids stand — which is the camp
+    /// graph, and which the file's first convention says comes back whole.
+    ///
+    /// One call for the whole deal rather than one per court, and that is the point of it being
+    /// here at all. Both implementations run it as a single mutation, so a spread either seats
+    /// every kid or seats none: a per-court loop that failed halfway would leave kids pulled off
+    /// the courts they were on and never put down anywhere.
+    func spreadKids(
+        _ spread: BlockKidSpread, overCourts courtIDs: [Group.ID],
+        atVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp
+
     /// Pins a line to a block. Returns the day, because the count on every other card is drawn
     /// from the same read and a note added to one block renumbers nothing else — but the caller
     /// should not have to know that.
@@ -92,7 +108,57 @@ protocol SectionEightData: Sendable {
     /// into the day's history, so it returns the whole list rather than one row.
     func resolveInboxItem(_ itemID: InboxItem.ID, forCamp campID: Camp.ID) async throws -> [InboxItem]
 
+    /// Writes a row the reader composed — today, an admin's pinned message.
+    ///
+    /// Admin-gated on the server, which is the difference between this and `logActivity` below:
+    /// `pinned` is an admin-only column, so a 403 here really is somebody being told no and is
+    /// renamed to say so. Its one caller is `AppStore.addPinnedMessage`, which sets exactly that
+    /// flag.
+    ///
+    /// **The offline build keeps the `createdAt` it is handed and Postgres does not** —
+    /// `inboxRow(_:)` omits `created_at`, so the column's `now()` default wins
+    /// (`SupabaseRepository+SectionEight.swift:583-590`). No caller of *this* overload backdates
+    /// a row, so nothing can see the difference through this door; the one that does is the
+    /// venue-scoped `addInboxItem(_:campID:)` below, and its note explains why it stays that way.
     func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem]
+
+    /// Records something that has just happened, as an `.activity` row on the feed.
+    ///
+    /// Its writers are `AppStore`'s four day-running intents — away, early pick-up, a kid moved,
+    /// a coach assigned — and each writes its row inside the same `perform` as the camp write it
+    /// describes, so the graph and the feed cannot drift apart.
+    ///
+    /// Separate from `addInboxItem` rather than a call to it, for two reasons that pull the same
+    /// way:
+    ///
+    /// **The row is stamped where it lands, not where it was composed.** Postgres stamps
+    /// `created_at` itself and throws away whatever the client sent; the offline build honoured
+    /// the client's value, so one door answered a question two ways depending on which build you
+    /// were running. That is not cosmetic — `8r` cuts its headings on `createdAt` at noon and
+    /// five (`InboxBucket.swift:31-37`), so a device whose clock has drifted an hour would file
+    /// its own morning under everybody else's afternoon. Both implementations stamp on arrival
+    /// now, which is the way round a server can enforce: a phone can lie about the time and
+    /// `now()` cannot.
+    ///
+    /// **It is not an admin write and must not be reported as one.** `addInboxItem` is gated
+    /// because it may set `pinned`; an activity row never does, and a coach marking a kid away
+    /// who was told "Only an admin can do that." would go looking for an admin over a permission
+    /// they already hold. See the Postgres implementation.
+    ///
+    /// An activity row is never actionable either, so it carries no `actionLabel` — the column's
+    /// own CHECK admits one only on `needs_action`.
+    ///
+    /// Answers with the camp's whole Inbox, like every other write in this protocol. Cheaper
+    /// would be to hand back the one row just written: `PostgRESTClient.insert` has no
+    /// `returning:` overload the way `update` and `delete` do (`PostgRESTClient.swift:41`, `:76`,
+    /// `:89`),
+    /// so the Postgres side spends a second round trip re-reading rows it mostly already had, and
+    /// that read has no `limit` on it. **Deliberately not fixed here.** Adding the overload
+    /// changes shared infrastructure every relation inserts through, `addInboxItem` and
+    /// `addBlockNote` already pay exactly the same cost, and making one of the three cheap in a
+    /// different shape from the other two is how a client grows two ways of doing one thing. It
+    /// wants doing for all of them at once.
+    func logActivity(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem]
 
     /// Puts a row at the top of the Inbox, or takes it back down. Admin-only on the server.
     ///
@@ -111,6 +177,14 @@ protocol SectionEightData: Sendable {
 
     /// Answers with the new row's *venue*, not its camp. Superseded by
     /// `addInboxItem(_:forCamp:)`.
+    ///
+    /// **The one door that takes a caller at their word about `createdAt`, and the one build that
+    /// can.** `InboxView`'s preview harness (`InboxView.swift:167`) seeds the design's morning
+    /// through here at eight, twenty-one and forty minutes back and 16:20 yesterday, and a door
+    /// that stamped all of them `.now` would collapse `8r`'s own feed into a single heading and
+    /// leave the design impossible to preview. Postgres would discard those timestamps, so this
+    /// is a difference only the offline build can express — which is exactly what a seeding door
+    /// is for, and why the running app writes through `logActivity` instead.
     func addInboxItem(_ item: InboxItem, campID: Camp.ID) async throws -> [InboxItem]
 }
 
@@ -165,6 +239,64 @@ enum DayShape: String, CaseIterable, Identifiable, Sendable {
              (9, 0, "Ranked pairs", "Courts 1–3"),
              (10, 45, "Ranked pairs", "Round two"),
              (12, 30, "Finals", "Court 1")]
+        }
+    }
+}
+
+// MARK: - What to do with the kids on a block's courts
+
+/// The two things an assigned block can do to the venue's roster when it is saved, and doing
+/// nothing, which is the default.
+///
+/// Here beside `DayShape` rather than in the editor that offers it, for the reason that type gives
+/// a few lines up: `spreadKids` has to *run* one, and a definition that sat in SwiftUI would mean
+/// the repository could not. It is not a property of a block either — no column holds it, and
+/// re-opening a saved block offers `.leaveThem` again. It is an instruction, carried once.
+///
+/// Armed in the sheet and applied at the commit rather than fired on the tap. The courts are not
+/// committed until the button at the foot of the editor is pressed, so a spread that ran on the
+/// tap would deal the camp onto whichever courts happened to be ticked at that moment, and then
+/// sit there being wrong while somebody changed their mind. Applied at the commit, it always uses
+/// the courts that were saved.
+enum BlockKidSpread: Hashable, Sendable, CaseIterable {
+    /// The only one that writes nothing. Where the kids stand is the camp's business until
+    /// somebody says otherwise, and most edits to a block are about its title.
+    case leaveThem
+    /// Every kid at the venue, dealt across the block's courts. "Warm-up, one court, everybody."
+    case allKids
+    /// Only the kids already on those courts, levelled across them. A block running on courts 1–3
+    /// while another owns 4–6 wants this one — levelling three courts must not empty the other
+    /// three into them.
+    case evenly
+
+    var displayName: String {
+        switch self {
+        case .leaveThem: "Leave them where they are"
+        case .allKids: "Put every kid on these courts"
+        case .evenly: "Divide the kids on them evenly"
+        }
+    }
+
+    /// The one line under each option in the editor's picker.
+    var detail: String {
+        switch self {
+        case .leaveThem: "Nothing moves."
+        case .allKids: "Everybody at the venue, dealt top-down by rank."
+        case .evenly: "Nobody is pulled in from a court this block does not use."
+        }
+    }
+
+    /// Runs the spread against a camp — the two `Camp` primitives, chosen between.
+    ///
+    /// A `Camp` mutation and nothing else, which is what lets both repositories share it: the
+    /// in-memory one hands it to `mutate`, the Postgres one to `mutateLadder`, and neither has to
+    /// know what the difference between the two cases is. The arithmetic stays in `Camp` because
+    /// it is a fact about a camp.
+    func apply(to camp: inout Camp, venueID: Venue.ID, courtIDs: [Group.ID]) {
+        switch self {
+        case .leaveThem: break
+        case .allKids: camp.redistribute(in: venueID, across: courtIDs)
+        case .evenly: camp.evenOut(courtIDs, in: venueID)
         }
     }
 }
@@ -248,13 +380,30 @@ extension InMemoryRepository: SectionEightData {
     /// The Postgres read orders notes by `created_at` ascending; the filter below keeps them in
     /// `sectionEightInbox` order, which is insertion order and therefore the same order — with
     /// the array settling the ties that a timestamp on its own leaves open.
+    ///
+    /// A block's `courtIDs` are filtered against the camp's live courts for a reason of the same
+    /// family. `schedule_block_courts.group_id` cascades on delete, so a court removed in Setup
+    /// takes its rows with it and Postgres simply stops returning that id. Nothing does that here
+    /// — `Camp.syncGroups(for:)` trims the `Group` rows and never sees this array — so without the
+    /// filter the offline build would go on claiming a block runs on a court the camp no longer
+    /// has. That is exactly the divergence this file already caught twice, and it would be
+    /// invisible in the only build that has it.
     func scheduleBlocks(
         forVenue venueID: Venue.ID, day: Weekday, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
-        let staff = (try? await camp(id: campID))?.staff ?? []
+        let camp = try? await camp(id: campID)
         let authorNames = Dictionary(
-            staff.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
+            (camp?.staff ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
         )
+        // Every court in the camp, not just this venue's: the foreign key is to `groups`, and a
+        // block naming a court at another venue is wrong in a way that dropping the id would hide.
+        //
+        // Optional, and not `?? []`. A camp this repository does not hold answers "I don't know
+        // which courts exist", where an empty set answers "none of them" — and that second answer
+        // would strip the courts off every block on the way out. `authorNames` can degrade to no
+        // names because a missing name is drawn as an absence; a missing court is drawn as a block
+        // that runs nowhere.
+        let liveCourts = camp.map { Set($0.groups.map(\.id)) }
         // Grouped once rather than filtered per block, which is what the Postgres sibling does
         // and the only reason to write it out here too: two implementations of one question that
         // differ in shape are how they start differing in answer.
@@ -267,6 +416,7 @@ extension InMemoryRepository: SectionEightData {
             .sorted { $0.startsAt.id < $1.startsAt.id }
             .map { block in
                 var block = block
+                if let liveCourts { block.courtIDs = block.courtIDs.filter(liveCourts.contains) }
                 block.notes = (notesByBlock[block.id] ?? [])
                     .map { item in
                         BlockNote(
@@ -365,8 +515,9 @@ extension InMemoryRepository: SectionEightData {
         // Replaces the day rather than appending to it. "Start from a shape" is only offered on
         // an empty day, but a double tap must not produce two overlapping timetables.
         //
-        // A shape names no coaches — `DayShape.blocks` is `(hour, minute, title, detail)` — so
-        // the blocks below arrive with `coachIDs` empty, exactly as they do from Postgres.
+        // A shape names no coaches and no courts — `DayShape.blocks` is
+        // `(hour, minute, title, detail)` — so the blocks below arrive `.regular`, with `coachIDs`
+        // and `courtIDs` empty, exactly as they do from Postgres.
         removeBlocks { $0.venueID == venueID && $0.day == day }
         for spec in shape.blocks {
             sectionEightBlocks.append(
@@ -382,15 +533,22 @@ extension InMemoryRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: venueID, day: day, campID: campID)
     }
 
-    /// Copies a day. The coaches follow the blocks; the notes do not.
+    /// Copies a day. The coaches and the courts follow the blocks; the notes do not.
     ///
     /// The source is read from `sectionEightBlocks` directly rather than through
     /// `scheduleBlocks(forVenue:day:campID:)`, so a copy is made from a block whose `notes` have
     /// not been derived onto it — which is the same answer Postgres gives for a different reason
     /// (there, a copy is minted a fresh id and no `inbox_items` row points at it). `copy.status`
     /// argues the case below: "net still down, play on 1–3" is true of the morning it was written
-    /// and is nobody's instruction for tomorrow. Who is rostered on a block is not that kind of
-    /// fact, so `coachIDs` rides along on the copy.
+    /// and is nobody's instruction for tomorrow. Who is rostered on a block and which courts it
+    /// runs on are not that kind of fact, so `coachIDs`, `kind` and `courtIDs` ride along on the
+    /// copy.
+    ///
+    /// They ride along *for free*, because `copy` is the whole struct. Its Postgres sibling copies
+    /// a row and has to insert each child list against the new ids by hand — see
+    /// `SupabaseRepository.copySchedule`, which names this asymmetry as the reason it does. The
+    /// two agree today; a fourth child relation would have to be added in both places or they
+    /// would stop agreeing silently, in the direction only the real database can show you.
     func copySchedule(
         fromDay: Weekday, toDay: Weekday, venueID: Venue.ID, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
@@ -405,6 +563,22 @@ extension InMemoryRepository: SectionEightData {
             sectionEightBlocks.append(copy)
         }
         return try await scheduleBlocks(forVenue: venueID, day: toDay, campID: campID)
+    }
+
+    /// The deal, as one mutation of the camp — the same shape `partitionCamp` and `evenOut` take
+    /// a few files away, because it is the same kind of write.
+    ///
+    /// `mutate` reindexes afterwards, which is what closes the court-rank gaps `Camp.deal`
+    /// deliberately does not: the deal numbers the courts it fills from 1, and a court it emptied
+    /// keeps whatever ranks were left behind until something renumbers them.
+    func spreadKids(
+        _ spread: BlockKidSpread, overCourts courtIDs: [Group.ID],
+        atVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard camp.venue(venueID) != nil else { throw SycamoreError.unknownVenue }
+            spread.apply(to: &camp, venueID: venueID, courtIDs: courtIDs)
+        }
     }
 
     /// Writes the note as an inbox row, in the same words the Postgres one uses: the block's
@@ -470,9 +644,28 @@ extension InMemoryRepository: SectionEightData {
         return try await inboxItems(forCamp: campID)
     }
 
+    /// Keeps the row's own `createdAt`, which is the one thing Postgres will not do — see the
+    /// protocol for who needs that and why nothing in the running app is that caller.
     func addInboxItem(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
         sectionEightInbox.append(item)
         return try await inboxItems(forCamp: campID)
+    }
+
+    /// Stamped here rather than trusted from the caller, so this build answers the same question
+    /// the same way Postgres does. See the protocol for the drifted-clock case that decided it.
+    ///
+    /// `.now` and not the app's `AppClock`: the clock is `@MainActor` and this is an actor, and
+    /// the tick it exists for is about *redrawing* a screen once a minute rather than about when
+    /// a row happened. A row happens when it is written.
+    ///
+    /// The stamp is the whole of the difference, so the storing is left to `addInboxItem` rather
+    /// than written out again — two copies of "append it and re-read" is how the next thing added
+    /// to one of them (a sort, a duplicate check) reaches only half the rows. The Postgres pair
+    /// cannot share this way: there, `addInboxItem` carries an admin gate this must not have.
+    func logActivity(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        var row = item
+        row.createdAt = .now
+        return try await addInboxItem(row, forCamp: campID)
     }
 
     func setPinned(

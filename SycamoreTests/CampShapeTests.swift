@@ -18,6 +18,18 @@
 //  The second is that a name somebody typed survives a removal, which used to renumber everything
 //  it could reach.
 //
+//  The camp's operating days are pinned here for the first of those reasons and not the second.
+//  Their path is the short one — `8b` writes them straight onto `CampDraft`, which has a field for
+//  them, so they take neither `CampShape` nor the correction pass — but its end is the same:
+//  `camps_camp_days_check` (`check (camp_days > 0 …)`) is another constraint that fires at
+//  `insert`, after the whole onboarding flow has been walked, and the picker's refusal is the only
+//  thing standing in front of it. So the floor, the default the column shares, and the wrap
+//  `openingDay(from:)` does at the end of the week are all asked here, where they can be.
+//
+//  They are asked in *this* suite rather than a new one because this is where "what `8b` collected
+//  reaches the created camp" is already established, and the days are the one answer that screen
+//  collects which no other test would otherwise follow all the way down.
+//
 
 import Testing
 @testable import Sycamore
@@ -356,6 +368,176 @@ struct CampShapeTests {
         var shape = CampShape.initial(venueCount: 1, courts: 6)
         shape.removeVenue(shape.venues[0].id)
         #expect(shape.venues.count == 1)
+    }
+
+    // MARK: - Days
+
+    /// The claim every camp created before this week rests on. `CampDraft`, `CampShape` and the
+    /// column all say Monday-to-Friday on their own, and this is the one place all three are asked
+    /// at once — 31 is `camps.camp_days`' DEFAULT, so a camp saved without opening the day picker
+    /// is written with exactly the number the database would have chosen for it.
+    @Test("A camp created without saying anything runs Monday to Friday")
+    func defaultsToTheWorkingWeek() {
+        var draft = CampDraft()
+        draft.name = "UCLA Tennis Camp"
+
+        let camp = Camp.make(from: CampShape.initial().applied(to: draft), inviteCode: "SYC-0001")
+
+        #expect(camp.days == .weekdays)
+        #expect(camp.days.rawValue == 31)
+        #expect(camp.days.ordered == [.mon, .tue, .wed, .thu, .fri])
+    }
+
+    /// The round trip the screen depends on. The days are the one answer `8b` collects that goes
+    /// straight onto the draft — `CampDraft` has a field for them, where a venue's name and
+    /// courts have none — so they take neither `CampShape` nor the correction pass, and this is
+    /// the whole of their path to the camp.
+    @Test("The week drawn on 8b reaches the created camp")
+    func chosenDaysReachTheCamp() {
+        var draft = CampDraft()
+        draft.name = "Saturday Swim Club"
+        draft.days = CampDays([.sat, .sun])
+
+        let shape = CampShape.initial(venueCount: 2, courts: 6)
+        let camp = Camp.make(from: shape.applied(to: draft), inviteCode: "SYC-0001")
+
+        #expect(camp.days == CampDays([.sat, .sun]))
+        #expect(camp.days.ordered == [.sat, .sun])
+        // And the shape passing through leaves the week alone — `applied(to:)` writes the venue
+        // count and the courts, and must not reset anything the draft was already carrying.
+        #expect(camp.venueCount == 2)
+    }
+
+    /// The refusal, at the layer that owns it. Below this, `CampDays.toggle(_:)` flips
+    /// unconditionally; above it, nothing may hand `camp_days` a zero.
+    @Test("The last day on cannot be switched off")
+    func refusesTheEmptyWeek() {
+        let wednesdayOnly = CampDays([.wed])
+
+        #expect(wednesdayOnly.toggling(.wed) == wednesdayOnly)
+        #expect(wednesdayOnly.toggling(.wed).isValid)
+
+        // Every other day is still free to move, which is what makes the refusal a floor rather
+        // than a lock.
+        #expect(wednesdayOnly.toggling(.sat) == CampDays([.wed, .sat]))
+
+        // And the walk down to it: four of the five weekdays go out, the fifth stays.
+        var week = CampDays.weekdays
+        for day in [Weekday.mon, .tue, .thu, .fri] {
+            week = week.toggling(day)
+        }
+        #expect(week == CampDays([.wed]))
+        #expect(week.toggling(.wed) == CampDays([.wed]))
+    }
+
+    /// What the picker draws its disabled chip from, and what the caption under it reads.
+    ///
+    /// `isSingleDay` is asked of the mask rather than by counting, so the two ways of being at
+    /// the floor — one bit set, and "toggling this day would change nothing" — have to agree at
+    /// every day of the week or a chip somewhere looks live and does nothing.
+    @Test("Being down to one day is the same fact however it is asked")
+    func theFloorIsOneFactTwoWays() {
+        #expect(!CampDays.weekdays.isSingleDay)
+        #expect(!CampDays.everyDay.isSingleDay)
+        #expect(CampDays([.sun]).isSingleDay)
+        // A bit outside the seven is not a day, so it cannot be the one the camp runs.
+        #expect(!CampDays(rawValue: 1 << 7).isSingleDay)
+
+        for day in Weekday.allCases {
+            let onlyThatDay = CampDays([day])
+            #expect(onlyThatDay.isSingleDay)
+            #expect(onlyThatDay.toggling(day) == onlyThatDay)
+            // And a week with room to lose one is never drawn as refusing.
+            #expect(CampDays.everyDay.toggling(day) != .everyDay)
+        }
+    }
+
+    /// A day switched off and on again is the week it started as — the property four taps in the
+    /// editor rely on, and the one a bitmask gets wrong if the bit index and the raw value drift.
+    @Test("A day switched off and back on leaves the week where it was")
+    func togglingIsItsOwnInverse() {
+        for day in Weekday.allCases {
+            let without = CampDays.everyDay.toggling(day)
+            #expect(!without.contains(day))
+            #expect(without.toggling(day) == .everyDay)
+        }
+    }
+
+    /// The backstop `Camp.make(from:)` keeps, because the CHECK it stands in front of fires at
+    /// `insert` — five screens after the picker that should have refused this.
+    @Test("A draft that somehow carried no days is created Monday to Friday")
+    func emptyDraftIsCreatedOnTheDefaultWeek() {
+        var draft = CampDraft()
+        draft.name = "UCLA Tennis Camp"
+        draft.days = CampDays(rawValue: 0)
+
+        let camp = Camp.make(from: draft, inviteCode: "SYC-0001")
+
+        #expect(camp.days == .weekdays)
+        // The CHECK is `camp_days > 0`; this is what stops it being asked.
+        #expect(camp.days.rawValue > 0)
+    }
+
+    // MARK: - Opening day
+
+    /// Schedule opens on the camp's own next day, not on a day of the week it does not run.
+    @Test("A camp that runs today opens on today")
+    func opensOnTodayWhenItRuns() {
+        #expect(CampDays.weekdays.openingDay(from: .wed) == .wed)
+        #expect(CampDays.everyDay.openingDay(from: .sun) == .sun)
+    }
+
+    /// The wrap. A Sunday at a Monday-to-Friday camp is the case that falls backwards into a
+    /// Friday that has already happened if the search runs the wrong way.
+    @Test("A day the camp is shut opens on the next day it runs, wrapping into next week")
+    func wrapsIntoNextWeek() {
+        #expect(CampDays.weekdays.openingDay(from: .sat) == .mon)
+        #expect(CampDays.weekdays.openingDay(from: .sun) == .mon)
+
+        // A weekend club, asked on a Monday, is six days from opening — and answers Saturday
+        // rather than the Sunday just gone.
+        #expect(CampDays([.sat, .sun]).openingDay(from: .mon) == .sat)
+        #expect(CampDays([.sat, .sun]).openingDay(from: .sun) == .sun)
+
+        // One day a week: every other day of the week points at it.
+        let tuesdayOnly = CampDays([.tue])
+        for day in Weekday.allCases {
+            #expect(tuesdayOnly.openingDay(from: day) == .tue)
+        }
+    }
+
+    /// A camp with no days has no opening day, and says so rather than guessing at Monday. Only
+    /// reachable through `CampDays(rawValue: 0)` — the editors and the CHECK both refuse it — and
+    /// the whole reason `openingDay` returns an optional.
+    @Test("A camp with no days has no opening day")
+    func noDaysMeansNoOpeningDay() {
+        #expect(CampDays(rawValue: 0).openingDay(from: .mon) == nil)
+    }
+
+    // MARK: - In words
+
+    /// What the Season row's subtitle and `8b`'s summary line read. Both special cases earn their
+    /// place: "Mon, Tue, Wed, Thu, Fri" is the commonest week in the app spelled at four times the
+    /// length, and "Every day" is the one a list of seven says worst.
+    @Test("The week reads as a phrase where there is one, and as its days otherwise")
+    func summaryLineSpellsTheWeek() {
+        #expect(CampDays.weekdays.summaryLine == "Mon–Fri")
+        #expect(CampDays.everyDay.summaryLine == "Every day")
+        #expect(CampDays([.sat, .sun]).summaryLine == "Sat, Sun")
+        #expect(CampDays([.tue, .thu]).summaryLine == "Tue, Thu")
+        #expect(CampDays([.wed]).summaryLine == "Wed")
+        // Monday first whatever order the days were named in.
+        #expect(CampDays([.fri, .mon]).summaryLine == "Mon, Fri")
+    }
+
+    /// The count, and the sentence that replaces it at the floor. Both screens read this rather
+    /// than spelling the refusal themselves, so the words cannot differ between them.
+    @Test("The count line stops counting and states the floor at one day")
+    func countLineExplainsTheFloor() {
+        #expect(CampDays.weekdays.countLine == "5 days a week")
+        #expect(CampDays.everyDay.countLine == "7 days a week")
+        #expect(CampDays([.sat, .sun]).countLine == "2 days a week")
+        #expect(CampDays([.wed]).countLine == "at least one day")
     }
 
     // MARK: - Fixture

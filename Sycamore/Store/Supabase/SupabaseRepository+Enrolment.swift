@@ -85,6 +85,11 @@ extension SupabaseRepository {
                     "invite_code": .text(code),
                     "icon": .text(camp.icon),
                     "tint": .text(camp.tint.rawValue),
+                    // Written rather than left to the column's DEFAULT of 31, which would be the
+                    // right week for four camps in five and silently the wrong one for the fifth.
+                    // `Camp.make(from:)` has already substituted the default for a draft that
+                    // somehow carried no days, so this is never the 0 the CHECK refuses.
+                    "camp_days": .int(camp.days.rawValue),
                 ])])
                 return
             } catch let error as SupabaseError where error.isUniqueViolation {
@@ -135,6 +140,21 @@ extension SupabaseRepository {
             // down as plain `other` and comes back with its label gone. `PostgresEnum` says so.
             "sport": .text(PostgresEnum.text(sport)),
         ]
+    }
+
+    /// The one column `8t`'s "Days the camp runs" row writes.
+    ///
+    /// Its own payload rather than a third field on `campRow`, which is the same rule that file
+    /// states: send exactly what moved. A days row that also PATCHed `name` and `sport` would be
+    /// able to undo a rename made from another device between this screen's last read and this
+    /// write — the precise failure the doc above says the narrow payload exists to prevent.
+    ///
+    /// Sent as the mask, unclamped. An empty set is 0 and `camps_camp_days_check` refuses it —
+    /// deliberately: every caller has come through an editor that will not let the last day go
+    /// out, so a 0 arriving here is a bug in that editor, and a 400 naming the constraint is a
+    /// better way to hear about it than a week the reader did not choose being written in silence.
+    static func campDaysRow(_ days: CampDays) -> RowValues {
+        ["camp_days": .int(days.rawValue)]
     }
 
     // MARK: Invite codes
