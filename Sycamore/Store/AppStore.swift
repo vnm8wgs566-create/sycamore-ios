@@ -1307,6 +1307,23 @@ extension AppStore {
                 staffID, toGroup: groupID, campID: campID
             )
             try await self.log(row, forCamp: campID)
+            // The courts are re-read here rather than by each caller, and that is the whole of
+            // this addition. `CourtCard.coachName` is not a stored field — the repository derives
+            // it from `today_courts` at read time — so the camp graph coming back from the write
+            // above does not carry it. Without this the write lands and the pill goes on saying
+            // "Needs a coach", which is the screen lying about something it just did.
+            //
+            // Overview's picker had worked around it locally and its own comment says the reload
+            // belongs in here, naming `StaffSheet.swift:141` and `:151` as the two callers that
+            // do not have one. They do now. A fact this write invalidates is this write's to
+            // refresh — a caller that forgets is a screen that goes quietly stale.
+            // Skipped rather than guessed when there is no venue to read: `courts` is scoped to
+            // one, and there is no sensible stand-in for "which one".
+            if let venueID = self.readVenueID {
+                self.courts = try await self.repository.courts(
+                    forVenue: venueID, campID: campID
+                )
+            }
         }
     }
 

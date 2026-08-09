@@ -197,10 +197,10 @@ struct CourtCoachPicker: View {
     /// being picked.
     private func assign(_ staffID: StaffMember.ID) {
         onClose()
-        Task {
-            await store.assignStaff(staffID, toGroup: courtID)
-            await store.loadCourts()
-        }
+        // One call now. The re-read this used to make by hand moved into `assignStaff`, where
+        // the comment above said it belonged — so `StaffSheet`'s two callers get it too, and a
+        // third caller cannot be written without it.
+        Task { await store.assignStaff(staffID, toGroup: courtID) }
     }
 }
 

@@ -86,8 +86,15 @@ struct ScheduleView: View {
     /// The block the camp is in the middle of, by the clock rather than by which one somebody
     /// remembered to mark done. Shared with Overview and the repository so the two tabs cannot
     /// name different blocks as current.
+    ///
+    /// `store.timeOfDay`, not `TimeOfDay.now()`. Reading the wall clock directly gives an answer
+    /// that is correct once and then held: nothing tells a view to look again, so the highlight
+    /// stayed on the 11:00 block into the afternoon until something else happened to invalidate
+    /// the screen. `store.timeOfDay` is the app's one ticking clock, so the current block moves
+    /// on its own — and, since Overview now reads the same value, the two tabs cannot drift apart
+    /// while both are open, which is the thing this comment already claimed.
     private var currentBlockID: ScheduleBlock.ID? {
-        ScheduleBlock.running(in: blocks, at: .now())?.id
+        ScheduleBlock.running(in: blocks, at: store.timeOfDay)?.id
     }
 
     /// `5 blocks`, and nothing at all on a day with none — the design only draws the count on
