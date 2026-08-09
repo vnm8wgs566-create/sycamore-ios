@@ -15,6 +15,11 @@
 //  camp that already exists and `RosterReconciliation` reads nil as silence. A default invented
 //  here is a change proposed there.
 //
+//  There are two ways in now — `parse(_:named:)` cuts separated text, `parse(rows:named:)` takes
+//  a grid `XLSXReader` cut — and everything below the cut is shared. These suites drive the text
+//  one, which is the half with the delimiter sniff and the quoting in it; `XLSXReaderTests` drives
+//  the other and asserts the two agree on the same roster.
+//
 
 import Foundation
 import Testing
@@ -50,24 +55,65 @@ struct IntakeFileHeaderTests {
     }
 
     /// "Sage" contains "age", so the words alone would read this row as a header and eat a kid.
-    /// The number in the third cell is what saves it.
-    @Test("A first row that is data is kept, because nobody calls a column \"12\"")
-    func aFirstRowThatIsDataIsKept() throws {
-        let file = try parse("Sage,Miller,13,F\nLiam,Prior,12,M")
-
-        #expect(file.players.count == 2)
-        #expect(file.players.map(\.firstName) == ["Sage", "Liam"])
+    /// The number in the third cell is what saves it — and what the file is then read as changed:
+    /// a first row of data used to fall back to `first, last, age, gender` by position and is now
+    /// refused. Both halves are asserted here because they are one sentence: the row is
+    /// recognised as data, and data in the first row means there is no header to read.
+    @Test("A first row that is data is recognised as data, because nobody calls a column \"12\"")
+    func aFirstRowThatIsDataIsRecognised() {
+        #expect(throws: IntakeFile.ReadError.noHeaderRow) {
+            try parse("Sage,Miller,13,F\nLiam,Prior,12,M")
+        }
     }
 
-    @Test("Without a header the columns are read as first, last, age, gender, in that order")
-    func withoutAHeaderTheColumnsArePositional() throws {
-        let file = try parse("Serene,Chu,13,F")
+    /// The change this replaced a fallback with, and the reason for it.
+    ///
+    /// `Columns.positional` read column 0 as the first name and column 1 as the surname. The first
+    /// real export anybody tried the importer on is laid out `Last Name, First Name, Age, Gender`
+    /// — surname first, which is how a register sorts and therefore how most sign-up systems
+    /// export. A header-less copy of that file would have imported the whole camp with every name
+    /// the wrong way round: every row clean, nothing on `8d` to notice, and no way to tell
+    /// afterwards which half of the roster had been typed by hand.
+    ///
+    /// Nothing distinguishes the two layouts. "Ara" and "Cameron" are each a first name and a
+    /// surname, so a positional read is a coin toss wearing a parser's clothes. Refusing costs the
+    /// header-less file and a sentence saying what to add; guessing costs the roster.
+    @Test("A file with no header row is refused rather than read in a guessed order")
+    func aFileWithNoHeaderIsRefused() {
+        #expect(throws: IntakeFile.ReadError.noHeaderRow) {
+            try parse("Serene,Chu,13,F")
+        }
+        // The same file with the row that says which column is which reads perfectly, in either
+        // order — which is what the refusal is asking for.
+        #expect(throws: Never.self) {
+            try parse("First name,Last name,Age,Gender\nSerene,Chu,13,F")
+        }
+        #expect(throws: Never.self) {
+            try parse("Last name,First name,Age,Gender\nChu,Serene,13,F")
+        }
+    }
 
-        let kid = try #require(file.players.first)
-        #expect(kid.firstName == "Serene")
-        #expect(kid.lastName == "Chu")
-        #expect(kid.age == 13)
-        #expect(kid.gender == .f)
+    /// The refusal has to say what to do about it — it is drawn under the card that started the
+    /// import, where the fix is to choose a different file or add a row to this one.
+    @Test("The refusal names the four columns the file is missing")
+    func theRefusalNamesTheColumns() {
+        let sentence = IntakeFile.ReadError.noHeaderRow.errorDescription ?? ""
+
+        #expect(sentence.contains("first name"))
+        #expect(sentence.contains("last name"))
+        #expect(sentence.contains("age"))
+        #expect(sentence.contains("gender"))
+    }
+
+    /// A surname-first file is the one the positional fallback got wrong, so it is worth reading
+    /// all the way through rather than only asserting that the header is found.
+    @Test("A surname-first header lands each name in its own column")
+    func aSurnameFirstHeader() throws {
+        let file = try parse("Last Name,First Name,Age,Gender\nChu,Serene,13,Female\nPrior,Liam,12,Male")
+
+        #expect(file.players.map(\.firstName) == ["Serene", "Liam"])
+        #expect(file.players.map(\.lastName) == ["Chu", "Prior"])
+        #expect(file.players.map(\.gender) == [.f, .m])
     }
 
     @Test("A single \"Name\" column splits on the first space, and everything after it is the surname")
@@ -233,15 +279,13 @@ struct IntakeFileCellTests {
 
     /// The defect this replaced: `false` stood for both "the office said no" and "the office had
     /// no such column", and the second is by far the commoner — the column is only found when a
-    /// header cell contains "return", and a file read positionally never has one. A re-import of
-    /// an ordinary four-column file would have proposed un-returning every returning kid.
+    /// header cell contains "return", and most offices send four columns of name, age and gender.
+    /// A re-import of an ordinary file would have proposed un-returning every returning kid.
     @Test("A file with no returning column says nothing about returning, rather than saying no")
     func aFileWithNoReturningColumnSaysNothing() throws {
         let withHeader = try parse("First name,Last name,Age,Gender\nSerene,Chu,13,F")
-        let positional = try parse("Serene,Chu,13,F")
 
         #expect(withHeader.players.first?.isReturning == nil)
-        #expect(positional.players.first?.isReturning == nil)
 
         // And the counts card on `8d` reads exactly as it always did: nobody has been told these
         // kids were here last year, so nobody is counted as returning.

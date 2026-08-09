@@ -21,6 +21,12 @@
 //  what made `isReturning` optional, and it is why nothing here fills a gap in with a default
 //  except `asPlayer()`, which is only ever called on a kid being created.
 //
+//  There are now two kinds of file behind that same shape. `parse(_:named:)` cuts separated text;
+//  `parse(rows:named:)` takes a grid somebody else cut, which is what `XLSXReader` hands over for
+//  a spreadsheet. Everything below the cut — which column is which, what a blank cell means, what
+//  becomes a `Player` — is shared, so an `.xlsx` and a CSV of the same roster produce the same
+//  rows and there is one place to be wrong rather than two.
+//
 
 import Foundation
 
@@ -37,10 +43,10 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
     ///
     /// `false` used to stand for two different files at once: one whose returning column said no,
     /// and one that had no returning column at all. The second is by far the commoner — the
-    /// column is only found when a header cell contains "return", and a file read positionally
-    /// never has one — so reading it as a "no" meant an ordinary four-column file would propose
-    /// **un-returning every returning kid at the camp**. Nothing else on this type lets a file
-    /// say something it never mentioned, and this no longer does either.
+    /// column is only found when a header cell contains "return", and most offices send four
+    /// columns of name, age and gender — so reading it as a "no" meant an ordinary file would
+    /// propose **un-returning every returning kid at the camp**. Nothing else on this type lets a
+    /// file say something it never mentioned, and this no longer does either.
     var isReturning: Bool?
     /// Which venue this kid was answered into, **by position**.
     ///
@@ -224,44 +230,97 @@ enum IntakeFile {
     enum ReadError: LocalizedError, Equatable {
         case unreadable
         case nothingToImport
+        /// The first row is data rather than column names. See `parse(rows:named:)`.
+        case noHeaderRow
 
         var errorDescription: String? {
             switch self {
-            case .unreadable: "We couldn't open that file. A CSV exported from the office works best."
-            case .nothingToImport: "There were no kids in that file."
+            // Reworded when `.xlsx` became a file the picker offers. It said "a CSV exported from
+            // the office works best", which was true when a CSV was the only thing that could be
+            // read and is now advice to convert a file that would have opened.
+            case .unreadable:
+                "We couldn't open that file. A CSV or an Excel .xlsx from the office both work."
+            case .nothingToImport:
+                "There were no kids in that file."
+            case .noHeaderRow:
+                "The first row needs to name the columns — first name, last name, age, gender. Without it we would be guessing which is which."
             }
         }
     }
 
+    /// A file of bytes, whichever of the two kinds it is.
+    ///
+    /// **The way in.** Which reader a file needs is a fact about rosters, so it is answered here
+    /// rather than in the screen that happens to hold the picker — `8c` used to make the call in
+    /// its `.fileImporter` callback, which meant the sniff, the UTF-8 fallback and the mapping to
+    /// `.unreadable` sat in a view, untested, waiting to be re-derived by the second entry point
+    /// (a drop onto the card, a share sheet, "Open in Sycamore").
+    ///
+    /// The kind is read from the **bytes**, not from the extension. An office that renames a
+    /// workbook `roster.csv` is common enough to be worth surviving, and so is the reverse; the
+    /// picker's `allowedContentTypes` decides what may be chosen, and this decides how what was
+    /// chosen is read.
+    static func parse(_ data: Data, named fileName: String) throws -> IntakeImport {
+        if XLSXReader.looksLikeAWorkbook(data) {
+            return try parse(rows: XLSXReader.rows(from: data), named: fileName)
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw ReadError.unreadable
+        }
+        return try parse(text, named: fileName)
+    }
+
     /// Parses a separated-values roster.
     ///
-    /// Tolerant on purpose — the file comes from whatever the office uses, not from us. A header
-    /// row is used when there is one, and its columns are matched by what they contain rather
-    /// than by an exact spelling, so "First Name", "first_name" and "Given name" all land.
-    /// Without a header the columns are read positionally in the order `8c` asks for them.
+    /// Tolerant on purpose — the file comes from whatever the office uses, not from us. The
+    /// delimiter is sniffed, quotes are honoured, and the header's columns are matched by what
+    /// they contain rather than by an exact spelling, so "First Name", "first_name" and "Given
+    /// name" all land.
+    static func parse(_ text: String, named fileName: String) throws -> IntakeImport {
+        let lines = text.split(whereSeparator: \.isNewline)
+        let separator = separator(in: lines)
+        return try parse(rows: lines.map { fields(in: String($0), separator: separator) }, named: fileName)
+    }
+
+    /// The same roster, once somebody else has done the cutting.
+    ///
+    /// Split out when `.xlsx` arrived. A spreadsheet is already a grid — `XLSXReader` hands over
+    /// rows of cells directly — and the alternative was to have it write a CSV for `parse(_:)` to
+    /// cut back up, which would mean inventing quoting rules on the way out and depending on
+    /// `fields(in:separator:)` to undo them exactly. A name with a quote in it is where that goes
+    /// wrong, and it goes wrong silently. So the column logic is shared at the grid, which is the
+    /// shape both readers genuinely have in common, and everything downstream — reconciliation,
+    /// `8d`, the commit — never learns there are two kinds of file.
+    ///
+    /// **Cells are expected trimmed.** Both producers do it at the point they cut the bytes, and
+    /// `IntakePlayer.issue` counts a surname on that promise (`:92-94`).
     ///
     /// **Anything the file does not say stays nil** and becomes a row on `8d` rather than a
     /// guess. That was already true of age and gender; it is now true of returning too, which is
     /// what lets the same parse be reconciled against a camp that already exists. A nil here is
     /// the file's silence, and `RosterReconciliation` never turns silence into an instruction.
-    static func parse(_ text: String, named fileName: String) throws -> IntakeImport {
-        let lines = text.split(whereSeparator: \.isNewline)
-        let separator = separator(in: lines)
-        var rows = lines
-            .map { fields(in: String($0), separator: separator) }
-            .filter { row in row.contains { !$0.isEmpty } }
-
+    ///
+    /// ## A file with no header row is refused
+    ///
+    /// This used to fall back to `first, last, age, gender` by position. That guess was made
+    /// against the layout `8c`'s own example card draws, and the first real export anybody tried
+    /// it on is laid out `Last Name, First Name, Age, Gender` — surname first, which most
+    /// sign-up systems export because that is how a register sorts. A header-less copy of that
+    /// file would have imported eighty kids with their names the wrong way round, every row
+    /// reading cleanly, nothing on `8d` to notice and a whole camp to correct by hand afterwards.
+    ///
+    /// There is no signal that tells the two apart. "Ara" and "Cameron" are both first names and
+    /// both surnames, and no amount of sniffing fixes that — a positional read is a coin toss
+    /// dressed as a parse. So the coin is not tossed: a file whose first row is not a header is
+    /// refused with a sentence saying what to add, which is a thirty-second fix in any
+    /// spreadsheet and cannot be got wrong. Refusing to guess costs the header-less file; guessing
+    /// wrong costs the roster, silently, and is only ever found weeks later.
+    static func parse(rows: [[String]], named fileName: String) throws -> IntakeImport {
+        let rows = rows.filter { row in row.contains { !$0.isEmpty } }
         guard !rows.isEmpty else { throw ReadError.nothingToImport }
+        guard let columns = Columns(header: rows[0]) else { throw ReadError.noHeaderRow }
 
-        let columns: Columns
-        if let header = rows.first, let mapped = Columns(header: header) {
-            columns = mapped
-            rows.removeFirst()
-        } else {
-            columns = .positional
-        }
-
-        let players = rows.compactMap { columns.player(from: $0) }
+        let players = rows.dropFirst().compactMap { columns.player(from: $0) }
         guard !players.isEmpty else { throw ReadError.nothingToImport }
         return IntakeImport(fileName: fileName, players: players)
     }
@@ -349,39 +408,28 @@ enum IntakeFile {
         var gender: Int?
         var isReturning: Int?
 
-        init(firstName: Int?, lastName: Int?, fullName: Int?, age: Int?, gender: Int?, isReturning: Int?) {
-            self.firstName = firstName
-            self.lastName = lastName
-            self.fullName = fullName
-            self.age = age
-            self.gender = gender
-            self.isReturning = isReturning
-        }
-
-        /// `first, last, age, gender` — what a file with no header is read as.
-        static let positional = Columns(
-            firstName: 0, lastName: 1, fullName: nil, age: 2, gender: 3, isReturning: nil
-        )
+        // There is deliberately no `positional` fallback any more, and so no memberwise
+        // initialiser either — it existed to build one. The fallback read `first, last, age,
+        // gender` by position, which reads a surname-first export backwards and cleanly; see
+        // `parse(rows:named:)` for why that is refused rather than guessed at.
 
         /// Nil when the first row is data rather than a header — which is the case as soon as
-        /// one of its cells is a number, because no column is called "12".
+        /// one of its cells is a number, because no column is called "12". Returning nil is now
+        /// the end of the read rather than the start of a guess.
         init?(header: [String]) {
             let keys = header.map(IntakeFile.cellKey)
             guard keys.contains(where: { $0.contains("name") || $0.contains("age") || $0.contains("gender") }),
                   !header.contains(where: { Int($0) != nil })
             else { return nil }
 
-            let first = keys.firstIndex { $0.contains("first") || $0.contains("given") }
-            let last = keys.firstIndex { $0.contains("last") || $0.contains("surname") || $0.contains("family") }
-
-            self.init(
-                firstName: first,
-                lastName: last,
-                fullName: first == nil ? keys.firstIndex { $0.contains("name") } : nil,
-                age: keys.firstIndex { $0.contains("age") },
-                gender: keys.firstIndex { $0.contains("gender") || $0 == "sex" },
-                isReturning: keys.firstIndex { $0.contains("return") }
-            )
+            firstName = keys.firstIndex { $0.contains("first") || $0.contains("given") }
+            lastName = keys.firstIndex { $0.contains("last") || $0.contains("surname") || $0.contains("family") }
+            // Only when there is no first-name column: a file with both "First name" and "Name"
+            // means the second by something else entirely.
+            fullName = firstName == nil ? keys.firstIndex { $0.contains("name") } : nil
+            age = keys.firstIndex { $0.contains("age") }
+            gender = keys.firstIndex { $0.contains("gender") || $0 == "sex" }
+            isReturning = keys.firstIndex { $0.contains("return") }
 
             guard firstName != nil || fullName != nil else { return nil }
         }
@@ -415,6 +463,10 @@ enum IntakeFile {
                 // column that does exist is still a no — an office that tracks returners ticks
                 // them and leaves everyone else empty, and reading those blanks as silence would
                 // mean a re-import could never un-return anybody.
+                //
+                // Most real files have no such column: the header has to contain "return" for one
+                // to be found, and the export this was last checked against is four columns of
+                // name, age and gender. So the common case is silence, and it has to stay silent.
                 isReturning: isReturning.map { Bool(fileValue: value($0)) }
             )
         }

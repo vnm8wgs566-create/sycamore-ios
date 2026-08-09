@@ -23,8 +23,10 @@
 //    tap is what writes the camp — and simply untrue on the way back, where the camp is what you
 //    are already standing in and the word is "Done".
 //
-//  Everything else is shared unchanged, including the `.fileImporter` types, which is the point:
-//  choosing a file is the same act in week three as on day one.
+//  Everything else is shared, including the `.fileImporter` and what it accepts, which is the
+//  point: choosing a file is the same act in week three as on day one. The list of types is one
+//  longer than it was — an `.xlsx` is now a file this reads, through `XLSXReader` — and it grew
+//  for both flows at once precisely because there is only one of it.
 //
 
 import SwiftUI
@@ -89,12 +91,21 @@ struct BringInTheWeekView: View {
         // Cross-platform: `fileImporter` is the SwiftUI wrapper over the document browser and
         // exists on macOS too, so the whole intake path builds for both without a shim.
         //
-        // CSV and plain text only. The copy offers a PDF because the office often sends one,
-        // but a PDF's text needs extracting server-side and there is no server yet; leaving the
-        // type out means the picker greys those files rather than accepting one and failing.
+        // Separated text and Excel. The list is what the app can actually read, which is what a
+        // picker's `allowedContentTypes` is for: a greyed-out file is the truth told before the
+        // tap, where a file accepted and then refused is the same news delivered worse.
+        //
+        // `.xlsx` was the missing one and it is the file most offices actually send — this screen
+        // greyed out the only export a camp had, with nothing on screen to say why. It is the
+        // narrow `UTType.xlsx` rather than the broad `.spreadsheet`; see that token for why.
+        //
+        // Deliberately no PDF. Its text needs extracting server-side and there is no server yet,
+        // so the type stays out and the picker greys those files rather than accepting one and
+        // failing. The card above no longer offers one either — it did, and an offer the picker
+        // refuses is a worse way to learn this than a greyed-out file.
         .fileImporter(
             isPresented: $isChoosingFile,
-            allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText]
+            allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .xlsx]
         ) { result in
             read(result)
         }
@@ -173,7 +184,10 @@ struct BringInTheWeekView: View {
                 .typeStyle(.intakeStatValue, color: Theme.ink)
                 .padding(.top, Spacing.gutterWide)
 
-            Text("A CSV or a PDF from the office. Names, ages and genders come across — nobody is ranked yet.")
+            // The header row is named here rather than only in the failure. It is the one hard
+            // requirement an import has — everything else about the file is tolerated — and
+            // learning it by being refused is exactly what greying out a PDF avoids.
+            Text("A CSV or an Excel file from the office, with a first row naming the columns. Nobody is ranked yet.")
                 .typeStyle(.intakeLead, color: Theme.inkMuted)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -209,6 +223,16 @@ struct BringInTheWeekView: View {
         }
     }
 
+    /// Gets at the bytes and hands them over.
+    ///
+    /// Deliberately only that. Which reader a file needs — a CSV's or a workbook's — is a fact
+    /// about rosters rather than about this screen, so it lives on `IntakeFile` and this branches
+    /// on nothing. It did briefly: the sniff and the UTF-8 fallback were written here, in a
+    /// picker callback, where the second entry point would have had to re-derive them and no test
+    /// could reach them.
+    ///
+    /// What is left is genuinely the view's: the security scope, and the sentence to put under
+    /// the card.
     private func read(_ result: Result<URL, any Error>) {
         do {
             let url = try result.get()
@@ -216,10 +240,10 @@ struct BringInTheWeekView: View {
             let isScoped = url.startAccessingSecurityScopedResource()
             defer { if isScoped { url.stopAccessingSecurityScopedResource() } }
 
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            guard let bytes = try? Data(contentsOf: url) else {
                 throw IntakeFile.ReadError.unreadable
             }
-            onImported(try IntakeFile.parse(text, named: url.lastPathComponent))
+            onImported(try IntakeFile.parse(bytes, named: url.lastPathComponent))
         } catch let error as CocoaError where error.code == .userCancelled {
             // The picker was dismissed rather than used. Not a failure to report.
         } catch {

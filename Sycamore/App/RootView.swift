@@ -7,11 +7,18 @@
 //
 //      signedOut                  -> screen 1, Sign in
 //      awaitingCode               -> screen 2, Verify
-//      signedIn, no camp picked   -> screen 3, Which camp? (which pushes screen 4)
+//      signedIn, no camp picked   -> the first run, ending at screen 3 (which pushes screen 4)
 //      signedIn, camp loaded      -> screens 5–8 behind the floating tab bar
 //
 //  An account is a person, not a camp, so the camp is chosen *after* identity — which is
 //  why `camp == nil` is a routing decision here and not a state inside the tabs.
+//
+//  That third line used to read "screen 3, Which camp?" and went straight there. It is
+//  `FirstRunView` now, because `camp == nil` covers two people who need different things:
+//  somebody switching between camps they already have, and somebody who has just signed up and
+//  has neither a camp nor a name on their account. The first still gets screen 3 and nothing
+//  else; the second is asked for a name and then which way in. Which of those it is stays a
+//  decision made from the store rather than a flag — see `FirstRunStep`.
 //
 
 import SwiftUI
@@ -42,8 +49,8 @@ struct RootView: View {
 
         case .signedIn:
             if store.camp == nil {
-                // `CampPickerView` owns its own `NavigationStack` and pushes `CreateCampView`,
-                // so it is presented bare rather than wrapped in a stack of ours.
+                // `FirstRunView` ends at `CampPickerView`, which owns its own `NavigationStack`
+                // and pushes `CreateCampView`, so neither is wrapped in a stack of ours.
                 //
                 // The seeds go *over* it, never in place of it. `CampPickerView` owns
                 // `.task { loadMemberships() }`, so swapping it out for the loading view
@@ -51,16 +58,31 @@ struct RootView: View {
                 // `isWorking` never clears, and the app sits on the seed screen for ever.
                 // Overlaying keeps it mounted and the load runs to completion.
                 //
+                // The overlay covers the whole of the first run rather than only the picker, and
+                // that turns out to be load-bearing twice over. `AppStore.finishSignIn` sets
+                // `auth` to `.signedIn` and *then* awaits the memberships, both inside the same
+                // `perform` — so for that moment the account looks like it belongs to no camp,
+                // which is the condition `FirstRunStep` reads as "new here". `isWorking` is true
+                // for the whole of it, so what is on screen is the seed fall and not a flash of
+                // the wrong question. It also covers the write behind the name question.
+                //
                 // The "Working…" capsule that used to float over every write is gone; this
                 // overlay is not, and neither is the flag behind it. Waiting for a whole camp
                 // to arrive is the one wait long enough to be worth drawing.
-                CampPickerView()
+                FirstRunView()
                     .overlay {
                         if store.isWorking {
                             SeedLoadingView(label: "Loading your camp")
                         }
                     }
                     .animation(.easeInOut(duration: 0.2), value: store.isWorking)
+                    // The first run asks for a name, and asking for a name means a write that can
+                    // fail. Screen 3 prints `errorMessage` inline in its own content
+                    // (`CampPickerView.swift:140`), which covered this branch for as long as it
+                    // *was* screen 3 — and screen 3 is the one step of the three that asks for
+                    // nothing. Without this, "That's me" on a bad connection leaves the screen
+                    // sitting still and saying nothing, so the person taps it again.
+                    .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
             } else {
                 MainTabView(store: store)
             }
@@ -227,6 +249,19 @@ private extension Binding where Value == PushedScreen? {
 
 #Preview("Root — which camp?") {
     RootView(store: .previewCampPicker)
+        .showsMockStatusBar()
+        .frame(width: 402, height: 874)
+}
+
+/// The other half of the same auth state, and the one the root used to draw as screen 3: an
+/// account with no name and no camps, which is everybody on their first run.
+#Preview("Root — first run") {
+    let store = AppStore(repository: InMemoryRepository(memberships: []))
+    var account = SampleData.account
+    account.displayName = ""
+    store.auth = .signedIn(account)
+
+    return RootView(store: store)
         .showsMockStatusBar()
         .frame(width: 402, height: 874)
 }
