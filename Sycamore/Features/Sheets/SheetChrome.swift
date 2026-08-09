@@ -59,6 +59,17 @@ struct SheetChrome<Content: View>: View {
                 .padding(.bottom, Spacing.sheet)
             }
             .scrollBounceBehavior(.basedOnSize)
+            // Every sheet in the app puts its commit button at the foot of this scroller, and a
+            // keyboard covers the foot. `AddPlayerView.swift:136-138` states the rule from the
+            // screen that learned it — "the pinned Add sits under the keyboard while it is up" —
+            // and pairs the drag with a Done bar, because a drag is the way out you find by
+            // accident and a bar is the one you can be told about.
+            //
+            // Here rather than on the sheets, which is the one change this scaffold needed: it is
+            // true of all four of them, and a sheet that forgot it would be a Save button nobody
+            // could reach. Cheap on the sheets with no field in them — with no keyboard up there
+            // is nothing to dismiss.
+            .scrollDismissesKeyboard(.interactively)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)

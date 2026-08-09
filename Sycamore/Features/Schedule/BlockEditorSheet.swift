@@ -63,11 +63,17 @@ struct BlockEditorSheet: View {
     }
 
     var body: some View {
-        SheetChrome(
+        // Resolved once and handed to both readers below. `myStaffRecord` is a walk of
+        // `camp.staff`, the pool asks for it and so does the picker that draws the pool, and this
+        // body re-runs on every keystroke in the title field. `CourtCoachPicker.body` binds the
+        // same value for the same reason.
+        let me = myID
+
+        return SheetChrome(
             title: draft.isCreating ? "New block" : "Edit block",
             subtitle: subtitle,
             detentFraction: ScheduleMetrics.editorDetent,
-            onClose: onClose
+            onClose: dismiss
         ) {
             SheetSectionHeader("What it is", bottomPadding: Spacing.small)
             titleField
@@ -97,12 +103,28 @@ struct BlockEditorSheet: View {
             }
 
             SheetSectionHeader("Coaches", topPadding: ScheduleMetrics.editorSectionGap)
-            BlockCoachPicker(people: coachPool, selection: $draft.coachIDs)
+            // The same `me` on both, and it has to be: the pool sorts your row to the top and the
+            // picker is what writes "· you" on it, so two different answers would put the suffix
+            // on the wrong row.
+            BlockCoachPicker(people: coachPool(me: me), selection: $draft.coachIDs, myID: me)
 
             commitButton
                 .padding(.top, ScheduleMetrics.editorSectionGap)
 
             deleteButton
+        }
+        // One bar for both fields, because `placement: .keyboard` belongs to the sheet rather than
+        // to a field in it — `FormTextArea.keyboardDoneBar` argues that out. Both focus states are
+        // cleared rather than the description's alone: the reader can be in either box when they
+        // reach for it, and the bar cannot tell which.
+        //
+        // The description is why it exists. The title has a Return key that means something
+        // (`submitLabel(.next)` at `:166`), where Return in a vertical field types a newline — so
+        // before this the keyboard came up on "What happens in this block" and did not go down,
+        // over a Save button sitting below it.
+        .keyboardDoneBar {
+            titleFocus = false
+            detailFocus = false
         }
         // The precedent is `StaffSheet.swift:41-52`: a destructive, irreversible write behind a
         // full-width button inside a sheet asks first. `8l`'s `⋯` deletes without one and stays
@@ -171,7 +193,9 @@ struct BlockEditorSheet: View {
         )
 
         // No `submitLabel` and no `onSubmit`: Return inserts a newline in a vertical field, which
-        // is why this is a separate type from `FormField` rather than a flag on it.
+        // is why this is a separate type from `FormField` rather than a flag on it. The way out of
+        // this one is therefore not its own Return key but the sheet's `keyboardDoneBar` above,
+        // and the drag `SheetChrome` now takes.
         #if os(iOS)
         return field.textInputAutocapitalization(.sentences)
         #else
@@ -438,8 +462,14 @@ struct BlockEditorSheet: View {
 
     // MARK: Coaches
 
-    private var coachPool: [StaffMember] {
-        BlockCoachPicker.pool(in: store.camp, venueID: draft.venueID)
+    /// The pool needs to know who is reading it — an admin the camp has posted nowhere is in it on
+    /// the strength of their role, and *you* are in it unconditionally. Read here and handed down
+    /// rather than reached for from inside the `static`: this is the view with the store, and a
+    /// pure function of a camp is what makes the pool testable without one.
+    private var myID: StaffMember.ID? { store.myStaffRecord?.id }
+
+    private func coachPool(me: StaffMember.ID?) -> [StaffMember] {
+        BlockCoachPicker.pool(in: store.camp, venueID: draft.venueID, me: me)
     }
 
     // MARK: Committing
@@ -507,7 +537,7 @@ struct BlockEditorSheet: View {
         let block = draft.block()
         let isCreating = draft.isCreating
         let spread = draft.spread
-        onClose()
+        dismiss()
         Task {
             if isCreating {
                 await store.addScheduleBlock(block)
@@ -528,8 +558,25 @@ struct BlockEditorSheet: View {
     /// same moment as the cover presenting it is how a presentation gets stuck.
     private func delete() {
         let blockID = draft.id
-        onClose()
+        dismiss()
         Task { await store.deleteScheduleBlock(blockID) }
+    }
+
+    /// Puts the keyboard down, then hands back to the caller.
+    ///
+    /// Every way out goes through here — the ✕, "Save changes" and "Delete block" — because a sheet
+    /// that slides away with a field still first responder takes the keyboard down in a second
+    /// animation behind the first. `AddPlayerView.save()` drops focus for the same reason before it
+    /// hands its player over; the difference is that this sheet has three exits rather than one, so
+    /// the two lines live in one place instead of three.
+    ///
+    /// `onClose` is still the caller's and still does the closing: the state holding this sheet open
+    /// belongs to them, which is the whole argument in the header. This only adds what they cannot
+    /// reach — a `@FocusState` declared in here.
+    private func dismiss() {
+        titleFocus = false
+        detailFocus = false
+        onClose()
     }
 }
 
