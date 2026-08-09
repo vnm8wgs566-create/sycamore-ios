@@ -14,13 +14,24 @@
 //  the three tolerances the parser genuinely has:
 //
 //  1. **Any order.** `Columns.init?(header:)` finds each column by searching the header for what
-//     it contains, so position is never read when there is a header row.
+//     it contains, so position is never read at all.
 //  2. **Any of the three delimiters.** `IntakeFile.separator(in:)` sniffs comma, tab and
 //     semicolon — the last being what an Excel installed across most of Europe writes.
 //  3. **A missing column is silence.** This is the load-bearing one and the least guessable: a
 //     file with no Returning column does not un-return the camp, it says nothing. That rule is
 //     `RosterReconciliation.applying`'s, and stating it here is what stops somebody adding a
 //     column of "No"s to be helpful.
+//
+//  Above all three, and drawn first, is the one line here that is not a tolerance. Reading columns
+//  by what the header says means there has to *be* a header: a first row of data is refused
+//  (`IntakeRoster.swift:321`) rather than read as `first, last, age, gender` by position, because
+//  the first real export that fallback met is laid out `Last Name, First Name, Age, Gender`, and a
+//  header-less copy of it would have imported a whole camp with every name the wrong way round —
+//  cleanly, with nothing on `8d` to notice. A requirement is a poor thing to learn by having a
+//  file refused, which is the argument `BringInTheWeekView.swift:94-105` makes for greying a PDF
+//  out rather than accepting one and failing, so the card states it before a file is chosen. The
+//  words are the refusal's own (`IntakeRoster.swift:246`), so the card and the error are one
+//  sentence rather than two that nearly agree.
 //
 //  And then the file itself, through `ShareLink`, because the honest answer to "what should I
 //  send?" is a file rather than a paragraph — the office can open it, type over the three rows and
@@ -44,6 +55,8 @@ struct FileExampleCard: View {
 
     var body: some View {
         Card(radius: OnboardingMetrics.cardRadius) {
+            headerRow
+
             column("First name", recognised: "first, given — or one “Name” column")
             column("Last name", recognised: "last, surname, family")
             column("Age", recognised: "age")
@@ -55,39 +68,86 @@ struct FileExampleCard: View {
         }
     }
 
+    // MARK: The row the file has to have
+
+    /// The one hard requirement on a card otherwise made of tolerances, and the reason it is drawn
+    /// first: it is a fact about the file's *first row*, so it reads in the place the file's first
+    /// row sits, above the names that row is allowed to use.
+    ///
+    /// Not a tick. A tick on this card means "the camp is hoping for this" (see `column`), and a
+    /// row that must be there is a different kind of thing from a column that is wanted — the
+    /// glyph is a table with its top band filled, which is the thing being asked for.
+    private var headerRow: some View {
+        // Named once because it is said twice — the eye reads it and VoiceOver reads it after the
+        // word that places it, and a copy edit to one of those is a copy edit to both.
+        let why = "Without it we would be guessing which is which, so a file that opens with a kid is refused."
+
+        return row(
+            "The first row needs to name the columns",
+            detail: why,
+            symbol: "rectangle.topthird.inset.filled",
+            tint: Theme.accent,
+            titleColor: Theme.inkWarm,
+            spoken: "Required. \(why)"
+        )
+    }
+
     // MARK: One column
 
     /// - Parameter isExpected: whether the camp is hoping for this one. Every column is optional to
     ///   the *parser* — only a first name is required to make a row at all — so the tick is about
     ///   what the camp wants rather than about what the file must have. Returning is the one most
     ///   offices do not track, and drawing it with a tick would read as a shortfall on nearly
-    ///   every real file.
+    ///   every real file. The one thing the file genuinely must have is `headerRow` above.
     private func column(_ name: String, recognised: String, isExpected: Bool = true) -> some View {
+        row(
+            name,
+            detail: recognised,
+            symbol: isExpected ? "checkmark.circle.fill" : "circle.dashed",
+            tint: isExpected ? Theme.accent : Theme.inkFaint,
+            titleColor: isExpected ? Theme.inkWarm : Theme.inkMuted,
+            spoken: "\(isExpected ? "Wanted" : "Optional"). Recognised as \(recognised)"
+        )
+    }
+
+    // MARK: The shape both of them are
+
+    /// A glyph, a line, and a grey line under it. The requirement and the five columns are the
+    /// same row saying two kinds of thing, so it is drawn once here rather than twice with the
+    /// glyph's one-point nudge copied into both.
+    ///
+    /// - Parameter spoken: what VoiceOver reads after the title. Left to itself it reads "check
+    ///   circle fill, First name, first comma given" — a glyph name and a fragment — so each row
+    ///   is one element and the glyph is spoken as what it means: "First name. Wanted. Recognised
+    ///   as first, given…".
+    private func row(
+        _ title: String,
+        detail: String,
+        symbol: String,
+        tint: Color,
+        titleColor: Color,
+        spoken: String
+    ) -> some View {
         CardRow(spacing: 10, horizontalPadding: 13, verticalPadding: 11, alignment: .top) {
-            Image(systemName: isExpected ? "checkmark.circle.fill" : "circle.dashed")
+            Image(systemName: symbol)
                 .font(.system(size: glyphSize, weight: .regular))
-                .foregroundStyle(isExpected ? Theme.accent : Theme.inkFaint)
+                .foregroundStyle(tint)
                 // The glyph sits on the first line's cap height rather than centred on two lines.
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                Text(name)
-                    .typeStyle(.intakeChecklist, color: isExpected ? Theme.inkWarm : Theme.inkMuted)
-                Text(recognised)
+                Text(title)
+                    .typeStyle(.intakeChecklist, color: titleColor)
+                Text(detail)
                     .typeStyle(.intakeRowDetail, color: Theme.inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
         }
-        // One element per line, and the tick spoken as what it means. Left to itself VoiceOver
-        // reads "check circle fill, First name, first comma given", which is a glyph name and a
-        // fragment — this reads "First name. Wanted. Recognised as first, given…".
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(name)
-        .accessibilityValue(
-            "\(isExpected ? "Wanted" : "Optional"). Recognised as \(recognised)"
-        )
+        .accessibilityLabel(title)
+        .accessibilityValue(spoken)
     }
 
     // MARK: What the file is allowed to do
