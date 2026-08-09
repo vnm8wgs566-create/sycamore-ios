@@ -18,6 +18,13 @@
 //  The geometry below is still local, and every value is a hoist candidate the moment a second
 //  feature draws the same thing.
 //
+//  Two of them are **not** transcriptions, and the header should say so rather than let the
+//  paragraph above cover them: the resize handle is an affordance the design never drew, so its
+//  numbers were chosen against the screen instead of read off it. They live here anyway, beside
+//  the geometry they sit in, rather than in `ScheduleResize.swift` the way `SwipeMetrics` lives
+//  beside `SwipeRevealPlan` — the ratio a drag is measured by is in that file, because the
+//  arithmetic is what depends on it, and what is left here is what is actually drawn.
+//
 
 import SwiftUI
 
@@ -58,33 +65,22 @@ enum ScheduleMetrics {
 
     // MARK: The resize handle
 
-    /// `22` — how far a finger travels for one fifteen-minute step of a block's end.
-    ///
-    /// Not transcribed, because the design draws no handle: `8k` is a list and not a timeline, so
-    /// there is no drawn height a drag could be measured against and the ratio has to be chosen.
-    /// An hour costs 88pt here, a little more than a card's own height, so a drag of "about one
-    /// card" reads as about an hour.
-    ///
-    /// Half of it, 11pt, is the deadzone before anything moves at all — which is about the travel
-    /// the platform itself already treats as a drag rather than as a touch. `SwipeMetrics.axisLock`
-    /// arrives at 12 from the other side and says why (`SwipeToDelete.swift:39-43`).
-    static let resizeTravel: CGFloat = 22
-
     /// `28 × 3` — the grabber on a card's bottom edge.
     ///
     /// `SheetGrabber`'s 38×4 (`Components.swift:37-47`) at the scale of a card rather than of a
     /// screen: deliberately the same vocabulary for "this edge moves", one step quieter, because
-    /// it is drawn on every upcoming block rather than once at the top of a sheet.
+    /// it is drawn on every upcoming block rather than once at the top of a sheet. It takes that
+    /// component's `Theme.grabber` too, rather than a colour of its own.
     static let resizeGrab = CGSize(width: 28, height: 3)
-    /// `6` — the grabber's lift off the card's bottom border, so it sits inside the 14pt padding
-    /// rather than on the stroke.
-    static let resizeGrabLift: CGFloat = 6
     /// `76` — the width of the column that catches a finger reaching for the grabber. Wider than
     /// the 28 drawn, so it can be hit; well short of the card, so the rest of the card keeps the
     /// tap that opens it.
+    ///
+    /// The grabber's lift off the bottom border and the readout's lift off the grabber are
+    /// `Spacing.tight` and `Spacing.small`, taken from the shared scale rather than restated here.
+    /// They landed on 6 and 8 by eye, which is exactly the case this file's header warns about: a
+    /// chosen number that happens to equal a shared step is a second name for that step.
     static let resizeHitWidth: CGFloat = 76
-    /// `8` — the live readout's lift off the grabber while a drag is live.
-    static let resizeLabelLift: CGFloat = 8
 
     // MARK: A card's note line
 

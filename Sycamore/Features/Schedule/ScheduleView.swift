@@ -42,14 +42,6 @@ struct ScheduleView: View {
     /// a resize is a vertical drag, and the scroll view would otherwise take it.
     @State private var resizingID: ScheduleBlock.ID?
 
-    /// The frame every resize is measured against.
-    ///
-    /// Named on the list's own content, so it moves with the blocks rather than with the screen:
-    /// a drag measured in `.local` is measured against a view inside a scroll view, and is only
-    /// trustworthy for as long as nothing moves it. `RankView.swift:106` and `:353` are the
-    /// template. Not private, because the card that reads it is the one that declares the drag.
-    static let listSpace = "schedule.list"
-
     /// The block `8l` is showing. Re-resolved from the store after every write, so the cover
     /// survives its own edits and closes itself when the block is deleted.
     @State private var openedBlock: ScheduleBlock?
@@ -125,7 +117,12 @@ struct ScheduleView: View {
             ScrollView {
                 day
                     .padding(.bottom, Spacing.tabBarClearance)
-                    .coordinateSpace(name: Self.listSpace)
+                    // Named on the list's own content, so it moves with the blocks rather than
+                    // with the screen: a `.local` drag is measured against a view inside a scroll
+                    // view and is only trustworthy while nothing moves it. `RankView.swift:106`
+                    // and `:353` are the template. The name belongs to `ScheduleResizePlan`,
+                    // whose `drag(by:)` is what assumes it.
+                    .coordinateSpace(name: ScheduleResizePlan.listSpace)
             }
             .scrollIndicators(.hidden)
             // A resize is a vertical drag on a vertical scroll. The 0.2s hold in front of it is
@@ -197,14 +194,19 @@ struct ScheduleView: View {
     /// 39pt tall, so the frame outside it carries the tap up to the 44pt minimum without moving
     /// a pixel of what is drawn.
     private var dayChips: some View {
-        HStack(spacing: Spacing.tight) {
+        // Resolved once for the row rather than twice per chip. `selectedDay` walks the camp's
+        // days and can reach the clock, and the loop below asked it fourteen times to draw seven
+        // chips.
+        let selected = selectedDay
+
+        return HStack(spacing: Spacing.tight) {
             ForEach(campDays.ordered) { day in
                 Button {
                     pickedDay = day
                 } label: {
                     Chip(
                         day.shortName,
-                        isSelected: day == selectedDay,
+                        isSelected: day == selected,
                         selectedTone: .accent,
                         metrics: .day,
                         fillsWidth: true
@@ -214,7 +216,7 @@ struct ScheduleView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(day.fullName)
-                .accessibilityAddTraits(day == selectedDay ? .isSelected : [])
+                .accessibilityAddTraits(day == selected ? .isSelected : [])
             }
         }
         // `Spacing.header`, so the picker keeps its edges under the title's. Both are inside the
@@ -247,16 +249,22 @@ struct ScheduleView: View {
                 .padding(.horizontal, Spacing.gutter)
                 .padding(.top, ScheduleMetrics.emptyListTop)
         } else {
+            // Both of these were being asked once *per card*. `currentBlockID` is the expensive
+            // one and always was: it reads the wall clock through `Calendar` and filters the day,
+            // so a twelve-block morning paid for twelve calendar round trips to mark one card.
+            let currentID = currentBlockID
+            let day = blocks
+
             LazyVStack(spacing: ScheduleMetrics.blockGap) {
-                ForEach(blocks) { block in
+                ForEach(day) { block in
                     ScheduleBlockCard(
                         block: block,
-                        isCurrent: block.id == currentBlockID,
+                        isCurrent: block.id == currentID,
                         resizingID: $resizingID,
-                        // Recomputed per card rather than zipped once. The day is a handful of
-                        // blocks, and a neighbour read off the list as it stands cannot go stale
-                        // between a write landing and the next card being drawn.
-                        nextStart: ScheduleResizePlan.nextStart(after: block, in: blocks),
+                        // Still recomputed per card, and that one is worth it: the day is a
+                        // handful of blocks, and a neighbour read off the list as it stands cannot
+                        // go stale between a write landing and the next card being drawn.
+                        nextStart: ScheduleResizePlan.nextStart(after: block, in: day),
                         onOpen: { openedBlock = block },
                         onResize: { end in resize(block, to: end) }
                     )

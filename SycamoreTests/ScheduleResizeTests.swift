@@ -24,7 +24,7 @@ import Testing
 struct ScheduleResizeTests {
 
     /// One step's worth of travel, so the tests read in steps rather than in points.
-    private let travel = ScheduleMetrics.resizeTravel
+    private let travel = ScheduleResizePlan.travel
     private let step = ScheduleResizePlan.step
 
     /// A 9:00–10:00 block with nothing after it, which is the shape most of these ask about.
@@ -46,6 +46,20 @@ struct ScheduleResizeTests {
         #expect(grid.count > 1)
         #expect(grid[1].id - grid[0].id == step)
         #expect(ScheduleResizePlan.dayEnd == grid.last)
+    }
+
+    @Test("The shortest block the floor allows is the editor's own first end option")
+    func theFloorIsTheEditorsFirstEndOption() {
+        // The floor is arithmetic — the first grid line strictly after the start — rather than a
+        // call to `BlockClock.endOptions(after:)`, because that helper is bounded by the grid and
+        // returns nothing at all for a block starting outside it. Inside the grid the two must
+        // agree, and this is what says so.
+        for startsAt in BlockClock.options.dropLast() {
+            var live = plan(from: startsAt, to: ScheduleResizePlan.dayEnd)
+            live.drag(by: -travel * 100)
+
+            #expect(live.endsAt == BlockClock.endOptions(after: startsAt).first)
+        }
     }
 
     @Test("Every end a drag can produce is a time the block editor could also offer")
@@ -204,6 +218,42 @@ struct ScheduleResizeTests {
         #expect(live.endsAt == TimeOfDay(20, 30))
     }
 
+    @Test("The day's end is the injected one, so a shorter day clamps sooner")
+    func honoursAnInjectedDayEnd() {
+        // The seam earns its keep here rather than being an unused parameter: a camp whose grid
+        // stopped at noon would clamp against noon, and nothing about the arithmetic assumes 20:00.
+        var live = ScheduleResizePlan(
+            startsAt: TimeOfDay(9, 0),
+            endsAt: TimeOfDay(10, 0),
+            nextStart: nil,
+            dayEnd: TimeOfDay(12, 0),
+            travelPerStep: travel
+        )
+        live.drag(by: travel * 40)
+
+        #expect(live.endsAt == TimeOfDay(12, 0))
+    }
+
+    @Test("The travel per step is the injected one, so retuning the ratio retunes the drag")
+    func honoursAnInjectedTravel() {
+        // `ScheduleResizePlan.travel` is a feel number and will be retuned. The arithmetic is
+        // stated in steps, not in points, and this is what holds that apart from the constant.
+        var doubled = ScheduleResizePlan(
+            startsAt: TimeOfDay(9, 0),
+            endsAt: TimeOfDay(10, 0),
+            nextStart: nil,
+            travelPerStep: travel * 2
+        )
+        doubled.drag(by: travel * 2)
+
+        #expect(doubled.endsAt == TimeOfDay(10, 15))
+
+        // …and the same travel against the default ratio moves twice as far.
+        var standard = plan()
+        standard.drag(by: travel * 2)
+        #expect(standard.endsAt == TimeOfDay(10, 30))
+    }
+
     @Test("Dragged all the way up, a block stops one step after it starts")
     func clampsAtTheShortestBlock() {
         var live = plan()
@@ -234,7 +284,10 @@ struct ScheduleResizeTests {
             for minutes in lengths {
                 let end = TimeOfDay((startsAt.id + minutes) / 60, (startsAt.id + minutes) % 60)
                 for nextStart in neighbours {
-                    for points in stride(from: CGFloat(-600), through: 600, by: 11) {
+                    // Strided coarsely on purpose. Both clamps bite long before ±600, so the
+                    // corners are reached either way, and a finer sweep is thousands of `#expect`
+                    // macro evaluations buying nothing.
+                    for points in stride(from: CGFloat(-600), through: 600, by: 47) {
                         var live = plan(from: startsAt, to: end, nextStart: nextStart)
                         live.drag(by: points)
 

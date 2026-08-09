@@ -214,13 +214,11 @@ struct ScheduleBlockCard: View {
 
     // MARK: The bottom edge
 
-    /// `ScheduleBlock.endsAt` is optional — a block may run open-ended — and one with no end has
-    /// no bottom edge and no span to read out. It is drawn without a handle rather than given one
-    /// that would have to invent an end before it could move it.
-    private var canResize: Bool { block.endsAt != nil }
-
-    /// The block as it stands, ready to be dragged or adjusted. Nil exactly when `canResize` is
-    /// false.
+    /// The block as it stands, ready to be dragged or adjusted.
+    ///
+    /// Nil for a block that runs open-ended: `ScheduleBlock.endsAt` is optional, and one with no
+    /// end has no bottom edge and no span to read out. Such a block is drawn without a handle
+    /// rather than given one that would have to invent an end before it could move it.
     private var restingPlan: ScheduleResizePlan? {
         block.endsAt.map {
             ScheduleResizePlan(startsAt: block.startsAt, endsAt: $0, nextStart: nextStart)
@@ -236,12 +234,15 @@ struct ScheduleBlockCard: View {
     /// unreachable affordance to hide.
     @ViewBuilder
     private var resizeHandle: some View {
-        if canResize {
+        // `block.endsAt != nil` said the short way; see `restingPlan`.
+        if block.endsAt != nil {
             Capsule(style: .continuous)
-                .fill(resize == nil ? Theme.glyphFaint : Theme.accent)
+                // `Theme.grabber`, which is what `SheetGrabber` draws. A second grabber in a
+                // second grey is two answers to "what colour is a thing you can pull".
+                .fill(resize == nil ? Theme.grabber : Theme.accent)
                 .frame(width: ScheduleMetrics.resizeGrab.width,
                        height: ScheduleMetrics.resizeGrab.height)
-                .padding(.bottom, ScheduleMetrics.resizeGrabLift)
+                .padding(.bottom, Spacing.tight)
                 // Grown, then shaped, and that order is load-bearing: `.contentShape` first would
                 // pin the hit region to the 28×3 capsule and leave the added height inert, which
                 // is the trap `Chip` records at `Components.swift:363-373`. Bottom-aligned so the
@@ -303,7 +304,8 @@ struct ScheduleBlockCard: View {
                 .padding(.horizontal, Spacing.small)
                 .padding(.vertical, Spacing.tight)
                 .background(Theme.accent, in: Capsule(style: .continuous))
-                .padding(.bottom, ScheduleMetrics.resizeGrabLift + ScheduleMetrics.resizeLabelLift)
+                // Clear of the grabber's own lift, and then clear of the grabber.
+                .padding(.bottom, Spacing.tight + Spacing.small)
                 // Centred on the whole row rather than inset onto the plate the way the grabber
                 // is, and deliberately: the gutter grows with Dynamic Type, so an inset readout is
                 // squeezed into a narrower and narrower column exactly as its own type gets
@@ -334,7 +336,7 @@ struct ScheduleBlockCard: View {
             .sequenced(
                 before: DragGesture(
                     minimumDistance: 0,
-                    coordinateSpace: .named(ScheduleView.listSpace)
+                    coordinateSpace: .named(ScheduleResizePlan.listSpace)
                 )
             )
             .updating($isHolding) { _, state, _ in state = true }
@@ -343,12 +345,25 @@ struct ScheduleBlockCard: View {
                 case .first(true):
                     beginTracking()
                 case .second(true, let drag?):
-                    resize?.drag(by: drag.translation.height)
+                    track(drag.translation.height)
                 default:
                     break
                 }
             }
             .onEnded { _ in commit() }
+    }
+
+    /// One `onChanged`, written back only when it says something new.
+    ///
+    /// A touch stream arrives at up to 120Hz and the end time moves once every 22pt, so nine
+    /// frames in ten carry a value identical to the one already held — and `@State` does not
+    /// compare before it writes, so each of those still marks the card dirty and re-runs the whole
+    /// plate, its note line and its accessibility sentence. `SwipeToDelete.swift:340-346` guards
+    /// its own per-frame write for the same reason, one level up.
+    private func track(_ height: CGFloat) {
+        guard var moved = resize else { return }
+        moved.drag(by: height)
+        if moved != resize { resize = moved }
     }
 
     private func beginTracking() {
@@ -425,7 +440,7 @@ private struct ScheduleBlockCardPreviewHarness: View {
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.vertical, ScheduleMetrics.listTop)
-            .coordinateSpace(name: ScheduleView.listSpace)
+            .coordinateSpace(name: ScheduleResizePlan.listSpace)
         }
         .scrollDisabled(resizingID != nil)
         .background(Theme.surfaceWarm)

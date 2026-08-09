@@ -52,6 +52,28 @@ struct ScheduleResizePlan: Equatable, Sendable {
     /// would be a block its own editor cannot offer an end for.
     static let dayEnd: TimeOfDay = BlockClock.options.last ?? TimeOfDay(20, 0)
 
+    /// `22` — how far a finger travels for one `step` of the block's end.
+    ///
+    /// Here rather than in `ScheduleMetrics`, and that is where `SwipeMetrics.actionWidth` sits
+    /// too (`SwipeToDelete.swift:32-43`): this is not a drawn dimension. `8k` is a list and not a
+    /// timeline, so there is no height on the screen a drag could be measured against and the
+    /// ratio had to be chosen — which makes it a property of the arithmetic below rather than of
+    /// anything transcribed. What *is* drawn — the grabber, its column — is in `ScheduleMetrics`.
+    ///
+    /// An hour costs 88pt, a little more than a card's own height, so a drag of "about one card"
+    /// reads as about an hour. Half of it, 11pt, is the deadzone before anything moves at all,
+    /// which is about the travel the platform itself already treats as a drag rather than as a
+    /// touch — `SwipeMetrics.axisLock` arrives at 12 from the other side and says why.
+    static let travel: CGFloat = 22
+
+    /// The frame a drag is measured in.
+    ///
+    /// The name lives beside the arithmetic that assumes it rather than on the screen that
+    /// declares the space, so the screen and the card both depend downwards on this file instead
+    /// of the card depending upwards on the screen. `RankView.swift:40` can keep its own private
+    /// because there the gesture and the space are declared in one type; here they are not.
+    static let listSpace = "schedule.list"
+
     // MARK: Where the block sat when the finger landed
 
     /// The block's start. A bottom-edge drag never moves it — which is what makes this a `let`,
@@ -92,7 +114,7 @@ struct ScheduleResizePlan: Equatable, Sendable {
         endsAt: TimeOfDay,
         nextStart: TimeOfDay?,
         dayEnd: TimeOfDay = ScheduleResizePlan.dayEnd,
-        travelPerStep: CGFloat = ScheduleMetrics.resizeTravel
+        travelPerStep: CGFloat = ScheduleResizePlan.travel
     ) {
         self.startsAt = startsAt
         self.restingEnd = endsAt
