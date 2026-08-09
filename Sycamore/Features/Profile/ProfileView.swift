@@ -45,9 +45,6 @@ struct ProfileView: View {
     /// Whether the emergency-number row is open for editing. It swaps itself for a field in
     /// place rather than pushing a screen the design does not draw.
     @State private var isEditingPhone = false
-    /// The open editor's working value. Lives here, not in the store, so an abandoned edit
-    /// leaves the account untouched.
-    @State private var phoneDraft = ""
 
     /// Mirrors `account.notificationsEnabled`. `SycamoreToggle` wants a real binding, and a
     /// `Binding(get:set:)` built in `body` would be rebuilt on every pass; this is the state the
@@ -359,8 +356,10 @@ struct ProfileView: View {
 
             SwiftUI.Group {
                 if isEditingPhone {
+                    // Seeded from the account it is handed, so the row no longer has to prime a
+                    // draft before opening the editor — it is rebuilt each time it appears.
                     EmergencyPhoneEditor(
-                        text: $phoneDraft,
+                        phone: store.account?.emergencyPhone ?? "",
                         onCancel: { isEditingPhone = false },
                         onSave: commitPhone
                     )
@@ -370,7 +369,6 @@ struct ProfileView: View {
                         subtitle: store.account?.emergencyPhoneDetail,
                         accessory: .chevron
                     ) {
-                        phoneDraft = store.account?.emergencyPhone ?? ""
                         isEditingPhone = true
                     }
                 }
@@ -399,9 +397,9 @@ struct ProfileView: View {
         return "\(role.displayName), locked"
     }
 
-    private func commitPhone() {
+    private func commitPhone(_ typed: String) {
         guard var account = store.account else { return }
-        let value = phoneDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         account.emergencyPhone = value.isEmpty ? nil : value
         isEditingPhone = false
         Task { await store.updateAccount(account) }
@@ -536,11 +534,25 @@ private struct AvatarWell: View {
 /// pieces the design does specify: the sheet field's 13pt radius over the `grouped` plate, and
 /// the header pill for the actions.
 private struct EmergencyPhoneEditor: View {
-    @Binding var text: String
+
+    /// Held here rather than bound up to `ProfileView`, which is eleven computed `some View`
+    /// properties, five `@ScaledMetric`s and a handful of store reads inlined into one body. A
+    /// draft living up there meant every character of a phone number rebuilt the whole screen to
+    /// redraw one field. This editor is the only thing that reads the number while it is being
+    /// typed. The file already had the reasoning — `:52` argues it for the notifications
+    /// toggle — and simply had not applied it here.
+    @State private var text: String
+
     let onCancel: () -> Void
-    let onSave: () -> Void
+    let onSave: (String) -> Void
 
     @FocusState private var isFocused: Bool
+
+    init(phone: String, onCancel: @escaping () -> Void, onSave: @escaping (String) -> Void) {
+        _text = State(initialValue: phone)
+        self.onCancel = onCancel
+        self.onSave = onSave
+    }
 
     var body: some View {
         CardRow(spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: 13, alignment: .top) {
@@ -562,7 +574,10 @@ private struct EmergencyPhoneEditor: View {
                     Pill("Cancel", tone: .outline, horizontalPadding: 13, verticalPadding: 8, action: onCancel)
                     // An emergency number is optional, so clearing it is a real edit and Save is
                     // always live.
-                    Pill("Save", tone: .accent, horizontalPadding: 13, verticalPadding: 8, action: onSave)
+                    Pill(
+                        "Save", tone: .accent, horizontalPadding: 13, verticalPadding: 8,
+                        action: { onSave(text) }
+                    )
                 }
             }
         }
@@ -580,7 +595,7 @@ private struct EmergencyPhoneEditor: View {
         .focused($isFocused)
         .autocorrectionDisabled()
         .accessibilityLabel("Emergency phone")
-        .onSubmit(onSave)
+        .onSubmit { onSave(text) }
 
         #if os(iOS)
         return base

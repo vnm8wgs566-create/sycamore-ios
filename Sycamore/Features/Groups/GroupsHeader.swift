@@ -35,6 +35,10 @@ struct GroupsHeader: View {
     /// `subtitle` slot accordingly; the name follows when the call site is next open.
     var count: String?
 
+    /// What is in the field right now, which is not the same thing as what the list is filtered
+    /// by — see `controls`.
+    @State private var typed = ""
+
     var body: some View {
         VStack(spacing: 0) {
             ScreenHeader(title: "Groups", subtitle: count, initials: store.avatarInitials) {
@@ -49,6 +53,31 @@ struct GroupsHeader: View {
         }
         .background(Theme.surface)
         .overlay(alignment: .bottom) { Hairline(color: Theme.hairline) }
+        // Settle, then filter. `store.searchText` is part of the key `groupsSections` is
+        // memoised against, so writing it per character was a guaranteed memo miss per
+        // character — and a miss re-derives the whole camp: every venue sorted, every group
+        // filtered and sorted, every kid's attendance scanned, for a hundred kids, on the main
+        // actor, between the key landing and the list redrawing.
+        //
+        // The field stays instant because it is bound to local state; only the *filtering*
+        // waits. 180ms is under the gap between two keystrokes of ordinary typing, so a run of
+        // characters costs one derivation instead of one each, and a pause of the length
+        // somebody makes when they have finished a name costs nothing extra.
+        .task(id: typed) {
+            guard typed != store.searchText else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(180))
+            } catch {
+                return
+            }
+            store.searchText = typed
+        }
+        // The store is still the source of truth, so the field follows it down: `initial: true`
+        // seeds the field when the tab is rebuilt with a search already running, and the same
+        // path carries `AppStore.reset`'s clear when somebody leaves the camp.
+        .onChange(of: store.searchText, initial: true) { _, committed in
+            if committed != typed { typed = committed }
+        }
     }
 
     // MARK: Ordinary state
@@ -66,7 +95,9 @@ struct GroupsHeader: View {
             venueChips
                 .padding(.bottom, Spacing.gutterWide)
 
-            SearchField(text: $store.searchText, placeholder: "Find a player")
+            // Bound to `typed`, not to the store: a character has to reach the field on the
+            // frame it was typed on, and the derivation it drives does not.
+            SearchField(text: $typed, placeholder: "Find a player")
                 .padding(.horizontal, Spacing.header)
                 .padding(.bottom, Spacing.medium)
 

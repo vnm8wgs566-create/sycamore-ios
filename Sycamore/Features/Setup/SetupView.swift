@@ -61,10 +61,6 @@ struct SetupView: View {
     /// rather than pushing a screen the design does not draw — the same call `8s`'s emergency
     /// number row makes.
     @State private var isEditingIdentity = false
-    /// The open editor's working values. They live here, not in the store, so an abandoned edit
-    /// leaves the camp untouched.
-    @State private var nameDraft = ""
-    @State private var sportDraft = Sport.tennis
 
     init(store: AppStore) {
         self.store = store
@@ -523,9 +519,13 @@ struct SetupView: View {
                 // `SwiftUI.Group` rather than `Group`, which in this app is a court.
                 SwiftUI.Group {
                     if isEditingIdentity {
+                        // Seeded from the camp as it stands, so an edit starts from what is on
+                        // screen rather than from whatever the last abandoned one left behind —
+                        // which is what `beginEditingIdentity` used to do by hand, and no longer
+                        // has to, because the editor is rebuilt each time it appears.
                         CampIdentityEditor(
-                            name: $nameDraft,
-                            sport: $sportDraft,
+                            name: camp.name,
+                            sport: camp.sport,
                             onCancel: { isEditingIdentity = false },
                             onSave: commitIdentity
                         )
@@ -563,22 +563,19 @@ struct SetupView: View {
         }
     }
 
-    /// Seeds the editor from the camp as it stands, so an edit starts from what is on screen
-    /// rather than from whatever the last abandoned one left behind.
+    /// Opens the editor. It seeds itself from the camp it is handed, so there is no draft here
+    /// to prime — and nothing on this screen to invalidate while somebody is typing into it.
     private func beginEditingIdentity(_ camp: Camp) {
-        nameDraft = camp.name
-        sportDraft = camp.sport
         isEditingIdentity = true
     }
 
     /// Closes the editor first, then writes. The store round-trip is what redraws the row, and
     /// leaving the field open until it lands would show a name the camp has already taken.
-    private func commitIdentity() {
-        let name = nameDraft.trimmingCharacters(in: .whitespaces)
+    private func commitIdentity(_ typed: String, _ sport: Sport) {
+        let name = typed.trimmingCharacters(in: .whitespaces)
         // `renameCamp` refuses an empty name; the editor's Save is already disabled for it, and
         // this is the backstop for the keyboard's own Return.
         guard !name.isEmpty else { return }
-        let sport = sportDraft
         isEditingIdentity = false
         Task { await store.renameCamp(name: name, sport: sport) }
     }
@@ -593,12 +590,33 @@ struct SetupView: View {
 /// and screen 4's own sport chips for the sport — so the two places that ask which sport a camp
 /// plays ask it the same way.
 private struct CampIdentityEditor: View {
-    @Binding var name: String
-    @Binding var sport: Sport
+
+    /// Held here rather than bound up to `SetupView`, and that is the whole of the change.
+    ///
+    /// `SetupView` is seventeen computed `some View` properties inlined into one body, so a
+    /// draft living on it meant every character re-ran all of them: every venue's staffing
+    /// status recomputed, `filteredStaff` and `staffChips` refiltered, the whole 710-line screen
+    /// rebuilt to redraw one text field. The editor is the only thing that reads these while
+    /// they are being typed, so it is the only thing that needs to hear about them.
+    @State private var name: String
+    @State private var sport: Sport
+
     let onCancel: () -> Void
-    let onSave: () -> Void
+    let onSave: (String, Sport) -> Void
 
     @FocusState private var isFocused: Bool
+
+    init(
+        name: String,
+        sport: Sport,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (String, Sport) -> Void
+    ) {
+        _name = State(initialValue: name)
+        _sport = State(initialValue: sport)
+        self.onCancel = onCancel
+        self.onSave = onSave
+    }
 
     /// The same rule `CampDraft.isValid` applies on the way in — literally the same, now, rather
     /// than a second copy of half of it. This used to test only for empty, so the rename field
@@ -626,7 +644,8 @@ private struct CampIdentityEditor: View {
                     )
                     Pill(
                         "Save", tone: .accent,
-                        horizontalPadding: 13, verticalPadding: 8, action: onSave
+                        horizontalPadding: 13, verticalPadding: 8,
+                        action: { onSave(name, sport) }
                     )
                     // Refusing before the tap rather than after it: the alternative is a banner
                     // saying "Give the camp a name first" over a field that is already open.
@@ -649,7 +668,7 @@ private struct CampIdentityEditor: View {
         .focused($isFocused)
         .autocorrectionDisabled()
         .accessibilityLabel("Camp name")
-        .onSubmit(onSave)
+        .onSubmit { onSave(name, sport) }
         .padding(.horizontal, Spacing.medium)
         .padding(.vertical, Spacing.small)
         .frame(maxWidth: .infinity, alignment: .leading)

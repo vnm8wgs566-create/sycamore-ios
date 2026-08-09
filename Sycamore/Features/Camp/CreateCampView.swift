@@ -40,6 +40,20 @@ struct CreateCampView: View {
     @State private var shape = CampShape.initial()
     @State private var isBringingInTheWeek = false
 
+    /// The name as it is being typed, which is deliberately not `store.campDraft.name`.
+    ///
+    /// `campDraft` is one observed property, so a write to any part of it invalidates every
+    /// reader of any other part — and this screen reads it for `courtNoun`, for the CTA's gate
+    /// and for the sport chips. Bound straight to the store, each character therefore rebuilt
+    /// the whole screen: the chip row and its layout pass, the venues card, a `SwipeToDelete`
+    /// and an `IntakeStepper` per venue. Held here, a character touches this field and the
+    /// button's opacity and nothing else.
+    ///
+    /// The store still gets it — see the settle in `screen` and the flush in `saveTheShape` —
+    /// because the draft living there is what lets somebody drop out of the flow and still find
+    /// the camp creatable, which the comment on `saveTheShape` records.
+    @State private var name = ""
+
     /// The venue whose editor is open. Presented from here rather than through `store.activeSheet`
     /// — see `VenueShapeSheet.swift:12-21` for why that slot is unreachable from this screen.
     @State private var editingVenue: VenueShape?
@@ -69,6 +83,23 @@ struct CreateCampView: View {
         // the design this app shipped with used, and the reason its white cards read as paper.
         .background(Theme.surfaceWarm)
         .navigationBarBackButtonHidden(true)
+        // Settle, then write the draft out. Nothing on this screen needs the store to be current
+        // between characters — `saveTheShape` flushes before the flow reads it — so this exists
+        // only so that backing out mid-name still leaves the camp creatable from what was typed.
+        .task(id: name) {
+            guard name != store.campDraft.name else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return
+            }
+            store.campDraft.name = name
+        }
+        // Seeds the field from the draft when the screen is entered a second time, and follows
+        // any write the store makes on its own.
+        .onChange(of: store.campDraft.name, initial: true) { _, committed in
+            if committed != name { name = committed }
+        }
     }
 
     /// What a group is called in this sport — "court", "field", "lane".
@@ -134,8 +165,12 @@ struct CreateCampView: View {
                 ) {
                     saveTheShape()
                 }
-                .opacity(store.campDraft.isValid ? 1 : 0.45)
-                .disabled(!store.campDraft.isValid)
+                // Gated on what is in the field, not on what has reached the store. The settle
+                // below is 250ms and this button has to light the moment a name is long enough
+                // to be one — a gate that lagged the last character would be a worse trade than
+                // the re-render it was bought with.
+                .opacity(isNameValid ? 1 : 0.45)
+                .disabled(!isNameValid)
                 // `margin:2px 2px 0` — the button is inset a touch from the cards above it.
                 .padding(.horizontal, Spacing.hairGap)
                 .padding(.top, Spacing.hairGap)
@@ -206,8 +241,18 @@ struct CreateCampView: View {
         editingVenue = nil
         // The draft carries what it can of the shape now, so a failure to reach the end of the
         // flow still leaves the camp creatable from what was drawn here.
-        store.campDraft = shape.applied(to: store.campDraft)
+        var draft = shape.applied(to: store.campDraft)
+        // Flushed by hand: the settle is cancelled by this screen going away, and the name is
+        // the one thing on it the next screen cannot do without.
+        draft.name = name
+        store.campDraft = draft
         isBringingInTheWeek = true
+    }
+
+    /// `CampName.isValid` against the field rather than the store — the same rule
+    /// `CampDraft.isValid` applies, asked of the value the reader can see.
+    private var isNameValid: Bool {
+        CampName.isValid(name.trimmingCharacters(in: .whitespaces))
     }
 
     // MARK: Name
@@ -217,7 +262,7 @@ struct CreateCampView: View {
 
         let field = FormField(
             "UCLA Tennis Camp",
-            text: $store.campDraft.name,
+            text: $name,
             label: "Camp name",
             metrics: .intakeCard,
             type: .intakeFieldTitle,
