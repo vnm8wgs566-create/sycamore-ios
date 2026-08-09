@@ -69,11 +69,11 @@ struct BlockDetailView: View {
             BlockEditorSheet(draft: draft, onClose: { editing = nil })
                 .environment(store)
         }
-        // A cover hides the pair `MainTabView` floats, so it carries the store's own — not a
-        // private banner. `AppStore.perform` owns `errorMessage` and `isWorking`; this screen
-        // just has to be somewhere they can be seen from.
+        // A cover hides the banner `MainTabView` floats, so it carries the store's own — not a
+        // private one. `AppStore.perform` owns `errorMessage`; this screen just has to be
+        // somewhere it can be seen from. Nothing in-flight rides alongside it any more —
+        // `storeErrorBanner` records where the capsule went.
         .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
-        .storeWorkingIndicator(store.isWorking)
     }
 
     // MARK: Header

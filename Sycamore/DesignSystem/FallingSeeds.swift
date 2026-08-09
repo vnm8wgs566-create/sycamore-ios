@@ -16,6 +16,10 @@
 //  Deliberately not a `ProgressView`: this is the one moment the app's own mark can do the
 //  waiting. It still reports itself to VoiceOver as busy.
 //
+//  There was a `SpinningSeed` here too — one seed autorotating in place, at the scale of a
+//  spinner, for the "Working…" capsule that floated over every write. The capsule went and took
+//  its only caller with it; see `storeErrorBanner` in `Components.swift` for why.
+//
 
 import SwiftUI
 
@@ -108,25 +112,6 @@ struct FallingSeeds: View {
             // Fade in and out at the very ends so nothing pops at the frame edge.
             .opacity(min(1, min(t, 1 - t) * 8))
             .position(x: x, y: y)
-    }
-}
-
-// MARK: - A single spinning seed
-
-/// The inline loading affordance — one seed autorotating in place, for the capsule that floats
-/// over a screen while a row commits. Same seed, same spin, at the scale of a spinner.
-struct SpinningSeed: View {
-    var size: CGFloat = 16
-
-    var body: some View {
-        TimelineView(.animation) { timeline in
-            let now = timeline.date.timeIntervalSinceReferenceDate
-            SycamoreSeed()
-                .frame(width: size, height: size)
-                .rotationEffect(.degrees(now.truncatingRemainder(dividingBy: 1.6) / 1.6 * 360))
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
     }
 }
 

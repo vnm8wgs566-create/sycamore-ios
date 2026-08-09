@@ -117,11 +117,10 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $isManagingCamps) {
             // Sheets do not inherit this view's `store`, which arrives as an init argument
-            // rather than through the environment, so `8u` is handed both.
+            // rather than through the environment, so `8u` is handed both it and the banner.
             CampPickerView(isManagingCamps: true)
                 .environment(store)
                 .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
-                .storeWorkingIndicator(store.isWorking)
         }
     }
 
