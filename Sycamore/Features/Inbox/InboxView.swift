@@ -85,8 +85,9 @@ struct InboxView: View {
         // No banner of its own. Reads and writes now go through `AppStore.perform`, which owns
         // `errorMessage` and `isWorking` — and `MainTabView` already floats one banner for all
         // four tabs. A second here meant a failure on this tab looked like a different class of
-        // problem from the same failure on the next, and set no in-flight state, so section 8's
-        // writes had no spinner and no double-tap guard.
+        // problem from the same failure on the next, and set no in-flight state at all. What that
+        // state buys has shrunk since: the "Working…" capsule it used to raise is gone from every
+        // screen, and nothing on this tab has yet reached for the double-tap guard.
     }
 
     // MARK: Intents

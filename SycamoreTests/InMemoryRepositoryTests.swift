@@ -303,6 +303,235 @@ struct RepositoryEnrolmentTests {
     }
 }
 
+/// The same roster file, brought in again a week later.
+///
+/// Both writes are new — until now the repository could only ever *add* a kid — and both are
+/// pinned here rather than only in the Supabase build because this suite is what
+/// `SupabaseRepository` owes: same errors, same guarantee that a failure writes nothing, same
+/// refusal to touch a ladder it was not asked about.
+@Suite("InMemoryRepository — roster reconciliation")
+struct RepositoryRosterTests {
+
+    /// The design's camp: 100 kids ranked 1…N over two venues of six courts, everyone placed.
+    /// `SampleData` reindexes on its way out, so a rank read off this fixture is the same number
+    /// the repository will report back.
+    private func loaded() -> (InMemoryRepository, Camp) {
+        let camp = SampleData.uclaTennisCamp
+        return (InMemoryRepository(camps: [camp]), camp)
+    }
+
+    @Test("Updating kids returns the whole camp, with the ladder in the order it was already in")
+    func updateReturnsTheWholeCamp() async throws {
+        let (repo, camp) = loaded()
+        var patched = try #require(camp.orderedPlayers.first)
+        patched.age = 15
+
+        let after = try await repo.updatePlayers([patched], campID: camp.id)
+
+        // The id sequence pins the head-count too, so there is no separate count assertion here.
+        #expect(after.orderedPlayers.map(\.id) == camp.orderedPlayers.map(\.id))
+        #expect(after.player(patched.id)?.age == 15)
+        // Convention: a mutation returns the whole camp, so callers never patch local state.
+        #expect(try await repo.camp(id: camp.id).player(patched.id)?.age == 15)
+    }
+
+    /// The three fields sent deliberately wrong here are the whole point of the method's shape. A
+    /// file knows a name and an age; where a child stands is what the camp worked out over a
+    /// morning, and a re-import that quietly reseated everybody would undo it.
+    @Test("An update writes the fields a file can say and leaves venue, court and rank alone")
+    func updateLeavesPlacementAlone() async throws {
+        let (repo, camp) = loaded()
+        let before = try #require(camp.orderedPlayers.first { $0.groupID != nil })
+        var patched = before
+        patched.firstName = "Wren"
+        patched.lastInitial = "K"
+        patched.lastName = "Kowalski"
+        patched.age = 15
+        patched.gender = .f
+        patched.isReturning.toggle()
+        patched.venueID = nil
+        patched.groupID = nil
+        patched.overallRank = 999
+        patched.courtRank = 999
+
+        let after = try await repo.updatePlayers([patched], campID: camp.id)
+        let arrived = try #require(after.player(before.id))
+
+        #expect(arrived.displayName == "Wren Kowalski")
+        #expect(arrived.age == 15)
+        #expect(arrived.gender == .f)
+        #expect(arrived.isReturning == !before.isReturning)
+        #expect(arrived.venueID == before.venueID)
+        #expect(arrived.groupID == before.groupID)
+        #expect(arrived.overallRank == before.overallRank)
+        #expect(arrived.courtRank == before.courtRank)
+    }
+
+    /// The removal does no arithmetic at all — `reindex` closes the gap. What that has to mean is
+    /// that everybody keeps the place they were already in, so the assertion is the whole sequence
+    /// rather than "the count went down".
+    @Test("Removing a kid closes the gap in the ladder without moving anybody past anybody")
+    func removalClosesTheLadder() async throws {
+        let (repo, camp) = loaded()
+        let ladder = camp.orderedPlayers.map(\.id)
+        let leaving = ladder[10]
+
+        let after = try await repo.removePlayers([leaving], campID: camp.id)
+
+        #expect(after.player(leaving) == nil)
+        #expect(after.orderedPlayers.map(\.id) == ladder.filter { $0 != leaving })
+        #expect(after.orderedPlayers.map(\.overallRank) == Array(1...after.players.count))
+    }
+
+    /// Two courts rather than one, so `courtRank` and `overallRank` do not coincide and the gap
+    /// `reindex` closes is a real one. Somebody who is staying is marked away first, which is what
+    /// makes the `presentCount` assertion say something: with nobody away it could only ever
+    /// repeat `playerCount`.
+    @Test("Removing a kid takes them off their court and drops that court's head-count by one")
+    func removalEmptiesASeat() async throws {
+        var camp = Fixture.camp([.init("Sycamore", courts: 2)], players: 6)
+        camp.evenOut()
+        let repo = InMemoryRepository(camps: [camp])
+        let court = camp.groups(in: camp.venues[0].id)[0]
+        let seated = camp.players(inGroup: court.id).map(\.id)
+        let leaving = try #require(seated.first)
+        let away = try #require(seated.last)
+        _ = try await repo.setAttendance(playerID: away, day: .today, present: false, campID: camp.id)
+
+        let after = try await repo.removePlayers([leaving], campID: camp.id)
+
+        #expect(after.players(inGroup: court.id).map(\.id) == Array(seated.dropFirst()))
+        #expect(after.players(inGroup: court.id).map(\.courtRank) == Array(1...(seated.count - 1)))
+        #expect(after.group(court.id)?.playerCount == seated.count - 1)
+        #expect(after.group(court.id)?.presentCount == seated.count - 2)
+    }
+
+    /// What hangs off a kid goes with them, because in Postgres it does: `attendance.player_id`
+    /// cascades. Left behind, the row would be a fact about nobody — and one the head-counts
+    /// would still be reading.
+    @Test("A removed kid takes their attendance with them")
+    func removalTakesTheAttendance() async throws {
+        let camp = Fixture.camp([.init("Sycamore", courts: 1)], players: 5)
+        let repo = InMemoryRepository(camps: [camp])
+        let leaving = camp.orderedPlayers[0].id
+        let staying = camp.orderedPlayers[1].id
+        for kid in [leaving, staying] {
+            _ = try await repo.setAttendance(
+                playerID: kid, day: .today, present: false, campID: camp.id
+            )
+        }
+
+        let after = try await repo.removePlayers([leaving], campID: camp.id)
+
+        #expect(after.attendance.map(\.playerID) == [staying])
+        #expect(after.isAway(staying))
+    }
+
+    @Test("Removing a kid who is not at this camp throws, and nothing else in the batch is written")
+    func removingAStrangerWritesNothing() async throws {
+        let (repo, camp) = loaded()
+        let ours = try #require(camp.orderedPlayers.first).id
+
+        await #expect(throws: SycamoreError.unknownPlayer) {
+            try await repo.removePlayers([ours, UUID()], campID: camp.id)
+        }
+
+        let stored = try await repo.camp(id: camp.id)
+        #expect(stored.players.count == camp.players.count)
+        #expect(stored.player(ours) != nil)
+    }
+
+    @Test("Updating a kid who is not at this camp throws, and the rest of the batch is not written either")
+    func updatingAStrangerWritesNothing() async throws {
+        let (repo, camp) = loaded()
+        var ours = try #require(camp.orderedPlayers.first)
+        let wasCalled = ours.firstName
+        ours.firstName = "Wren"
+        // The same kid under an id this camp has never seen: it is the id that is checked, and
+        // inventing a name and an age for the stranger would only invite a reader to look for
+        // significance in them.
+        var stranger = ours
+        stranger.id = UUID()
+
+        await #expect(throws: SycamoreError.unknownPlayer) {
+            try await repo.updatePlayers([ours, stranger], campID: camp.id)
+        }
+
+        #expect(try await repo.camp(id: camp.id).player(ours.id)?.firstName == wasCalled)
+    }
+
+    /// `SupabaseRepository` answers both of these without opening the per-camp mutex, because
+    /// PostgREST rejects `in.()` and a PATCH of nothing is a request with nothing to say. Here
+    /// there is no round trip to skip — what is being pinned is that neither is an *error*, since
+    /// a tick list nobody ticked is an ordinary way to leave `8d`.
+    @Test("Removing nobody is not a round trip and not an error")
+    func removingNobody() async throws {
+        let (repo, camp) = loaded()
+
+        let after = try await repo.removePlayers([], campID: camp.id)
+
+        #expect(after.orderedPlayers.map(\.id) == camp.orderedPlayers.map(\.id))
+    }
+
+    @Test("Updating nobody is not a round trip and not an error")
+    func updatingNobody() async throws {
+        let (repo, camp) = loaded()
+
+        let after = try await repo.updatePlayers([], campID: camp.id)
+
+        #expect(after.orderedPlayers.map(\.id) == camp.orderedPlayers.map(\.id))
+    }
+
+    /// The one place the two builds can silently disagree.
+    ///
+    /// "What a roster file owns" is written twice — as Swift assignments in
+    /// `InMemoryRepository.updatePlayers`, and as column names in
+    /// `SupabaseRepository.playerFields` — and nothing in the type system ties them together. Add
+    /// a seventh roster field to one and not the other and it updates offline but not online,
+    /// which is the failure that only shows up on a real camp's wifi. `Player.lastName` is being
+    /// filled in by imports right now (`Models.swift:427-429`), so this is a live risk rather than
+    /// a hypothetical one.
+    ///
+    /// Encoded rather than read off `RowValues`, which keeps its columns private — the JSON is
+    /// what actually goes to PostgREST, so it is the honest thing to assert about.
+    @Test("The update payload carries what a file owns and no camp state")
+    func theWireColumnsAreTheFilesColumns() throws {
+        let kid = Player(
+            firstName: "Wren", lastInitial: "K", lastName: "Kowalski", age: 15, gender: .f,
+            isReturning: true, venueID: UUID(), groupID: UUID(), overallRank: 7, courtRank: 3
+        )
+
+        // The repository's own encoder, not a fresh one: it snake-cases keys, and asserting
+        // against anything else would be asserting about a request nobody sends.
+        let payload = try JSONSerialization.jsonObject(
+            with: SupabaseCoding.encoder().encode(SupabaseRepository.playerFields(kid))
+        )
+        let columns = Set((payload as? [String: Any] ?? [:]).keys)
+
+        #expect(columns == [
+            "first_name", "last_initial", "last_name", "age", "gender", "is_returning",
+        ])
+        // Named separately from the equality above so a failure says which rule broke: `id` is the
+        // row's identity, and `site_id` and `group_id` are camp state — a PATCH carrying either
+        // would let a re-imported file reseat a kid somebody had deliberately placed.
+        #expect(columns.isDisjoint(with: ["id", "site_id", "group_id"]))
+    }
+
+    @Test("Neither write reaches a camp that is not there", arguments: [true, false])
+    func unknownCamp(_ viaUpdate: Bool) async throws {
+        let (repo, camp) = loaded()
+        let kid = try #require(camp.orderedPlayers.first)
+
+        await #expect(throws: SycamoreError.unknownCamp) {
+            if viaUpdate {
+                _ = try await repo.updatePlayers([kid], campID: UUID())
+            } else {
+                _ = try await repo.removePlayers([kid.id], campID: UUID())
+            }
+        }
+    }
+}
+
 @Suite("InMemoryRepository — order")
 struct RepositoryOrderTests {
 

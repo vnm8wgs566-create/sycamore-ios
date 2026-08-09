@@ -10,6 +10,11 @@
 //  same code. `sites.name` is unique across the whole project, and screen 4 names its venues
 //  "Venue 1" and "Venue 2". Both inserts therefore have to be able to try again.
 //
+//  Then, below the fold, the same question asked of kids rather than coaches: the three writes a
+//  roster file makes — bring the week in, bring it in again next week, and take off whoever did
+//  not come back. They are three different bargains with atomicity, and each one says which it
+//  struck and why at the method that strikes it.
+//
 
 import Foundation
 
@@ -212,6 +217,15 @@ extension SupabaseRepository {
 
 extension SupabaseRepository {
 
+    /// How many PATCHes `updatePlayers` keeps in the air at once.
+    ///
+    /// Six because that is roughly what a phone's URL session will run against one host before it
+    /// queues them itself: past that the requests are not concurrent, they are merely all
+    /// started, and the only thing the extra width buys is sockets. Deliberately not tuned
+    /// against a measurement — there is no batch to measure yet, and a number chosen to be
+    /// unremarkable is easier to raise later than one chosen to look precise.
+    static let concurrentWrites = 6
+
     func addPlayer(
         _ player: Player, toVenue venueID: Venue.ID, campID: Camp.ID
     ) async throws -> Camp {
@@ -249,28 +263,205 @@ extension SupabaseRepository {
         }
     }
 
-    /// `gender` takes `Gender.symbol`, not `rawValue`. The enum's raw values are lowercase and
-    /// the column's CHECK demands `'M','F','X'` — sending the raw value fails every insert.
+    /// One filtered PATCH per kid the file actually changes, sent together.
     ///
-    /// `last_name` and `age` are the two columns an import is allowed to leave null, and both go
-    /// as whatever the file said. This row is the only thing that survives the insert — the camp
-    /// is re-read from Postgres afterwards — so a surname the roster carried is lost here or not
-    /// at all. Null rather than `""` for a kid with no surname: the column admits null or 1…60
-    /// characters, and an empty string fails it.
+    /// The shape `writePlacements` already uses for exactly this problem
+    /// (`SupabaseRepository+Graph.swift:142-165`): skip the rows that did not move, then run what
+    /// is left concurrently, so the wall clock is roughly one round trip rather than forty. Both
+    /// halves matter here and the first one matters most, because the whole point of this method
+    /// is a file being re-read a week later — most of its lines say what the row already says, and
+    /// a re-import that changed nothing should cost nothing. It is also why the `before` camp is a
+    /// full `camp(id:)` read rather than the two narrow selects `writeAttendance` gets away with
+    /// (`SupabaseRepository+Graph.swift:281-298`): the graph is not loaded to validate the ids, it
+    /// is loaded because the current values are what the file is being compared against.
     ///
-    /// `group_id` is deliberately absent. A new kid has no court until somebody puts them on one,
-    /// which is what Groups' unassigned band is for; defaulting them onto court 1 would quietly
-    /// outrank kids already standing there.
-    static func playerRow(_ player: Player, venueID: Venue.ID) -> RowValues {
+    /// The fan-out is **capped**, which is where this parts company with `writePlacements`
+    /// (`SupabaseRepository+Graph.swift:142-165`) rather than copying it. That one groups by
+    /// destination slot, so a hundred kids is a dozen requests and the width takes care of
+    /// itself. Nothing here can be grouped — every payload is a different kid's different fields
+    /// — so the width *is* the batch, and the batch is a whole camp on the one re-import that
+    /// changes everyone at once: a season rolling over and every age going up by a year. A
+    /// hundred simultaneous sockets is not a thing to do to somebody's phone on a court, and the
+    /// cost of the cap is wall clock nobody is watching — `ceil(N / concurrentWrites)` waves
+    /// instead of one.
+    ///
+    /// **Deliberately not `db.upsert(Relation.players, rows, onConflict: "id")`**, which is the
+    /// tempting single-request answer and has to be argued away rather than merely not chosen.
+    /// `players.site_id` is nullable, so a kid another admin deleted between the read above and
+    /// this write does *not* fail a NOT NULL — their row is simply absent, the upsert falls
+    /// through to an **insert**, and it inserts with `site_id = null`. That row then fails
+    /// `players_member`, because `null in (…)` is null rather than true, and PostgREST rejects the
+    /// **entire array**: twenty good writes lost to one vanished kid, under "new row violates
+    /// row-level security policy", an error naming nothing a person can act on. A filtered PATCH
+    /// for a kid who is gone matches zero rows and answers 204, which is the honest result —
+    /// there is nothing left there to update.
+    ///
+    /// And this is the opposite answer from `importPlayers` above, on purpose. That insert must
+    /// not half-succeed: half an insert means duplicate kids the moment somebody retries, and
+    /// nobody can tell which half arrived. Half an update is a different thing entirely — some
+    /// kids have their new age and some do not, the camp comes back from this same call so
+    /// re-running the reconciliation shows exactly what is still outstanding, and running it again
+    /// is idempotent. Different risk, different answer, both written down where they are made.
+    func updatePlayers(_ players: [Player], campID: Camp.ID) async throws -> Camp {
+        guard !players.isEmpty else { return try await camp(id: campID) }
+
+        return try await serialised(campID) {
+            let before = try await camp(id: campID)
+            // Keyed both ways, so the checks below are one pass over the roster rather than one
+            // per line. A kid named twice in a file takes the last line — which is also what two
+            // PATCHes would leave behind, arrived at without the second request.
+            let patches = Dictionary(players.map { ($0.id, $0) }) { _, last in last }
+            let current = Dictionary(before.players.map { ($0.id, $0) }) { first, _ in first }
+
+            // `camp(id:)` scopes players through `sites.camp_id`, so a kid at somebody else's camp
+            // is `unknownPlayer` here exactly as they are offline — and every id is checked before
+            // the first PATCH, so nothing in the batch is written when one fails.
+            var changed: [Player] = []
+            for (playerID, patch) in patches {
+                guard let existing = current[playerID] else { throw SycamoreError.unknownPlayer }
+                // `Player.keepingPlacement(of:)` is the same method `InMemoryRepository` writes
+                // with, so "this line changes something" and "this is what gets written" cannot
+                // drift apart. It carries the argument for stating the rule as four exclusions.
+                if patch.keepingPlacement(of: existing) != existing {
+                    changed.append(patch)
+                }
+            }
+            // `before` rather than a fresh read: nothing was written, so it is already the answer.
+            guard !changed.isEmpty else { return before }
+
+            // Bound out of the actor because the tasks below run concurrently, which is legal
+            // because `PostgRESTClient` is a `Sendable` struct. `writePlacements` does the same.
+            let db = self.db
+            try await withThrowingTaskGroup(of: Void.self) { tasks in
+                func patch(_ player: Player) {
+                    tasks.addTask {
+                        try await db.update(
+                            Relation.players,
+                            set: Self.playerFields(player),
+                            where: PostgRESTQuery().eq("id", player.id)
+                        )
+                    }
+                }
+                // Prime the window, then add one for each that finishes, so at most
+                // `concurrentWrites` requests are ever in flight. `next()` rethrows, so the first
+                // failure still leaves the group — and its remaining tasks are cancelled on the
+                // way out exactly as `waitForAll` would have left them.
+                var pending = changed.makeIterator()
+                for _ in 0..<Self.concurrentWrites {
+                    guard let player = pending.next() else { break }
+                    patch(player)
+                }
+                while try await tasks.next() != nil {
+                    guard let player = pending.next() else { continue }
+                    patch(player)
+                }
+            }
+            return try await camp(id: campID)
+        }
+    }
+
+    /// One filtered DELETE.
+    ///
+    /// Filtered, so `PostgRESTClient`'s `unfilteredWrite` guard (`PostgRESTClient.swift:133`) is
+    /// satisfied — and atomic for the same reason the import is: it is one statement, and Postgres
+    /// applies all of it or none of it.
+    ///
+    /// A hard delete, deliberately not the deactivation `removeStaff` performs; the protocol says
+    /// why that precedent's two reasons do not transfer. The soft alternative was costed and is
+    /// the worse trade: `players` would need a new column *and* a filter at every Swift site that
+    /// reads the table — `SupabaseRepository.swift:228`, `:337`,
+    /// `SupabaseRepository+SectionEight.swift:52`, and the ladder assembled in
+    /// `SupabaseRepository+Graph.swift:43` — *and* the three SQL views that join `players`:
+    /// `today_courts`, `roster_today` and `player_scores` (`20260805141707:160-199`). Miss any one
+    /// of those seven and a removed kid is still visible on one screen while being gone from the
+    /// others, which is a worse fault than the one being avoided.
+    ///
+    /// **Nothing here writes ranks, and that is the point.** There is no `players.overall_rank`
+    /// column — the ladder is derived at read time by sorting on `ratings.rating` descending with
+    /// the player's id breaking ties (`SupabaseRepository+Graph.swift:39-58`). So the departing
+    /// kid's `ratings` row cascades away with them, everybody else keeps the rating they had, and
+    /// the derived 1…N closes up by itself. No `writeLadder` call, and none wanted. It is the
+    /// asymmetry with `importPlayers`: an insert has to choose where in the ladder a new arrival
+    /// goes, and a removal has no such choice to make.
+    ///
+    /// The delete reaches `feedback` only once `20260808230500_feedback_player_cascade.sql` is
+    /// applied. Until then `feedback.player_id` is `on delete set null`, and a removed kid leaves
+    /// notes behind that no policy can read and no request can reach.
+    func removePlayers(_ playerIDs: [Player.ID], campID: Camp.ID) async throws -> Camp {
+        // PostgREST rejects `in.()`, so an empty tick list is no request at all rather than one
+        // that cannot succeed — the rule `PostgRESTQuery.within` states and leaves to its callers.
+        guard !playerIDs.isEmpty else { return try await camp(id: campID) }
+
+        return try await serialised(campID) {
+            // One narrow select rather than the whole graph, and this is the difference between
+            // this method and `updatePlayers` above. That one loads the camp because the current
+            // values are what the file is compared against; this one has nothing to compare and
+            // needs a single fact — do these ids belong to this camp. `camp(id:)` is eight
+            // selects in two waves, including a week of attendance and the whole inbox, and every
+            // row of it would be decoded and thrown away.
+            //
+            // Scoped through `sites!inner(camp_id)`, which is how `writeAttendance` asks the same
+            // question of one kid (`SupabaseRepository+Graph.swift:284-286`) — `players` carries
+            // no `camp_id` of its own, so the site is the only route to one. Counting the rows
+            // back is enough: the filter cannot return an id that was not asked for, so fewer
+            // rows than ids means at least one kid is somebody else's, which is `unknownPlayer`
+            // exactly as it is offline. Before the DELETE, so a tick list naming another camp's
+            // kid takes none of this camp's with it.
+            // `*` rather than `id`, as `writeAttendance` also asks for: `PlayerRecord.firstName`
+            // and `.isReturning` are non-optional, so an id-only projection decodes to nothing.
+            // The row is still one relation's worth instead of the graph's.
+            let mine: [PlayerRecord] = try await db.select(
+                Relation.players,
+                .select("*,sites!inner(camp_id)")
+                    .within("id", playerIDs)
+                    .eq("sites.camp_id", campID)
+            )
+            guard Set(mine.map(\.id)) == Set(playerIDs) else {
+                throw SycamoreError.unknownPlayer
+            }
+            try await db.delete(Relation.players, where: PostgRESTQuery().within("id", playerIDs))
+            return try await camp(id: campID)
+        }
+    }
+
+    /// The columns a roster file is allowed to speak to, and only those.
+    ///
+    /// Named separately from `playerRow` because `updatePlayers` wants exactly this set and must
+    /// name neither `id` nor `site_id`: the first is the row's identity, and the second is the
+    /// venue — camp state that a file has no opinion about, so a PATCH carrying it would let a
+    /// re-import reseat a kid `movePlayer` had deliberately placed. One definition, so the wire
+    /// names and the `gender` conversion cannot drift between the insert and the update.
+    ///
+    /// `gender` goes through `PostgresEnum.text`, **not** `Gender.rawValue`. The enum's raw values
+    /// are lowercase and `players_gender_check` demands `'M','F','X'` — the raw value fails every
+    /// write.
+    ///
+    /// `last_name` and `age` are the two columns a roster is allowed to leave null, and both go as
+    /// whatever the file said. Null rather than `""` for a kid with no surname:
+    /// `players_last_name_len` admits null or 1…60 characters, and an empty string fails it.
+    static func playerFields(_ player: Player) -> RowValues {
         [
-            "id": .uuid(player.id),
             "first_name": .text(player.firstName),
             "last_initial": .text(player.lastInitial),
             "last_name": .text(player.lastName),
             "age": .int(player.age),
             "gender": .text(PostgresEnum.text(player.gender)),
             "is_returning": .bool(player.isReturning),
-            "site_id": .uuid(venueID),
         ]
+    }
+
+    /// One kid, as an insert: what a file can say, plus who they are and where they are going.
+    ///
+    /// This row is the only thing that survives the insert — the camp is re-read from Postgres
+    /// afterwards — so a surname the roster carried is written here or lost.
+    ///
+    /// `group_id` is deliberately absent. A new kid has no court until somebody puts them on one,
+    /// which is what Groups' unassigned band is for; defaulting them onto court 1 would quietly
+    /// outrank kids already standing there.
+    static func playerRow(_ player: Player, venueID: Venue.ID) -> RowValues {
+        var row = playerFields(player)
+        row["id"] = .uuid(player.id)
+        row["site_id"] = .uuid(venueID)
+        return row
     }
 }
