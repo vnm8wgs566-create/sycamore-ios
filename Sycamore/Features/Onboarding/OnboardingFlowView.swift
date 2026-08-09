@@ -46,20 +46,30 @@ struct OnboardingFlowView: View {
     @State private var path: [OnboardingStep] = []
     /// The file under review. Nil until one is read; replaced in place as gaps are filled.
     @State private var file: IntakeImport?
-    /// Kids typed in one at a time on `8e`.
+    /// Kids typed in one at a time on `8e`. Gathered rather than written, unlike
+    /// `EnrolmentFlowView`, because until this flow ends there is no camp to write them to.
     @State private var handAdded: [IntakePlayer] = []
+
+    /// Where a walk-in lands — the first venue, which is where the design puts the under-11s.
+    private var venueName: String { shape.venues.first?.name ?? "the camp" }
 
     var body: some View {
         NavigationStack(path: $path) {
             BringInTheWeekView(
-                venueName: shape.venues.first?.name ?? "the camp",
-                handAddedCount: handAdded.count,
+                venueName: venueName,
+                // Composed here rather than inside the screen: `8c` counts kids that are not
+                // written anywhere yet, and the same screen from inside a camp counts a roster.
+                // Only the caller knows which of those it is.
+                subtitle: handAdded.isEmpty
+                    ? "Nobody added yet · \(venueName)"
+                    : "\(handAdded.count) added by hand · \(venueName)",
+                exit: .openCamp,
                 onImported: { imported in
                     file = imported
                     path.append(.review)
                 },
                 onAddByHand: { path.append(.addPlayer(.new)) },
-                onOpenCamp: finish
+                onExit: finish
             )
             .navigationDestination(for: OnboardingStep.self) { step in
                 destination(step)
@@ -141,38 +151,27 @@ struct OnboardingFlowView: View {
 
     /// Everyone `8c`, `8d` and `8e` gathered, into the venue each was answered into.
     ///
-    /// Straight to the repository rather than through an intent, because `AppStore` has no
-    /// vocabulary for enrolment yet and this branch does not own it — `store.perform` still
-    /// carries the in-flight flag and the failure banner, so a network that drops half way
-    /// through says so in the one place every other write says it. See the PR body for the two
-    /// intents this should become.
+    /// Through `store.applyRoster`, which is the intent this used to say it should become. It went
+    /// straight to the repository because the store had no vocabulary for enrolment; it has one
+    /// now, and a store that gains a vocabulary one caller still refuses to use leaves two places
+    /// to look for how a roster is written and nothing to say which is authoritative.
+    ///
+    /// Every row is an insert: at onboarding there is nobody to reconcile against, so the commit
+    /// has an empty `updating` and an empty `removing` and `applyRoster` skips both round trips.
+    ///
+    /// The kids typed in by hand go **first**, in front of the file, which is the order this had
+    /// before. What changed is that they now travel in the same batch rather than one round trip
+    /// each: "one at a time, because one at a time is how they were typed in" was a sentence about
+    /// the reader's experience of a screen, spent on forty sequential network calls at the one
+    /// moment somebody is waiting for a camp to open.
     private func saveRoster() async {
-        guard let campID = store.camp?.id else { return }
-        let venueIDs = (store.camp?.orderedVenues ?? []).map(\.id)
-        guard !venueIDs.isEmpty else { return }
+        let arriving = handAdded + (file?.players ?? [])
+        guard !arriving.isEmpty else { return }
 
-        let handAdded = self.handAdded
-        let imported = file?.players ?? []
-        guard !handAdded.isEmpty || !imported.isEmpty else { return }
-
-        await store.perform {
-            // One at a time, because one at a time is how they were typed in.
-            for kid in handAdded {
-                let venueID = venueIDs[min(kid.venueIndex, venueIDs.count - 1)]
-                store.camp = try await store.repository.addPlayer(
-                    kid.asPlayer(), toVenue: venueID, campID: campID
-                )
-            }
-
-            // One round trip per venue for the file. Almost always exactly one: a sign-up list
-            // carries no venue column, so everybody lands in the first.
-            for (index, kids) in Dictionary(grouping: imported, by: \.venueIndex).sorted(by: { $0.key < $1.key }) {
-                let venueID = venueIDs[min(index, venueIDs.count - 1)]
-                store.camp = try await store.repository.importPlayers(
-                    kids.map { $0.asPlayer() }, toVenue: venueID, campID: campID
-                )
-            }
-        }
+        await store.applyRoster(
+            RosterReconciliation.Commit(inserting: arriving, updating: [], removing: []),
+            venues: (store.camp?.orderedVenues ?? []).map(\.id)
+        )
     }
 }
 

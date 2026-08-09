@@ -25,21 +25,9 @@ struct ImportReviewView: View {
     var isCommitting: Bool = false
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The design folds the clean list to four rows behind "See all". Forty names is not a list
-    /// anybody reads — it is a number, and the number is already at the top.
-    @State private var showsEveryCleanRow = false
-
-    private static let foldedRowCount = 4
-
-    private var cleanRows: [IntakePlayer] {
-        let clean = file.readCleanly
-        guard !showsEveryCleanRow else { return clean }
-        return Array(clean.prefix(Self.foldedRowCount))
-    }
 
     var body: some View {
-        let screen = VStack(spacing: 0) {
+        VStack(spacing: 0) {
             StatusBarMock()
 
             IntakeHeader(
@@ -57,45 +45,30 @@ struct ImportReviewView: View {
         .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { commitButton }
         .navigationBarBackButtonHidden(true)
-
-        #if os(iOS)
-        return screen.toolbar(.hidden, for: .navigationBar)
-        #else
-        return screen
-        #endif
+        .hidesNavigationBar()
     }
 
     // MARK: Content
 
     private var content: some View {
-        ScrollView {
+        // Both partitions bound once. Each is a computed `filter` whose predicate walks
+        // `IntakePlayer.issue` — which counts a surname's unicode scalars — and between them they
+        // were read seven times per pass through this body, over forty rows.
+        let gaps = file.needsDetail
+        let clean = file.readCleanly
+
+        return ScrollView {
             VStack(alignment: .leading, spacing: OnboardingMetrics.cardGap) {
                 countsCard
 
-                if !file.needsDetail.isEmpty {
-                    IntakeSectionHeader(
-                        "Needs a detail · \(file.needsDetail.count)",
-                        trackingEm: 0.14,
-                        horizontalPadding: 4,
-                        bottomPadding: 0
-                    )
-                    .padding(.top, 4)
-
-                    needsDetailCard
+                if !gaps.isEmpty {
+                    NeedsDetailSection(rows: gaps, onFix: onFix)
+                        .padding(.top, 4)
                 }
 
-                if !file.readCleanly.isEmpty {
-                    IntakeSectionHeader(
-                        "Read cleanly · \(file.readCleanly.count)",
-                        trackingEm: 0.14,
-                        actionTitle: seeAllTitle,
-                        horizontalPadding: 4,
-                        bottomPadding: 0,
-                        action: toggleCleanRows
-                    )
-                    .padding(.top, Spacing.tight)
-
-                    cleanCard
+                if !clean.isEmpty {
+                    cleanSection(clean)
+                        .padding(.top, Spacing.tight)
                 }
             }
             .padding(.horizontal, Spacing.gutter)
@@ -105,111 +78,48 @@ struct ImportReviewView: View {
         }
     }
 
-    /// Thirty-six rows arriving at once is a jump wherever it happens; the fade is what says they
-    /// were already there. Off when the reader has asked for less movement.
-    private func toggleCleanRows() {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-            showsEveryCleanRow.toggle()
-        }
-    }
-
-    /// Nil when the whole clean list already fits — a control that does nothing is worse than
-    /// no control.
-    private var seeAllTitle: String? {
-        guard file.readCleanly.count > Self.foldedRowCount else { return nil }
-        return showsEveryCleanRow ? "See fewer" : "See all"
-    }
-
     // MARK: Counts
 
+    /// Grey on RANKED, because zero there is the plan rather than a shortfall.
     private var countsCard: some View {
-        Card(radius: OnboardingMetrics.cardRadius, isDivided: false) {
-            HStack(alignment: .top, spacing: Spacing.medium) {
-                count("New", file.newCount)
-                count("Returning", file.returningCount)
-                // Grey, because zero here is the plan rather than a shortfall.
-                count("Ranked", file.rankedCount, color: Theme.inkFaint)
-            }
-            .padding(Spacing.gutterWide)
-        }
-    }
-
-    private func count(_ label: String, _ value: Int, color: Color = Theme.ink) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label)
-                .typeStyle(.intakeStatLabel, color: Theme.inkFaint)
-            Text("\(value)")
-                .typeStyle(.intakeStatValue, color: color)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-        .accessibilityValue("\(value)")
-    }
-
-    // MARK: Gaps
-
-    private var needsDetailCard: some View {
-        Card(radius: OnboardingMetrics.cardRadius, borderColor: Theme.warningBorder) {
-            ForEach(file.needsDetail) { player in
-                Button { onFix(player) } label: {
-                    CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 11) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(player.displayName)
-                                .typeStyle(.intakeRowTitleSm, color: Theme.ink)
-                            Text(player.issue?.label ?? "")
-                                .typeStyle(.intakeRowDetail, color: Theme.warning)
-                        }
-
-                        Spacer(minLength: 0)
-
-                        // The chip is the affordance the design draws, but the whole row is what
-                        // takes the tap — a 24pt chip is not something to aim at on a court.
-                        Text("Fix")
-                            .typeStyle(.intakeChipSm, color: Theme.warningDark)
-                            .padding(.horizontal, Spacing.row)
-                            .padding(.vertical, Spacing.tight)
-                            .background(Theme.warningTint, in: Capsule(style: .continuous))
-                            .accessibilityHidden(true)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Fills in what the file left out")
-            }
-        }
+        IntakeCountsCard([
+            .init("New", file.newCount),
+            .init("Returning", file.returningCount),
+            .init("Ranked", file.rankedCount, color: Theme.inkFaint),
+        ])
     }
 
     // MARK: Clean
 
-    private var cleanCard: some View {
-        Card(radius: OnboardingMetrics.cardRadius) {
-            ForEach(cleanRows) { player in
-                CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 11) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(player.displayName)
-                            .typeStyle(.intakeRowTitleSm, color: Theme.ink)
-                        Text(player.detail)
-                            .typeStyle(.intakeRowDetail, color: Theme.inkMuted)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    // The design's own glyph, drawn rather than lettered. SF Symbols still has no
-                    // gender set — that has not changed — but the letter that stood in for it
-                    // read as a redaction on the one row it mattered most on, `X` beside a name
-                    // the file already failed to describe. `GenderMark` draws all three, `.x`
-                    // included, and takes `glyph` — the grey the design gives its icons, a step
-                    // lighter than its text.
-                    //
-                    // `alongside: .intakeGlyphLetter` so the mark grows at the rate the letter
-                    // did: this row sets it at 13, not the 12 the rest of the app draws marks at.
-                    if let gender = player.gender {
-                        GenderMark(gender, alongside: .intakeGlyphLetter)
-                    }
+    /// The fold, the "See all" and the four-row default are `FoldedRosterSection`'s — the same
+    /// rule `RosterReviewView` folds "Already here" by. Only the row is this screen's.
+    private func cleanSection(_ rows: [IntakePlayer]) -> some View {
+        FoldedRosterSection(title: "Read cleanly · \(rows.count)", rows: rows) { player in
+            CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 11) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(player.displayName)
+                        .typeStyle(.intakeRowTitleSm, color: Theme.ink)
+                    Text(player.detail)
+                        .typeStyle(.intakeRowDetail, color: Theme.inkMuted)
                 }
-                // Name, age and gender are one kid, not three announcements.
-                .accessibilityElement(children: .combine)
+
+                Spacer(minLength: 0)
+
+                // The design's own glyph, drawn rather than lettered. SF Symbols still has no
+                // gender set — that has not changed — but the letter that stood in for it read as
+                // a redaction on the one row it mattered most on, `X` beside a name the file
+                // already failed to describe. `GenderMark` draws all three, `.x` included, and
+                // takes `glyph` — the grey the design gives its icons, a step lighter than its
+                // text.
+                //
+                // `alongside: .intakeGlyphLetter` so the mark grows at the rate the letter did:
+                // this row sets it at 13, not the 12 the rest of the app draws marks at.
+                if let gender = player.gender {
+                    GenderMark(gender, alongside: .intakeGlyphLetter)
+                }
             }
+            // Name, age and gender are one kid, not three announcements.
+            .accessibilityElement(children: .combine)
         }
     }
 

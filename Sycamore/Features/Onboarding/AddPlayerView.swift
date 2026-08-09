@@ -141,10 +141,22 @@ struct AddPlayerView: View {
     // MARK: Name and age
 
     private var namesCard: some View {
-        Card(radius: OnboardingMetrics.cardRadius) {
-            field("First name", text: $firstName, focus: .first, submit: .next, content: .givenName)
-            field("Last name", text: $lastName, focus: .last, submit: .next, content: .familyName)
-            field("Age", text: $age, focus: .age, submit: .done, isNumeric: true)
+        VStack(alignment: .leading, spacing: Spacing.small) {
+            Card(radius: OnboardingMetrics.cardRadius) {
+                field("First name", text: $firstName, focus: .first, submit: .next, content: .givenName)
+                field("Last name", text: $lastName, focus: .last, submit: .next, content: .familyName)
+                field("Age", text: $age, focus: .age, submit: .done, isNumeric: true)
+            }
+
+            // Under the card that holds the field rather than in a banner over the screen: the
+            // fix is to retype three characters, and the field that takes them is right there.
+            // Shown only when it is true — an explanation of a rule nobody has broken is noise.
+            if let ageProblem {
+                Text(ageProblem)
+                    .typeStyle(.intakeNote, color: Theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
         }
     }
 
@@ -299,10 +311,38 @@ struct AddPlayerView: View {
         .padding(.bottom, OnboardingMetrics.ctaInset)
     }
 
-    /// A first name is the one thing a kid cannot be added without — everything else can be
-    /// asked for later, which is what `8d` exists to do.
+    /// A first name is the one thing a kid cannot be added without — everything else can be asked
+    /// for later, which is what `8d` exists to do. **But what is typed has to be writable**, and
+    /// that is what the two `PlayerRules` gates below are.
+    ///
+    /// The age field is a free-text numpad. It let a 25 through to `player.age`, and
+    /// `importPlayers` sends a whole roster in a single insert — so one kid typed as 25 rejected
+    /// **every other kid in the batch** with a raw PostgREST message and no row to point at. That
+    /// is exactly the failure wave 1 closed on the file path, and this is the screen it stayed
+    /// open on. Worse: this is also the Fix screen for `.impossibleAge`, so the one place whose
+    /// job is to settle that issue could re-create it.
+    ///
+    /// Refused rather than silently dropped. Dropping an out-of-range age would leave a kid with
+    /// no age and no sign that the number was thrown away — and the reader typed it on purpose.
+    /// The note under the field says which numbers the roster takes.
     private var canSave: Bool {
-        !firstName.trimmingCharacters(in: .whitespaces).isEmpty
+        guard !firstName.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        guard ageProblem == nil else { return false }
+        return CharLength.of(
+            lastName.trimmingCharacters(in: .whitespaces), atMost: PlayerRules.surnameLimit
+        )
+    }
+
+    /// What is wrong with the age as typed, or nil. An empty field is not a problem — a kid can be
+    /// added without one, and `8d` is the screen that asks later.
+    private var ageProblem: String? {
+        guard !age.isEmpty else { return nil }
+        guard let years = Int(age) else { return "Digits only." }
+        guard PlayerRules.ageLimits.contains(years) else {
+            let limits = PlayerRules.ageLimits
+            return "The roster takes ages \(limits.lowerBound) to \(limits.upperBound)."
+        }
+        return nil
     }
 
     private func save() {
@@ -316,7 +356,10 @@ struct AddPlayerView: View {
 
         player.firstName = firstName.trimmingCharacters(in: .whitespaces)
         player.lastName = lastName.trimmingCharacters(in: .whitespaces)
-        player.age = Int(age)
+        // Through the filter as well as behind `canSave`, so the value that lands is one the
+        // column takes even if the gate above is ever loosened. `canSave` is what the reader sees;
+        // this is what the roster gets.
+        player.age = PlayerRules.age(Int(age))
         player.gender = gender
         player.venueIndex = chosenVenueIndex
 

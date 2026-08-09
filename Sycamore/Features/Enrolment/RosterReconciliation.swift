@@ -330,13 +330,21 @@ extension RosterReconciliation {
     ///
     /// | field         | written when                                   | never                          |
     /// |---------------|------------------------------------------------|--------------------------------|
-    /// | `age`         | file age non-nil and differs (incl. nil → 13)   | a nil file age clears an age   |
+    /// | `age`         | file age *legal* and differs (incl. nil → 13)   | a nil file age clears an age   |
     /// | `gender`      | file gender non-nil and differs                 | a nil file gender writes `.x`  |
     /// | `isReturning` | file value non-nil and differs                  | a file with no column flips it |
-    /// | `lastName`    | file surname non-empty and differs as a name    | a blank cell clears a surname  |
+    /// | `lastName`    | file surname *legal* and differs as a name      | a blank cell clears a surname  |
     ///
     /// Everything the file did not speak to is carried across untouched — including venue, court
     /// and both ranks.
+    ///
+    /// **A value the column would refuse counts as silence**, which is what `PlayerRules.age` and
+    /// `PlayerRules.surname` do here. An age of 25 or a surname of 200 characters is not a change
+    /// to offer: `commit` deliberately does not drop rows with an open `IntakeIssue`, so proposing
+    /// one would put a pre-ticked line on the review screen whose only possible outcome is
+    /// `updatePlayers` failing at the CHECK — and taking the other forty legitimate updates in the
+    /// same batch down with it. The row still appears under "Needs a detail" with its Fix button,
+    /// which is where the reader can actually do something about it.
     ///
     /// **Gender is read off `IntakePlayer.gender` directly and never off `asPlayer().gender`.**
     /// `asPlayer()` maps a nil to `.x` (`IntakeRoster.swift:83`) because `Player.gender` cannot be
@@ -345,15 +353,14 @@ extension RosterReconciliation {
     /// `RosterSelection.opening(for:)` would arrive with all of it pre-ticked.
     private static func applying(_ row: IntakePlayer, to player: Player) -> Player {
         var player = player
-        if let age = row.age { player.age = age }
+        if let age = PlayerRules.age(row.age) { player.age = age }
         if let gender = row.gender { player.gender = gender }
         if let isReturning = row.isReturning { player.isReturning = isReturning }
 
         // "Differs" means differs *as a name*, folded exactly as the key is. Rejected alternative:
         // an exact string comparison, which makes every weekly re-import propose recapitalising
         // surnames it already agrees with — "Chu" → "CHU" — pre-ticked, for no information at all.
-        let surname = row.lastName.trimmingCharacters(in: .whitespaces)
-        if !surname.isEmpty, fold(surname) != fold(player.lastName ?? "") {
+        if let surname = PlayerRules.surname(row.lastName), fold(surname) != fold(player.lastName ?? "") {
             player.lastName = surname
             // The initial is derived beside the surname rather than left behind it, exactly as
             // `IntakePlayer.asPlayer()` derives it (`IntakeRoster.swift:80`). A kid who reads

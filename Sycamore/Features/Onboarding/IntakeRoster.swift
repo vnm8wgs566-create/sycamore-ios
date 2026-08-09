@@ -42,30 +42,24 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
     /// **un-returning every returning kid at the camp**. Nothing else on this type lets a file
     /// say something it never mentioned, and this no longer does either.
     var isReturning: Bool?
-    /// Which of `8b`'s venues this kid was answered into, by position.
+    /// Which venue this kid was answered into, **by position**.
     ///
-    /// A position rather than a `Venue.ID` because the venues do not exist yet — the camp is
-    /// written at the end of the flow, and until then a venue is a row somebody drew. A file's
-    /// rows keep the default: "Venue — optional, ask later" is what `8c` promises, and the first
-    /// venue is where the design puts everyone who has not been asked.
+    /// A position rather than a `Venue.ID` because at onboarding the venues do not exist yet — the
+    /// camp is written at the end of the flow, and until then a venue is a row somebody drew on
+    /// `8b`. A file's rows keep the default: "Venue — optional, ask later" is what `8c` promises,
+    /// and the first venue is where the design puts everyone who has not been asked.
+    ///
+    /// It stayed a position once the same screens were reached from **inside** a camp, where the
+    /// venues do exist and `EnrolmentFlowView` hands `AddPlayerView` the real ones through
+    /// `Venue.shape`. A `Venue.ID` here would be right for that caller and unrepresentable for the
+    /// other, and the resolution — `venues[min(index, venues.count - 1)]` — is one line in
+    /// `AppStore.applyRoster`, which is the only thing on either path that holds the venues.
     ///
     /// A destination for an **arrival** only. `RosterReconciliation` reads it for a row that
     /// becomes a new kid and never for a row that matched somebody already at the camp: which
     /// venue a kid stands in is a decision the camp made on Groups, and a spreadsheet column that
     /// mostly holds its own default does not get to overturn it.
     var venueIndex: Int = 0
-
-    /// The CHECK, in Swift: `players_age_check` admits `age >= 4 AND age <= 19`.
-    static let ageLimits = 4...19
-    /// The other one: `players_last_name_len` admits `last_name IS NULL OR char_length(last_name)
-    /// BETWEEN 1 AND 60`, added by `20260806031106_section8_model_gaps.sql`.
-    ///
-    /// A ceiling rather than a range, because the floor is already kept elsewhere — `asPlayer()`
-    /// sends an empty cell as nil, which is the branch of the CHECK that admits it. Counted
-    /// through `CharLength` like the app's four other column mirrors: Postgres counts UTF-8
-    /// characters and `String.count` counts grapheme clusters, so a surname of emoji passes a
-    /// `.count` gate and then fails the very insert the gate exists to prevent.
-    static let surnameLimit = 60
 
     /// `Priya Nandan`, and just the first name when the file gave no surname.
     var displayName: String {
@@ -83,15 +77,24 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
     /// detail" section beside a Fix button, which is where a person can actually do something
     /// about them.
     ///
+    /// The bounds are read off `PlayerRules` rather than kept here. They were statics on this
+    /// type, which made them the *file's* rules — so the by-hand path checked neither, and `8e`,
+    /// the screen this row's Fix button opens, could re-create the very issue it was opened to
+    /// settle.
+    ///
     /// Read in the row's own order — the name, then the age, then the gender — so the question
     /// follows the reader's eye across the spreadsheet line they are looking at.
+    ///
+    /// The **constants** rather than `PlayerRules.age(_:)`, deliberately: the filter folds an
+    /// out-of-range value and a missing one into the same nil, and telling those two apart is this
+    /// property's entire job.
     var issue: IntakeIssue? {
         // `lastName` is counted as it stands rather than trimmed first: both writers hand it over
         // trimmed already — `IntakeFile.fields(in:separator:)` trims every cell it reads and
         // `AddPlayerView.save()` trims the field — so this counts what will actually be sent.
-        if !CharLength.of(lastName, atMost: Self.surnameLimit) { return .longSurname }
+        if !CharLength.of(lastName, atMost: PlayerRules.surnameLimit) { return .longSurname }
         guard let age else { return .noAge }
-        if !Self.ageLimits.contains(age) { return .impossibleAge }
+        if !PlayerRules.ageLimits.contains(age) { return .impossibleAge }
         if gender == nil { return .noGender }
         return nil
     }
@@ -104,36 +107,49 @@ struct IntakePlayer: Identifiable, Hashable, Sendable {
 
     /// The kid the camp keeps.
     ///
-    /// One gap still has to be closed here, because `Player` cannot hold it open: no gender reads
-    /// as `.x`, which is the case the app already means by "not said". The file left the column
-    /// blank; nobody is being assigned one.
+    /// **The one place a spreadsheet row becomes a database row**, and therefore the one place
+    /// that has to answer "what may I write" rather than "what did the file say". Both write paths
+    /// funnel through here — `AppStore.applyRoster` maps arrivals through it before
+    /// `importPlayers`, and `AppStore.addPlayer` calls it on the single kid `8e` produced — so
+    /// every coercion below is made once for both.
     ///
-    /// The other two now pass straight through, which is what lets `8d` save a row it could only
-    /// show before:
+    /// Three gaps are closed because `Player` cannot hold them open:
     ///
-    /// - Age stays unknown. `Player.age` is `Int?`, so a row somebody read and imported anyway
-    ///   keeps its gap instead of landing as a `0` — a zero reads as a real age *and* is rejected
-    ///   by the column's own 4…19 CHECK, so that kid could not round-trip at all.
-    /// - The whole surname comes with it. `lastInitial` is still derived, because every existing
-    ///   row has only that and ~21 files read it; `lastName` sits beside it so "Serene Chu"
-    ///   survives an import rather than being cut to "Serene C" at the door. An empty cell goes as
-    ///   nil rather than `""` — the column admits null or 1…60 characters and nothing between.
+    /// - No gender reads as `.x`, which is the case the app already means by "not said". The file
+    ///   left the column blank; nobody is being assigned one.
+    /// - `Player.isReturning` is not optional, and a file that said nothing about returning is a
+    ///   kid who has not been here before as far as anyone can tell. That is the right default
+    ///   **for a kid being created**, and only for one — `RosterReconciliation` reads
+    ///   `IntakePlayer.isReturning` directly rather than through here, so a silent file changes
+    ///   nobody who is already at the camp.
+    /// - Age stays unknown when it is unknown. `Player.age` is `Int?`, so a row somebody read and
+    ///   imported anyway keeps its gap instead of landing as a `0` — a zero reads as a real age
+    ///   *and* is rejected by the column's own 4…19 CHECK, so that kid could not round-trip.
+    ///
+    /// And two values are **refused** rather than passed on, through `PlayerRules`. `commit`
+    /// deliberately does not drop rows with an open `IntakeIssue` (`RosterSelection.swift:59-62`)
+    /// and neither review screen's button refuses to write one — the reader saw the row under
+    /// "Needs a detail", declined the Fix, and asked for the import anyway. Sending the value on
+    /// would fail the **whole insert**, because `importPlayers` sends the roster as one array; so
+    /// forty-one legitimate kids would be rejected by one merged cell, with a raw PostgREST
+    /// message and no row to point at. Dropping the offending value imports the kid with the gap
+    /// they already had on screen, which is the outcome the reader was looking at.
+    ///
+    /// The whole surname comes across otherwise. `lastInitial` is still derived, because every
+    /// existing row has only that and ~21 files read it; `lastName` sits beside it so "Serene Chu"
+    /// survives an import rather than being cut to "Serene C" at the door. It is derived from the
+    /// **filtered** surname, so a cell the column would refuse leaves no initial behind either —
+    /// half of a rejected value is not a name.
     ///
     /// Venue, court and rank are the repository's to set — a kid joins the back of a venue's
     /// ladder with no court, which is what `Groups`' unassigned band is for.
-    ///
-    /// A third gap closes here for the same reason as gender: `Player.isReturning` is not
-    /// optional, and a file that said nothing about returning is a kid who has not been here
-    /// before as far as anyone can tell. That is the right default **for a kid being created**,
-    /// and only for one — `RosterReconciliation` reads `IntakePlayer.isReturning` directly rather
-    /// than through here, so a silent file changes nobody who is already at the camp.
     func asPlayer() -> Player {
-        let surname = lastName.trimmingCharacters(in: .whitespaces)
+        let surname = PlayerRules.surname(lastName)
         return Player(
             firstName: firstName,
-            lastInitial: surname.first.map { String($0).uppercased() } ?? "",
-            lastName: surname.isEmpty ? nil : surname,
-            age: age,
+            lastInitial: surname?.first.map { String($0).uppercased() } ?? "",
+            lastName: surname,
+            age: PlayerRules.age(age),
             gender: gender ?? .x,
             isReturning: isReturning ?? false,
             overallRank: 0,

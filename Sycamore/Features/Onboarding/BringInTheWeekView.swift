@@ -11,20 +11,65 @@
 //  answer to "what should be in the file?" is on the screen where the file is chosen, rather
 //  than in a support page nobody opens standing on a court.
 //
+//  It is now the on-ramp for a camp that already exists as well, reached from Groups and from
+//  Camp settings through `EnrolmentFlowView`. Two of its properties changed for that, and both
+//  for the same reason: they were sentences that assumed a camp which does not exist yet.
+//
+//  - `handAddedCount` became `subtitle`. It composed "Nobody added yet · Venue 1" here, which is
+//    the only true reading before a camp is written and the wrong one after — from inside a camp
+//    the line is "74 kids · Sycamore", counted off the graph. The caller composes it, because the
+//    caller is the one that knows which of the two it is standing in.
+//  - `onOpenCamp` became `onExit` plus an `Exit`. "Open the camp" is literal on the way in — that
+//    tap is what writes the camp — and simply untrue on the way back, where the camp is what you
+//    are already standing in and the word is "Done".
+//
+//  Everything else is shared unchanged, including the `.fileImporter` types, which is the point:
+//  choosing a file is the same act in week three as on day one.
+//
 
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct BringInTheWeekView: View {
 
+    /// Which of the two ways out this screen is drawing.
+    ///
+    /// One value rather than a `title` and a `hint` the caller supplies separately. The two must
+    /// agree — the hint is what VoiceOver says the button will do — and as free strings nothing
+    /// stops "Done" being paired with "Creates the camp and lands in it", which is a lie a
+    /// compiler cannot catch and no test would think to look for. The set is closed at two, so it
+    /// is an enum, and both sentences sit here beside the rest of this screen's copy rather than
+    /// being split across the two flows that present it.
+    enum Exit {
+        /// Onboarding. This tap is what writes the camp.
+        case openCamp
+        /// From inside a camp, where there is nothing to write.
+        case done
+
+        var title: String {
+            switch self {
+            case .openCamp: "Open the camp"
+            case .done: "Done"
+            }
+        }
+
+        var hint: String {
+            switch self {
+            case .openCamp: "Creates the camp and lands in it"
+            case .done: "Closes this and goes back to the camp"
+            }
+        }
+    }
+
     /// The venue a walk-in lands in — the first one, which is where the design puts the
     /// under-11s.
     let venueName: String
-    /// Kids typed in by hand so far. The header counts them; nothing else on this screen changes.
-    let handAddedCount: Int
+    /// The grey line under "Players". Composed by the caller — see the header.
+    let subtitle: String
+    let exit: Exit
     let onImported: (IntakeImport) -> Void
     let onAddByHand: () -> Void
-    let onOpenCamp: () -> Void
+    let onExit: () -> Void
 
     @State private var isChoosingFile = false
     /// Why the last file did not come in. Sits under the card that started it rather than in a
@@ -59,22 +104,18 @@ struct BringInTheWeekView: View {
 
     private var header: some View {
         IntakeHeader(title: "Players", subtitle: subtitle) {
-            // The way out of the flow. The camp is created by whichever screen ends it, so
-            // "open" is literal: this is the tap that writes the camp and lands in the app.
-            Button(action: onOpenCamp) {
-                Text("Open the camp")
+            // The way out of the flow, whichever flow it is. Onboarding writes the camp on this
+            // tap and calls it "Open the camp"; from inside one there is nothing to write and it
+            // says "Done".
+            Button(action: onExit) {
+                Text(exit.title)
                     .typeStyle(.intakeChip, color: Theme.accent)
                     // A 12.5pt line draws about 15pt tall; 16 either side of it clears 44.
                     .intakeTouchTarget(inset: Spacing.large)
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Creates the camp and lands in it")
+            .accessibilityHint(exit.hint)
         }
-    }
-
-    private var subtitle: String {
-        guard handAddedCount > 0 else { return "Nobody added yet · \(venueName)" }
-        return "\(handAddedCount) added by hand · \(venueName)"
     }
 
     // MARK: Content
@@ -96,14 +137,14 @@ struct BringInTheWeekView: View {
                 // The 9pt gap this column already runs on is the space under the header, so it
                 // carries none of its own.
                 IntakeSectionHeader(
-                    "What a file needs",
+                    "What a good file looks like",
                     trackingEm: 0.14,
                     horizontalPadding: 4,
                     bottomPadding: 0
                 )
                 .padding(.top, Spacing.small)
 
-                requirementsCard
+                FileExampleCard()
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.gutterWide)
@@ -216,34 +257,6 @@ struct BringInTheWeekView: View {
             .buttonStyle(.plain)
         }
     }
-
-    // MARK: What a file needs
-
-    private var requirementsCard: some View {
-        Card(radius: OnboardingMetrics.cardRadius) {
-            requirement("First name, last name")
-            requirement("Age")
-            requirement("Gender")
-            requirement("Venue — optional, ask later", isRequired: false)
-        }
-    }
-
-    private func requirement(_ text: String, isRequired: Bool = true) -> some View {
-        CardRow(spacing: 10, horizontalPadding: 13, verticalPadding: 11) {
-            Image(systemName: isRequired ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(isRequired ? Theme.accent : Theme.inkFaint)
-            Text(text)
-                .typeStyle(.intakeChecklist, color: isRequired ? Theme.inkWarm : Theme.inkMuted)
-            Spacer(minLength: 0)
-        }
-        // One element per line, and the tick spoken as what it means. Left to itself VoiceOver
-        // reads "check circle fill, First name last name", which is a glyph name and a shrug —
-        // this reads "First name, last name. Required."
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(text)
-        .accessibilityValue(isRequired ? "Required" : "")
-    }
 }
 
 // MARK: - Previews
@@ -251,21 +264,25 @@ struct BringInTheWeekView: View {
 #Preview("Bring in the week") {
     BringInTheWeekView(
         venueName: "Venue 1",
-        handAddedCount: 0,
+        subtitle: "Nobody added yet · Venue 1",
+        exit: .openCamp,
         onImported: { _ in },
         onAddByHand: {},
-        onOpenCamp: {}
+        onExit: {}
     )
     .showsMockStatusBar()
 }
 
-#Preview("Bring in the week — two by hand") {
+/// The same screen from inside a camp, which is the state the two new entry points open it in:
+/// the header counts a roster rather than an absence, and the way out is "Done".
+#Preview("Bring in the week — from inside a camp") {
     BringInTheWeekView(
-        venueName: "Venue 1",
-        handAddedCount: 2,
+        venueName: "Sycamore",
+        subtitle: "2 added · 76 kids · Sycamore",
+        exit: .done,
         onImported: { _ in },
         onAddByHand: {},
-        onOpenCamp: {}
+        onExit: {}
     )
     .showsMockStatusBar()
 }

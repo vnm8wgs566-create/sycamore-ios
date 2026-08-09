@@ -738,6 +738,54 @@ enum CampName {
     }
 }
 
+/// The two rules about what a kid's row may hold, wherever that row came from.
+///
+/// Hoisted here for the reason `CampName` was: a second feature needed them. They were statics on
+/// `IntakePlayer`, which is the shape of a line in a spreadsheet — so the file path checked them
+/// and the two paths that do not go through a file did not. `AddPlayerView` took an age off a
+/// free-text numpad and wrote it straight through, and `RosterReconciliation.applying` proposed
+/// whatever the file said; both then failed at the insert, and `importPlayers` sends a roster as
+/// **one** insert, so a single 25 rejects everybody else in the batch. That is exactly the failure
+/// wave 1 closed on the file path and left open beside it.
+///
+/// The bounds are the columns', not this app's opinion, and they are cited beside each one.
+///
+/// Two shapes, because the callers ask two different questions. The constants answer "is this
+/// legal", which is what a screen showing an issue needs — `IntakeIssue.impossibleAge` has to tell
+/// `25` apart from *no age at all*. The filters answer "what may I write", which is what a
+/// **proposal** needs: a value the column will refuse is the file saying nothing, not an
+/// instruction to change something into a row Postgres will bounce.
+enum PlayerRules {
+
+    /// `players_age_check`: `check (age between 4 and 19)`,
+    /// `supabase/migrations/20260805141707_camps_memberships_profiles.sql`.
+    static let ageLimits = 4...19
+
+    /// `players_last_name_len`: `check (last_name is null or char_length(last_name) between 1 and
+    /// 60)`, added by `20260806031106_section8_model_gaps.sql`.
+    ///
+    /// A ceiling rather than a range, because the floor is kept by writing an empty cell as null —
+    /// which is the branch of the CHECK that admits it.
+    static let surnameLimit = 60
+
+    /// An age the column will take, or nil for one it will not — including a nil going in.
+    static func age(_ value: Int?) -> Int? {
+        guard let value, ageLimits.contains(value) else { return nil }
+        return value
+    }
+
+    /// A surname the column will take, or nil for one it will not — including an empty cell.
+    ///
+    /// Counted through `CharLength` rather than `.count`, for the reason that type exists: Postgres
+    /// counts UTF-8 characters and Swift counts grapheme clusters, so a surname of emoji passes a
+    /// `.count` gate and then fails the very insert the gate exists to prevent.
+    static func surname(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, CharLength.of(trimmed, atMost: surnameLimit) else { return nil }
+        return trimmed
+    }
+}
+
 /// `char_length(x)`, counted the way Postgres counts it.
 ///
 /// Postgres counts characters of the UTF-8 string; Swift's `String.count` counts grapheme

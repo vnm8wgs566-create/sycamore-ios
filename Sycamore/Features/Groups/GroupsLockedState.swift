@@ -30,6 +30,9 @@ import SwiftUI
 struct GroupsLockedState: View {
 
     let store: AppStore
+    /// Opens the enrolment flow. Held by `GroupsView` rather than acted on here, because which
+    /// venue a kid lands in is the *chip row's* answer and the chip row is up there.
+    let onAddKids: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -106,17 +109,25 @@ struct GroupsLockedState: View {
                 GroupsMeter(count: players.count, target: GroupsRules.opensAt)
                     .padding(.top, GroupsMetrics.meterGap)
 
+                // Wired at last. This closure was empty, and its comment said adding a kid was
+                // "its own section 8 screen" with "nothing on the device to write to yet" — the
+                // screens are `8c`/`8e` and they exist, and `AppStore.applyRoster` and
+                // `addPlayer` are the something to write to. (The comment also pointed at
+                // `ScheduleView` as making the same call; that has not been true since the
+                // schedule was wired, so the citation was stale as well as the claim.)
+                //
+                // It opens the whole enrolment flow rather than `8e` alone, because "add three
+                // more kids" and "import the sign-up list" are the same errand and `8c` is the
+                // screen that offers both. Typing three kids in is one tap further along; sending
+                // the file is one tap the other way, and that is the tap most camps want.
                 PrimaryButton(
                     callToAction,
                     systemImage: "person.badge.plus",
                     height: actionHeight,
                     radius: Radius.input,
-                    font: GroupsType.lockedAction
-                ) {
-                    // Adding a kid is its own section 8 screen and there is nothing on the
-                    // device to write to yet. Left inert rather than wired to a half-made
-                    // sheet — see `ScheduleView`, which makes the same call.
-                }
+                    font: GroupsType.lockedAction,
+                    action: onAddKids
+                )
                 .padding(.top, Spacing.large)
             }
             .frame(maxWidth: .infinity)
