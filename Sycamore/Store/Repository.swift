@@ -608,14 +608,11 @@ actor InMemoryRepository: SycamoreRepository {
 
             for index in camp.players.indices {
                 guard let patch = patches[camp.players[index].id] else { continue }
-                // The six fields a roster file can speak to, and only those. `venueID`, `groupID`,
-                // `overallRank` and `courtRank` are left standing — see the protocol.
-                camp.players[index].firstName = patch.firstName
-                camp.players[index].lastInitial = patch.lastInitial
-                camp.players[index].lastName = patch.lastName
-                camp.players[index].age = patch.age
-                camp.players[index].gender = patch.gender
-                camp.players[index].isReturning = patch.isReturning
+                // `Player.keepingPlacement(of:)` rather than an assignment per file-owned field,
+                // and `SupabaseRepository.updatePlayers` reads the same method. This was six
+                // assignments here and four exclusions there — one rule in two polarities, and
+                // the inclusive one silently drops any field added to `Player` later.
+                camp.players[index] = patch.keepingPlacement(of: camp.players[index])
             }
         }
     }

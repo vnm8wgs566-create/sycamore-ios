@@ -112,14 +112,24 @@ struct VenueShapeSheet: View {
     }
 
     var body: some View {
-        SheetChrome(
+        // Both answers worked out once and handed down, rather than left as computed properties
+        // the blocks reach for. Each is asked for by its own error line, by the save button's
+        // opacity, by its `disabled`, and twice more by the accessibility hint — five evaluations
+        // of one answer per pass. `nameProblem` alone trims, counts unicode scalars, runs
+        // `isPositionalName` and lowercases every other venue's name, so at eight venues that was
+        // about a hundred throwaway strings for each character typed into the name field.
+        let nameProblem = nameProblem
+        let numberProblem = numberProblem
+        let isValid = nameProblem == nil && numberProblem == nil
+
+        return SheetChrome(
             title: title,
             subtitle: draft.limitsLine,
             detentFraction: OnboardingMetrics.venueEditorDetent,
             onClose: onClose
         ) {
             SheetSectionHeader("Name", bottomPadding: Spacing.small)
-            nameBlock
+            nameBlock(problem: nameProblem)
                 .padding(.bottom, 18)
 
             SheetSectionHeader("Icon")
@@ -127,9 +137,9 @@ struct VenueShapeSheet: View {
                 .padding(.bottom, 18)
 
             SheetSectionHeader("Limits")
-            limitsBlock
+            limitsBlock(problem: numberProblem)
 
-            saveButton
+            saveButton(isValid: isValid, hint: nameProblem ?? numberProblem ?? "")
                 .padding(.top, 18)
 
             removeButton
@@ -155,14 +165,14 @@ struct VenueShapeSheet: View {
 
     // MARK: - Name
 
-    private var nameBlock: some View {
+    private func nameBlock(problem: String?) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             // The same block `VenueSheet` draws, because it is the same block of screen 11 — see
             // `VenueNameFields`. Only the error line under it belongs to this screen: there is
             // nowhere else a name can be refused before it reaches the camp.
             VenueNameFields(name: $draft.name, subtitle: $draft.subtitle)
-            if let nameProblem {
-                errorLine(nameProblem)
+            if let problem {
+                errorLine(problem)
             }
         }
     }
@@ -173,26 +183,19 @@ struct VenueShapeSheet: View {
     /// the tile, on the argument that "a card's worth of height would not fit the row" — which was
     /// true of the row and is not true of a sheet. This is where they fit.
     private var iconGrid: some View {
-        FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
-            ForEach(Venue.iconOptions, id: \.self) { icon in
-                VenueIconTile(icon: icon, isSelected: draft.icon == icon) {
-                    draft.icon = icon
-                }
-            }
-        }
         // Nothing else is written. `VenueShape.tint` is computed from the emoji, so the plate is
         // already the right colour by the time this returns — unlike `VenueSheet`, which has a
-        // stored tint to keep in step.
-        .sensoryFeedback(.selection, trigger: draft.icon)
+        // stored tint to bring along.
+        VenueIconGrid(selected: draft.icon) { draft.icon = $0 }
     }
 
     // MARK: - Limits
 
-    private var limitsBlock: some View {
+    private func limitsBlock(problem: String?) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             limitsCard
-            if let numberProblem {
-                errorLine(numberProblem)
+            if let problem {
+                errorLine(problem)
             }
         }
     }
@@ -331,8 +334,6 @@ struct VenueShapeSheet: View {
     private var maxKids: Int? { Int(maxKidsText) }
     private var minCoaches: Int? { Int(minCoachesText) }
 
-    private var isValid: Bool { nameProblem == nil && numberProblem == nil }
-
     /// Why this name cannot be saved, in the order the reader would find out.
     ///
     /// The length is `CampName.lengthLimits` counted through `CharLength.of(_:fits:)`, and this is
@@ -379,7 +380,7 @@ struct VenueShapeSheet: View {
 
     // MARK: - Commit
 
-    private var saveButton: some View {
+    private func saveButton(isValid: Bool, hint: String) -> some View {
         PrimaryButton(
             "Save venue",
             height: OnboardingMetrics.ctaHeight,
@@ -393,7 +394,7 @@ struct VenueShapeSheet: View {
         // The inline lines above say why, and they are read in order — but a dimmed button is
         // reachable on its own by Switch Control and by a rotor jump, and "Save venue, dimmed" on
         // its own says nothing. Empty rather than optional: no hint is what an empty hint is.
-        .accessibilityHint(isValid ? "" : (nameProblem ?? numberProblem ?? ""))
+        .accessibilityHint(isValid ? "" : hint)
     }
 
     /// Only the two names are trimmed here. The limits were clamped on their way into `draft` as

@@ -51,6 +51,35 @@ struct VenueIconTile: View {
     }
 }
 
+// MARK: - The grid
+
+/// All six of them, laid out as screen 11 draws them: `display:flex;flex-wrap:wrap;gap:7px`
+/// (`design/Sycamore Flow.dc.html:479`).
+///
+/// Hoisted here a beat after the tile was, and for a sharper reason. The two venue editors each
+/// drew this loop, and by the time they were put side by side they had already drifted: one had
+/// the selection haptic and the other did not, so choosing an emoji felt different on two screens
+/// showing the same six tiles. The tile being shared was not enough — what a reader actually meets
+/// is the grid.
+///
+/// `onChoose` rather than a `Binding`, because the two callers do different amounts of work with
+/// the answer: `VenueShape.tint` is computed from the emoji and needs nothing, while `Venue.tint`
+/// is stored and has to be brought along. A binding would have put that difference back in the
+/// call sites as a second write nobody could see from here.
+struct VenueIconGrid: View {
+    let selected: String
+    let onChoose: (String) -> Void
+
+    var body: some View {
+        FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
+            ForEach(Venue.iconOptions, id: \.self) { icon in
+                VenueIconTile(icon: icon, isSelected: selected == icon) { onChoose(icon) }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: selected)
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Venue icon tiles") {

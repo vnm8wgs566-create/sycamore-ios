@@ -463,6 +463,33 @@ struct Player: Identifiable, Hashable, Codable, Sendable {
         return components.formatted(.name(style: .medium))
     }
 
+    /// This kid as a roster file would leave them: everything the file can speak to taken from
+    /// `self`, and where they stand in the camp taken from `other`.
+    ///
+    /// The four restored fields are the whole idea, and they are named as an **exclusion** rather
+    /// than the six inclusions being the short list. Venue, court and the two ranks are camp
+    /// state; a file has no opinion about them, and `movePlayer` is where a change of mind about
+    /// them goes. Stating it this way also fails safe: a field added to `Player` later counts as
+    /// file-owned by default, and the worst that does is write a value that was already there.
+    /// Naming the six instead would make a new field silently invisible — the kid would keep the
+    /// old value with no sign of it.
+    ///
+    /// One list, two jobs, which is why it lives here rather than in either repository. Both
+    /// `updatePlayers` implementations use it: offline it *is* the write, and against Postgres
+    /// `patch.keepingPlacement(of: existing) != existing` is exactly "this line changes
+    /// something", which is what lets a re-import skip the rows it would only rewrite with the
+    /// values already in them. The two had this rule spelled out separately and in opposite
+    /// polarities — six assignments offline, four exclusions online — so the one that failed
+    /// unsafe was the one no test could see.
+    func keepingPlacement(of other: Player) -> Player {
+        var kept = self
+        kept.venueID = other.venueID
+        kept.groupID = other.groupID
+        kept.overallRank = other.overallRank
+        kept.courtRank = other.courtRank
+        return kept
+    }
+
     /// `13 years` under a name that read cleanly, and `Age unknown` for one that did not — the
     /// two readings `8d` puts side by side.
     var ageLabel: String {

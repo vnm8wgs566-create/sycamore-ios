@@ -266,20 +266,43 @@ enum IntakeFile {
     /// stray comma inside a quoted cell cannot outvote a row's worth of real separators.
     private static func separator(in lines: [Substring]) -> Character {
         guard let line = lines.first(where: { $0.contains { !$0.isWhitespace } }) else { return "," }
-        func occurrences(of candidate: Character) -> Int { line.count { $0 == candidate } }
 
-        // `max(by:)` keeps the first of equal elements, so the comma at the head of the list is
-        // what a tie — and a file with none of the three — falls back to.
-        let candidates: [Character] = [",", "\t", ";"]
-        guard let winner = candidates.max(by: { occurrences(of: $0) < occurrences(of: $1) }),
-              occurrences(of: winner) > 0
-        else { return "," }
-        return winner
+        // One pass with three counters, rather than `max(by:)` over a closure that re-counts the
+        // line for every comparison and once more for the guard — five walks of the header to
+        // learn three numbers. The comma leads the list because ties fall to the first, and so
+        // does a header with none of the three.
+        var comma = 0, tab = 0, semicolon = 0
+        for character in line {
+            switch character {
+            case ",": comma += 1
+            case "\t": tab += 1
+            case ";": semicolon += 1
+            default: break
+            }
+        }
+        if tab > comma, tab >= semicolon { return "\t" }
+        if semicolon > comma, semicolon > tab { return ";" }
+        return ","
     }
 
     /// Splits one line on `separator`, honouring double quotes so `"Nandan, Priya"` stays one
     /// field. A trailing carriage return is trimmed with the rest of the whitespace, so a file
     /// saved on Windows does not glue one onto its last column.
+    /// A cell reduced to the letters in it, lower-cased — how every cell this file recognises by
+    /// its wording is compared.
+    ///
+    /// Three places asked the same question and each spelled the answer out: the header sniffer,
+    /// `Gender(fileValue:)` and `Bool(fileValue:)`. It is what lets "First Name", "first_name" and
+    /// "Given name " reach the same column, and "F", "f " and "Female" reach the same gender.
+    ///
+    /// Digits are dropped deliberately, which is why this is not `RosterReconciliation.fold`.
+    /// That one keeps them, because a digit is part of a child's name and a folded key that lost
+    /// it would match two different people; here a digit is never part of the wording, and a
+    /// header cell reading `Age 2` is still the age column.
+    static func cellKey(_ cell: String) -> String {
+        cell.lowercased().filter(\.isLetter)
+    }
+
     private static func fields(in line: String, separator: Character) -> [String] {
         var fields: [String] = []
         var current = ""
@@ -327,7 +350,7 @@ enum IntakeFile {
         /// Nil when the first row is data rather than a header — which is the case as soon as
         /// one of its cells is a number, because no column is called "12".
         init?(header: [String]) {
-            let keys = header.map { $0.lowercased().filter(\.isLetter) }
+            let keys = header.map(IntakeFile.cellKey)
             guard keys.contains(where: { $0.contains("name") || $0.contains("age") || $0.contains("gender") }),
                   !header.contains(where: { Int($0) != nil })
             else { return nil }
@@ -390,7 +413,7 @@ extension Gender {
     /// question on `8d` — guessing a kid's gender out of an unreadable cell is not a mistake
     /// worth making silently.
     init?(fileValue: String) {
-        let value = fileValue.lowercased().filter(\.isLetter)
+        let value = IntakeFile.cellKey(fileValue)
         guard let initial = value.first else { return nil }
 
         switch initial {
@@ -410,7 +433,7 @@ extension Gender {
 private extension Bool {
     /// A returning-camper column, however the office spells yes.
     init(fileValue: String) {
-        let value = fileValue.lowercased().filter(\.isLetter)
+        let value = IntakeFile.cellKey(fileValue)
         self = value.hasPrefix("y") || value.hasPrefix("t") || value.hasPrefix("r")
             || fileValue.trimmingCharacters(in: .whitespaces) == "1"
     }

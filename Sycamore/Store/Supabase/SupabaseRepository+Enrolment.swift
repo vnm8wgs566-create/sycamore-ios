@@ -217,6 +217,15 @@ extension SupabaseRepository {
 
 extension SupabaseRepository {
 
+    /// How many PATCHes `updatePlayers` keeps in the air at once.
+    ///
+    /// Six because that is roughly what a phone's URL session will run against one host before it
+    /// queues them itself: past that the requests are not concurrent, they are merely all
+    /// started, and the only thing the extra width buys is sockets. Deliberately not tuned
+    /// against a measurement — there is no batch to measure yet, and a number chosen to be
+    /// unremarkable is easier to raise later than one chosen to look precise.
+    static let concurrentWrites = 6
+
     func addPlayer(
         _ player: Player, toVenue venueID: Venue.ID, campID: Camp.ID
     ) async throws -> Camp {
@@ -266,10 +275,15 @@ extension SupabaseRepository {
     /// (`SupabaseRepository+Graph.swift:281-298`): the graph is not loaded to validate the ids, it
     /// is loaded because the current values are what the file is being compared against.
     ///
-    /// The task-group body is character-for-character `writePlacements`', which is a duplication
-    /// worth naming: the fan-out is unbounded in both, so a batch large enough to want chunking or
-    /// a concurrency cap has to be fixed in two files. Extracting it belongs with `writePlacements`
-    /// in `SupabaseRepository+Graph.swift` rather than here.
+    /// The fan-out is **capped**, which is where this parts company with `writePlacements`
+    /// (`SupabaseRepository+Graph.swift:142-165`) rather than copying it. That one groups by
+    /// destination slot, so a hundred kids is a dozen requests and the width takes care of
+    /// itself. Nothing here can be grouped — every payload is a different kid's different fields
+    /// — so the width *is* the batch, and the batch is a whole camp on the one re-import that
+    /// changes everyone at once: a season rolling over and every age going up by a year. A
+    /// hundred simultaneous sockets is not a thing to do to somebody's phone on a court, and the
+    /// cost of the cap is wall clock nobody is watching — `ceil(N / concurrentWrites)` waves
+    /// instead of one.
     ///
     /// **Deliberately not `db.upsert(Relation.players, rows, onConflict: "id")`**, which is the
     /// tempting single-request answer and has to be argued away rather than merely not chosen.
@@ -305,7 +319,10 @@ extension SupabaseRepository {
             var changed: [Player] = []
             for (playerID, patch) in patches {
                 guard let existing = current[playerID] else { throw SycamoreError.unknownPlayer }
-                if Self.asARosterSeesThem(patch) != Self.asARosterSeesThem(existing) {
+                // `Player.keepingPlacement(of:)` is the same method `InMemoryRepository` writes
+                // with, so "this line changes something" and "this is what gets written" cannot
+                // drift apart. It carries the argument for stating the rule as four exclusions.
+                if patch.keepingPlacement(of: existing) != existing {
                     changed.append(patch)
                 }
             }
@@ -316,7 +333,7 @@ extension SupabaseRepository {
             // because `PostgRESTClient` is a `Sendable` struct. `writePlacements` does the same.
             let db = self.db
             try await withThrowingTaskGroup(of: Void.self) { tasks in
-                for player in changed {
+                func patch(_ player: Player) {
                     tasks.addTask {
                         try await db.update(
                             Relation.players,
@@ -325,30 +342,22 @@ extension SupabaseRepository {
                         )
                     }
                 }
-                try await tasks.waitForAll()
+                // Prime the window, then add one for each that finishes, so at most
+                // `concurrentWrites` requests are ever in flight. `next()` rethrows, so the first
+                // failure still leaves the group — and its remaining tasks are cancelled on the
+                // way out exactly as `waitForAll` would have left them.
+                var pending = changed.makeIterator()
+                for _ in 0..<Self.concurrentWrites {
+                    guard let player = pending.next() else { break }
+                    patch(player)
+                }
+                while try await tasks.next() != nil {
+                    guard let player = pending.next() else { continue }
+                    patch(player)
+                }
             }
             return try await camp(id: campID)
         }
-    }
-
-    /// A kid with everything a roster file has no opinion about flattened away.
-    ///
-    /// Two of these being equal is exactly "this line changes nothing", which is what lets a
-    /// re-import skip the rows it would only rewrite with the values already in them.
-    ///
-    /// Written as the four fields to *exclude* rather than the six to compare, and that direction
-    /// is deliberate. The excluded four are the concept this whole method is built around — venue,
-    /// court and the two ranks are camp state — so they are the short, stable list. It also fails
-    /// safe: a field added to `Player` later counts as file-owned by default, and the worst that
-    /// does is send a PATCH that writes nothing. Naming the six instead would make a new field
-    /// silently invisible to the diff, and the kid would keep the old value with no sign of it.
-    static func asARosterSeesThem(_ player: Player) -> Player {
-        var stripped = player
-        stripped.venueID = nil
-        stripped.groupID = nil
-        stripped.overallRank = 0
-        stripped.courtRank = 0
-        return stripped
     }
 
     /// One filtered DELETE.
@@ -384,11 +393,30 @@ extension SupabaseRepository {
         guard !playerIDs.isEmpty else { return try await camp(id: campID) }
 
         return try await serialised(campID) {
-            let before = try await camp(id: campID)
-            // One pass over the roster rather than one per tick, and before the DELETE, so a tick
-            // list naming somebody else's kid takes none of this camp's with it.
-            let leaving = Set(playerIDs)
-            guard leaving.isSubset(of: Set(before.players.map(\.id))) else {
+            // One narrow select rather than the whole graph, and this is the difference between
+            // this method and `updatePlayers` above. That one loads the camp because the current
+            // values are what the file is compared against; this one has nothing to compare and
+            // needs a single fact — do these ids belong to this camp. `camp(id:)` is eight
+            // selects in two waves, including a week of attendance and the whole inbox, and every
+            // row of it would be decoded and thrown away.
+            //
+            // Scoped through `sites!inner(camp_id)`, which is how `writeAttendance` asks the same
+            // question of one kid (`SupabaseRepository+Graph.swift:284-286`) — `players` carries
+            // no `camp_id` of its own, so the site is the only route to one. Counting the rows
+            // back is enough: the filter cannot return an id that was not asked for, so fewer
+            // rows than ids means at least one kid is somebody else's, which is `unknownPlayer`
+            // exactly as it is offline. Before the DELETE, so a tick list naming another camp's
+            // kid takes none of this camp's with it.
+            // `*` rather than `id`, as `writeAttendance` also asks for: `PlayerRecord.firstName`
+            // and `.isReturning` are non-optional, so an id-only projection decodes to nothing.
+            // The row is still one relation's worth instead of the graph's.
+            let mine: [PlayerRecord] = try await db.select(
+                Relation.players,
+                .select("*,sites!inner(camp_id)")
+                    .within("id", playerIDs)
+                    .eq("sites.camp_id", campID)
+            )
+            guard Set(mine.map(\.id)) == Set(playerIDs) else {
                 throw SycamoreError.unknownPlayer
             }
             try await db.delete(Relation.players, where: PostgRESTQuery().within("id", playerIDs))

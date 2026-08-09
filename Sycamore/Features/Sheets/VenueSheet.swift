@@ -71,14 +71,12 @@ struct VenueSheet: View {
     // MARK: - Icon
 
     private var iconGrid: some View {
-        FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
-            ForEach(Venue.iconOptions, id: \.self) { icon in
-                VenueIconTile(icon: icon, isSelected: draft.icon == icon) {
-                    draft.icon = icon
-                    // A venue's tile tint follows its emoji unless someone has said otherwise.
-                    draft.tint = .suggested(for: icon)
-                }
-            }
+        VenueIconGrid(selected: draft.icon) { icon in
+            draft.icon = icon
+            // A venue's tile tint follows its emoji unless someone has said otherwise. This is
+            // the whole of what `VenueShapeSheet` does not have to do — a `VenueShape`'s tint is
+            // computed from the emoji, so there is no second field there to keep in step.
+            draft.tint = .suggested(for: icon)
         }
     }
 
