@@ -1381,7 +1381,18 @@ extension Camp {
             sport: draft.sport,
             inviteCode: inviteCode,
             icon: Venue.iconOptions[0],
-            tint: .moss
+            tint: .moss,
+            // Falls back rather than passing an empty set on. `camps_camp_days_check` is
+            // `check (camp_days > 0 and camp_days <= 127)`
+            // (`supabase/migrations/20260809030000_camp_days_and_block_assignment.sql:37-38`) and
+            // fires at `insert` — which is at the *end* of the onboarding flow, five screens
+            // after the picker that should have refused it. A camp created without a day is a bug
+            // upstream, and the column's own DEFAULT is the same 31 this substitutes.
+            //
+            // Deliberately not the rule an *edit* follows: Camp settings is one tap from an
+            // editor that has already refused the empty set, so there the CHECK is allowed to
+            // speak rather than have a week nobody chose written in its place.
+            days: draft.days.isValid ? draft.days : .weekdays
         )
         for index in 0..<max(1, draft.venueCount) {
             let icon = Venue.iconOptions[index % Venue.iconOptions.count]
