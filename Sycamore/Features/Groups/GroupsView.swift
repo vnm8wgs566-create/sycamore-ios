@@ -15,8 +15,16 @@
 //  whole argument; it is the one thing on this screen that is easy to get subtly wrong.
 //
 //  The screen coordinates the move rather than the cards, because a kid picked up in one card
-//  lands in another. It owns the lifted card, the insertion bar, every card's rectangle and
-//  every drawn row's, and it is the only thing that writes to the store.
+//  lands in another. It owns the lifted card, every card's rectangle and every drawn row's, the
+//  fold each card is in, how far the list has walked itself, and it is the only thing that
+//  writes to the store.
+//
+//  `8p` is a single continuous gesture now: hold, drag, let go. The bar that used to land a
+//  latched kid — `Cancel` / `Drop here` — has gone, and with it the tap-to-aim it was the other
+//  half of. What replaces the reach that latch bought is here: the lift opens every card in the
+//  venue so no seat is hidden behind "+3 more", and `GroupsAutoscroll` walks the list towards
+//  the finger when the carried card nears an edge. `GroupsMove.swift`'s header carries the
+//  argument; `beginMove` and `endTracking` are where it is played.
 //
 
 import SwiftUI
@@ -37,11 +45,28 @@ struct GroupsView: View {
     @State private var move: GroupsMove?
     /// Set for the one state change on this screen that must *not* animate: a move ending by
     /// being committed. Cleared at the start of the next lift rather than on a timer, which is
-    /// the only moment it could matter again. See `drop()`.
+    /// the only moment it could matter again. See `commit(_:to:)`.
     @State private var isDropping = false
     /// Card and row rectangles in `GroupsSpace.list` — the raw material for every drop slot.
     @State private var cardFrames: [Group.ID: CGRect] = [:]
     @State private var rowFrames: [Player.ID: CGRect] = [:]
+    /// A rebuild of the slots is already queued for the end of this layout pass. See
+    /// `scheduleGeometryRefresh()`.
+    @State private var isRefreshScheduled = false
+    /// What the scroll view is showing, which is what the autoscroll measures the carried card
+    /// against.
+    @State private var viewport = GroupsViewport()
+    @State private var listScroll = GroupsListScroll()
+    /// The loop that walks the list towards the finger. Held so it can be cancelled the instant
+    /// the finger leaves, rather than left to notice on its next tick.
+    @State private var autoscroll: Task<Void, Never>?
+    /// A drop that changes the kid's court, waiting on an answer. Nil the rest of the time, which
+    /// is most drops — a reorder inside one court commits on release with nothing to read.
+    @State private var pendingLanding: PendingLanding?
+    /// The dialog's own presentation flag, kept beside `pendingLanding` rather than derived from
+    /// it. A `Binding` computed from the optional would have its setter run *before* the button
+    /// action that answered it, and cancel the move the reader had just confirmed.
+    @State private var isConfirmingCourtChange = false
     /// Whether the enrolment flow is up. Presented **here** rather than through
     /// `store.activeSheet` or a `PushedScreen` case — see `enrolmentFlow`.
     @State private var isEnrolling = false
@@ -68,12 +93,53 @@ struct GroupsView: View {
         // `#F8F9F8`, which is a touch warmer than the `grouped` every other tab draws. Section 8
         // gives this screen its own page colour; see the PR for why it is not `Theme.grouped`.
         .background(Theme.surfaceWarm)
-        .overlay(alignment: .bottom) { moveBar }
         .fullScreenPresentation(isPresented: $isEnrolling) { enrolmentFlow }
-        .animation(Motion.fold(reduceMotion: reduceMotion), value: move == nil)
+        .confirmationDialog(
+            pendingLanding?.question ?? "",
+            isPresented: $isConfirmingCourtChange,
+            titleVisibility: .visible,
+            presenting: pendingLanding
+        ) { pending in
+            Button("Move") { confirmPending(pending) }
+            // "Keep …", which is how the other five confirmations in this app spell their way out
+            // — `StaffSheet` keeps them, `VenueShapeSheet` and `BlockEditorSheet` keep it. The
+            // word a reader has learned to look for is worth more than a fresher sentence at the
+            // one moment they are being asked to decide quickly.
+            Button("Keep them where they are", role: .cancel) { cancelMove() }
+        } message: { _ in
+            // What moves, and what does not. The court is the visible half of this drop and the
+            // ladder is the half the row cannot say — a kid who was ninth in the camp is not
+            // ninth any more, and that is the fact worth putting in front of somebody before
+            // they agree to it. The second sentence is there because the first invites the
+            // question: a band moving usually means everybody's does.
+            Text("Their place in the camp ladder moves with them. Nobody else changes court.")
+        }
+        .onChange(of: isConfirmingCourtChange) { _, presented in
+            guard !presented else { return }
+            Task { @MainActor in resolveStrandedConfirmation() }
+        }
+        // The unfold at the start of a lift must land in one pass rather than slide in over a
+        // quarter of a second, because the frames measured during it are what every drop slot is
+        // rebuilt from — see `refreshDragGeometry()`. `.animation(_:value:)` is a scoped override
+        // that beats the ambient transaction, so this is the only place that decision can be
+        // made: the lift changes `move == nil`, which would otherwise animate the whole subtree,
+        // opened rows included.
+        .animation(
+            move?.awaitingGeometry == true ? nil : Motion.fold(reduceMotion: reduceMotion),
+            value: move == nil
+        )
         // A filter that changes under a kid in the air can take their group off the screen.
-        .onChange(of: store.searchText) { move = nil }
-        .onChange(of: store.venueFilter) { move = nil }
+        // Through `cancelMove()` rather than `move = nil`, which would strand the unfolded cards,
+        // the missing tab bar and the autoscroll loop behind it.
+        .onChange(of: store.searchText) { cancelMove() }
+        .onChange(of: store.venueFilter) { cancelMove() }
+        // The list moving is the only travel the drag itself cannot report, so it is credited
+        // where it is *observed* rather than where it is asked for — see `creditListTravel(_:)`.
+        .onChange(of: viewport.visible.minY) { was, now in creditListTravel(now - was) }
+        // The autoscroll loop outlives the view otherwise. Every ordinary way a move ends stops
+        // it, but a screen torn down from underneath one is not one of them, and a loop ticking
+        // against state nobody is drawing is a leak that never notices.
+        .onDisappear { stopAutoscroll() }
         // The lift itself — one firmer tap as the kid leaves the ladder.
         .sensoryFeedback(trigger: move?.row.id) { previous, current in
             previous == nil && current != nil ? .impact(weight: .medium) : nil
@@ -81,6 +147,13 @@ struct GroupsView: View {
         // And a lighter one each time they cross a boundary on the way to somewhere else.
         .sensoryFeedback(trigger: move?.target ?? nil) { _, current in
             current != nil ? .impact(weight: .light) : nil
+        }
+        // The landing. New, and it is the release that earned it: the gesture used to end on a
+        // button press, which a reader gets a system tap for anyway, and now it ends on nothing
+        // at all — a finger leaving glass has no feedback of its own. `isDropping` is set only by
+        // a commit, so a cancel and a no-op stay silent, which is the distinction worth feeling.
+        .sensoryFeedback(trigger: isDropping) { _, current in
+            current ? .impact(weight: .medium) : nil
         }
     }
 
@@ -175,9 +248,13 @@ struct GroupsView: View {
             .overlay(alignment: .top) { liftedRow }
         }
         .scrollIndicators(.hidden)
-        // Only while a finger is actually on the handle. The rest of the time a kid in the air
-        // stays there, and scrolling to the group they are going to is the whole point.
-        .scrollDisabled(move?.isDragging == true)
+        // For as long as a kid is in the air, which is now the length of one gesture plus any
+        // confirmation. The list still *moves* in that time — `GroupsAutoscroll` drives it
+        // through `scrollPosition` below — and this only takes the pan away from the finger,
+        // which is already busy carrying somebody. Two things scrolling the same list at once is
+        // how a drop lands a group away from where it was aimed.
+        .scrollDisabled(move != nil)
+        .groupsListScroll($listScroll, viewport: $viewport)
     }
 
     private func cardView(_ entry: GroupsEntry) -> some View {
@@ -188,10 +265,10 @@ struct GroupsView: View {
             move: move,
             onToggle: { toggle(entry.id) },
             onOpenPlayer: { store.pushedScreen = .player($0.id) },
-            onAim: { aim(at: entry.id) },
             onMoveBegan: { beginMove($0, in: entry) },
             onMoveChanged: updateMove(to:),
             onMoveEnded: endTracking,
+            onMoveCancelled: cancelTracking,
             onNudge: { nudge($0, in: entry, by: $1) },
             // Both frame stores describe the list **at rest**, which is the only state a drop
             // slot can be measured from. A slot is a promise about where a boundary was when
@@ -199,16 +276,51 @@ struct GroupsView: View {
             // *consequence* of the target and so cannot be used to choose one. See
             // `GroupsMove.slots`.
             //
-            // Nothing reads either dictionary mid-move today — `beginMove` reads both, once,
-            // and is the only reader — so this is structure rather than a fix. It also stops
-            // `body` re-evaluating on every frame of every shift animation, which is a great
-            // many frames now that there is a shift at all.
-            onRowFrame: { id, frame in if move == nil { rowFrames[id] = frame } }
+            // `awaitingGeometry` is the one exception, and it is not one really: the lift
+            // unfolds every card in the venue, and while that flag is set the cards draw
+            // themselves *at rest* — no ghost, and the lifted row keeps its space. So the frames
+            // arriving in that pass describe the same list these dictionaries always hold, with
+            // the unfold and nothing else applied. Every other frame of the move is ignored,
+            // which is also what stops `body` re-evaluating on each frame of a shift animation.
+            onRowFrame: { id, frame in
+                guard isMeasuring else { return }
+                rowFrames[id] = frame
+                scheduleGeometryRefresh()
+            }
         )
         .onGeometryChange(for: CGRect.self) {
             $0.frame(in: .named(GroupsSpace.list))
         } action: { frame in
-            if move == nil { cardFrames[entry.id] = frame }
+            guard isMeasuring else { return }
+            cardFrames[entry.id] = frame
+            scheduleGeometryRefresh()
+        }
+    }
+
+    /// Whether a rectangle arriving now describes the list a drop slot can be measured from.
+    private var isMeasuring: Bool { move == nil || move?.awaitingGeometry == true }
+
+    /// Ask for the slots to be rebuilt once this layout pass has finished arriving.
+    ///
+    /// Deferred by one turn of the main actor, and that is the whole of it. `onGeometryChange`
+    /// reports one rectangle at a time, so a rebuild run from the first of them would read a
+    /// dictionary the rest of the pass has not written yet — and the entries it would find there
+    /// are *last* move's, measured against a list the drop that ended it has since renumbered.
+    /// Every geometry action for one layout pass runs in the same turn, so the next one has all
+    /// of them.
+    ///
+    /// `RankView` gets this for free by measuring through a `PreferenceKey`, which arrives as one
+    /// dictionary, and pays for it with exactly this hop (`RankView.swift:110-113`).
+    ///
+    /// One hop per pass rather than one per row: a venue of a hundred kids reports a hundred
+    /// rectangles, and ninety-nine no-op tasks is ninety-nine allocations at the one moment the
+    /// screen is busiest.
+    private func scheduleGeometryRefresh() {
+        guard move?.awaitingGeometry == true, !isRefreshScheduled else { return }
+        isRefreshScheduled = true
+        Task { @MainActor in
+            isRefreshScheduled = false
+            refreshDragGeometry()
         }
     }
 
@@ -350,16 +462,53 @@ struct GroupsView: View {
         }
     }
 
-    @ViewBuilder
-    private var moveBar: some View {
-        if move != nil {
-            GroupsMoveBar(canDrop: move?.target != nil, onCancel: cancelMove, onDrop: drop)
-                // The design puts this *in place of* the tab bar, which `RootView` draws rather
-                // than the tab that owns it. So it stacks above the pill instead of replacing
-                // it — one bar over the other, neither hidden.
-                .padding(.bottom, Spacing.tabBarClearance)
-                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-        }
+    // MARK: - The confirmation
+
+    /// A drop that takes a kid off the court they are on, held while the reader answers for it.
+    ///
+    /// Only a court change asks. Reordering inside one court commits the moment the finger
+    /// leaves the handle, because the whole row is on screen, the change is one place in a list
+    /// the reader is looking at, and a dialog in front of it would make the common gesture the
+    /// expensive one. Changing court is different: it moves the kid's band in the camp ladder as
+    /// well as their card, and it is the drop a slip of the thumb near a card boundary actually
+    /// produces.
+    ///
+    /// It carries its own copy of everything the dialog says, rather than reaching back through
+    /// `move` — the sentence has to survive the move being torn down by the answer that dismisses
+    /// it, and a title assembled from state that is already nil reads as "Move  to ?".
+    private struct PendingLanding: Identifiable, Equatable {
+        let row: PlayerRow
+        let landing: GroupsLanding
+        /// `Court 2` — the group's own label, which is what the design calls a court everywhere
+        /// outside a rank band's "Group 2".
+        let groupName: String
+
+        var id: Player.ID { row.id }
+        var question: String { "Move \(row.player.displayName) to \(groupName)?" }
+    }
+
+    /// The teardown is `commit`'s, through `endMove()` — every path out of it reaches one, so
+    /// clearing `pendingLanding` here as well would be a second owner of one step and would read
+    /// as though the safety net below depended on it.
+    private func confirmPending(_ pending: PendingLanding) {
+        commit(pending.row, to: pending.landing)
+    }
+
+    /// The safety net for a dialog dismissed without either button — a sheet swiped away, a
+    /// scrim tapped where the platform does not route that to the cancel action.
+    ///
+    /// It matters more than it used to. There is no move bar to fall back on, so a kid left in
+    /// the air with no dialog in front of them and the tab bar hidden is a screen with nothing on
+    /// it that ends the move. The safe reading of "dismissed without answering" is the cancel:
+    /// the row goes home and nothing is written.
+    ///
+    /// Deferred by one hop, and it has to be: a dialog button's action runs *after* the dialog
+    /// has dismissed, so this would otherwise undo the "Move" that is about to run. By the next
+    /// turn of the main actor both buttons have had their say, and anything still pending was
+    /// dismissed without one.
+    private func resolveStrandedConfirmation() {
+        guard pendingLanding != nil else { return }
+        cancelMove()
     }
 
     // MARK: - Derived
@@ -426,7 +575,14 @@ struct GroupsView: View {
                         over: range,
                         lifted: move?.sourceGroupID == card.id
                     ),
-                    visibleRows: Array(card.rows.prefix(visible)),
+                    // The card's own array when nothing is hidden, rather than a copy of it.
+                    // `body` runs on every frame of a drag and a lift now opens every card in the
+                    // venue, so the folded case — where a copy of three rows is genuinely needed
+                    // — is exactly the case that is *not* mid-drag. The other one was twelve
+                    // hundred `PlayerRow` copies a second, for an array that already existed.
+                    visibleRows: visible == card.rows.count
+                        ? card.rows
+                        : Array(card.rows.prefix(visible)),
                     tailRank: (range?.upperBound ?? 0) + 1
                 )
             } ?? []
@@ -471,17 +627,23 @@ struct GroupsView: View {
     /// Only the leading edge inside the loop: the rows stack with no spacing, so a row's bottom
     /// and its neighbour's top are the same line and emitting both would double the array.
     ///
-    /// The foot is what makes a group with nothing drawn in it — folded to its header, or
-    /// searched down to nothing — somewhere a kid can still be put. It carries the *unfiltered*
-    /// row count, which is a different index from the last drawn row's when a card is folded.
+    /// The foot is what makes a group with nothing drawn in it — searched down to nothing, or
+    /// simply empty — somewhere a kid can still be put. It carries the *unfiltered* row count,
+    /// which is a different index from the last drawn row's whenever the two disagree.
+    ///
+    /// **Folding no longer makes them disagree while a kid is in the air.** A lift opens every
+    /// card in the venue (`beginMove`), so from the moment there is anybody to drop, "every drawn
+    /// row" is every row — which is what makes the whole of a group reachable rather than its
+    /// first three. This is still written in terms of the drawn rows, because it is also what
+    /// measures the list at rest, where cards are folded and most rows are not drawn at all.
     ///
     /// That foot slot's y is the card's own bottom edge, which is `Spacing.tight` below the row
     /// boundary the space actually opens at — so the card carrying the kid parks about six
-    /// points low when it is aimed there. Left alone on purpose: this y is what the kid *aims*
-    /// with, moving it would move where they land, and the foot slot is what **tapping a card**
-    /// means. "Somewhere at the back of this one" is not a request in which six points of
-    /// parking is the thing being asked about. The ghost itself is unaffected — it is placed by
-    /// layout, at the back of the card's real stack, not by this number.
+    /// points low when it comes to rest there. Left alone on purpose: this y is what the kid
+    /// *aims* with, and moving it would move where they land. Six points is a third of the
+    /// distance to the next boundary, and the boundary either side of it says the same thing
+    /// about where the kid goes. The ghost itself is unaffected — it is placed by layout, at the
+    /// back of the card's real stack, not by this number.
     private func slots(for entries: [GroupsEntry]) -> [GroupsDropSlot] {
         entries.flatMap { entry -> [GroupsDropSlot] in
             let venueID = entry.card.group.venueID
@@ -547,17 +709,52 @@ struct GroupsView: View {
 
     // MARK: - The move
 
+    /// Picking a kid up: the venue opens, the tab bar goes, and the list starts watching its own
+    /// edges.
     private func beginMove(_ row: PlayerRow, in entry: GroupsEntry) {
         guard let origin = rowFrames[row.id],
               let index = entry.card.rows.firstIndex(where: { $0.id == row.id })
         else { return }
 
         // The last drop's "do not animate this" instruction, spent. Cleared here rather than on
-        // a hop off the main actor because this is the next moment `move?.target` changes at
-        // all, so it is the first moment the flag could affect anything again — and it is
-        // cleared in the same pass that sets the move, so the body that reads the animation
-        // sees a live lift and a false flag.
+        // a hop off the main actor because this is the next moment `move` changes at all, so it
+        // is the first moment the flag could affect anything again — and it is cleared in the
+        // same pass that sets the move, so the body that reads the animation sees a live lift
+        // and a false flag.
         isDropping = false
+
+        // **Every card in the venue opens, for the length of the move.** A folded card draws
+        // three kids and "+N more", and "+N more" was disabled mid-move — so in an eight-kid
+        // group, positions five to seven could not be reached by drag at all. That is most of
+        // "the ordering of the kids in the groups still sucks ... should be able to change the
+        // list in any order": not a gesture that missed, a gesture with nowhere to land.
+        //
+        // Only the cards this opened are noted, and only those fold again when the move ends —
+        // a card the reader opened themselves stays open, because they opened it.
+        //
+        // The alternative was `RankView`'s: unfold the card being dragged *from*, and unfold a
+        // card as the kid is aimed at it. Rejected because a fold changing mid-move is a fold
+        // changing under the frozen slots — the target decides the unfold, the unfold moves
+        // every boundary below it, and the boundaries are what the target is picked from. Doing
+        // all of it at the lift keeps that to one re-measurement, at the one moment the list can
+        // be drawn at rest to be measured: see `awaitingGeometry` and `refreshDragGeometry()`.
+        let venueEntries = entries(in: selectedVenue)
+        let opening = Set(
+            venueEntries.filter { $0.visibleRows.count < $0.card.rows.count }.map(\.id)
+        )
+
+        // The rectangles this screen still holds for the rows about to be revealed are from the
+        // *last* move, measured against a list the drop that ended it has since renumbered.
+        // Dropped rather than trusted, so that `refreshDragGeometry()`'s "every drawn row has
+        // been measured" is a question about this lift and not one the previous one already
+        // answered. The rows that are on screen keep theirs, which are current.
+        for entry in venueEntries where opening.contains(entry.id) {
+            for row in entry.card.rows.dropFirst(entry.visibleRows.count) {
+                rowFrames.removeValue(forKey: row.id)
+            }
+        }
+
+        expandedGroupIDs.formUnion(opening)
 
         // Deliberately not guarded on `move == nil`: a gesture cancelled rather than ended can
         // leave state behind, and overwriting it beats stranding a kid in the air.
@@ -568,10 +765,19 @@ struct GroupsView: View {
                 ? entry.card.rows[index + 1].id
                 : nil,
             origin: origin,
-            slots: slots(for: entries(in: selectedVenue)),
+            // The folded layout's slots, which are the ones on screen for the frame or two
+            // before the opened rows are measured. A provisional array rather than an empty one
+            // so a lift released immediately still knows where the kid was.
+            slots: slots(for: venueEntries),
+            // Whatever a move that was overwritten rather than finished left open, carried over
+            // — this lift is what will fold them again. The guard above deliberately allows that
+            // overwrite; without the union, a cancelled gesture's cards would stay open for the
+            // rest of the session.
+            unfolded: opening.union(move?.unfolded ?? []),
             isDragging: true,
+            awaitingGeometry: !opening.isEmpty,
             // Aimed at where they already stand, so the first frame of a lift is not a screen
-            // with a bar and no target on it.
+            // with a lifted card and nothing under it.
             target: GroupsDropSlot(
                 landing: GroupsLanding(
                     groupID: entry.id,
@@ -582,78 +788,256 @@ struct GroupsView: View {
                 rank: row.player.overallRank
             )
         )
+
+        // The tab bar is a trapdoor: dragging a kid down a card ends the drag over the one
+        // control that leaves the screen entirely. `MainTabView` takes the pill away while this
+        // is set, animated — see `AppStore.isFocused`.
+        store.isFocused = true
+        startAutoscroll()
     }
 
-    private func updateMove(to translation: CGFloat) {
-        guard var updated = move else { return }
-        updated.translation = translation
-        updated.isDragging = true
-        // Aim with the middle of the card being carried rather than with the fingertip — the
-        // fingertip is on the handle, an inch below what the reader thinks they are pointing at.
-        updated.target = updated.nearestSlot() ?? updated.target
+    /// Re-measure after the unfold, and re-anchor the move to what was measured.
+    ///
+    /// Copied from `RankView.refreshDragGeometry()` (`:409-425`), which solves the same problem
+    /// for the same reason. Three things happen here and they have to happen together: the
+    /// lifted card's `origin` moves, because opening the cards above the mover pushes their row
+    /// down the list; `translation` is shifted by exactly as much in the other direction, so the
+    /// card stays under the finger instead of jumping to wherever the row now sits; and the
+    /// slots are rebuilt, because every boundary below an opened card has moved.
+    ///
+    /// The guard is the subtle part, and `RankView` names it too: waiting for the *mover's* own
+    /// rectangle to change is not the signal, because opening cards *below* them leaves it
+    /// exactly where it was. What is waited on is every drawn row and every card having a
+    /// rectangle at all, which is only true once SwiftUI has laid the opened rows out.
+    ///
+    /// What makes the rectangles usable is that the cards draw themselves at rest while
+    /// `awaitingGeometry` is set — no ghost, and the lifted row still holding its space. So this
+    /// pass measures the list the frozen slots are stated against, with the unfold and nothing
+    /// else applied to it. It runs once per move and then the flag is down for good.
+    private func refreshDragGeometry() {
+        guard var updated = move, updated.awaitingGeometry else { return }
+
+        let venueEntries = entries(in: selectedVenue)
+        guard venueEntries.allSatisfy({ entry in
+            cardFrames[entry.id] != nil && entry.visibleRows.allSatisfy { rowFrames[$0.id] != nil }
+        }), let origin = rowFrames[updated.row.id] else { return }
+
+        // Through `listTravel` rather than straight into `translation`, and that is not
+        // bookkeeping: `updateMove(to:)` rewrites `translation` from the gesture on every frame,
+        // so a correction written only there would survive until the next twitch of a finger and
+        // then vanish — the card jumping a card's worth of opened rows in one frame, at the exact
+        // moment the reader started aiming.
+        let shift = updated.origin.minY - origin.minY
+        updated.listTravel += shift
+        updated.translation += shift
+        updated.origin = origin
+        updated.slots = slots(for: venueEntries)
+        updated.awaitingGeometry = false
+        retarget(&updated)
         move = updated
     }
 
-    /// The finger left the handle. The kid stays in the air; only the tracking stops.
+    private func updateMove(to travel: CGFloat) {
+        guard var updated = move else { return }
+        updated.isDragging = true
+        // The gesture measures its travel from the lift in `.global`, which knows nothing about
+        // the list having scrolled itself underneath in the meantime — so the two are added
+        // rather than one replacing the other. See `GroupsMove.listTravel`.
+        updated.translation = travel + updated.listTravel
+        // Aiming waits for the geometry. A target chosen against the folded layout's slots would
+        // move the ghost, and a ghost in the flow is precisely what stops this pass being a
+        // measurement of the list at rest.
+        if !updated.awaitingGeometry { retarget(&updated) }
+        move = updated
+    }
+
+    /// Aim with the middle of the card being carried rather than with the fingertip — the
+    /// fingertip is on the handle, an inch below what the reader thinks they are pointing at.
+    private func retarget(_ move: inout GroupsMove) {
+        move.target = move.nearestSlot() ?? move.target
+    }
+
+    // MARK: Letting go
+
+    /// The finger left the handle, and that is the whole of "put them here".
+    ///
+    /// This used to only stop the tracking: the kid stayed in the air until "Drop here" was
+    /// pressed. `GroupsMove.swift`'s header carries the argument for the change; what it costs
+    /// is that a release now has three answers rather than one, and they are all here.
+    ///
+    /// A release over the boundary the kid already stands either side of asks for nothing, and
+    /// is a cancel — the card travels home rather than spending a write to produce the ladder
+    /// that is already on screen. A release inside their own court commits immediately. A
+    /// release on another court parks the card on the space it has opened and asks.
     private func endTracking() {
         guard var updated = move, updated.isDragging else { return }
         updated.isDragging = false
+        stopAutoscroll()
+
+        // A release with nothing aimed at is a release over a list that measured nothing, which
+        // is not something to write.
+        guard let slot = updated.target, !updated.isNoop(slot) else {
+            cancelMove()
+            return
+        }
+
         move = updated
+        // Only on the path that is about to ask. A commit tears the move down in the same pass,
+        // so parking the card first would animate it into a space that is about to close. Said
+        // here rather than handed to `requestLanding` as a closure: this is the same comparison
+        // it makes, and it is legible at the call site that lets go of the kid.
+        if slot.landing.groupID != updated.sourceGroupID { park(on: slot) }
+        requestLanding(updated.row, to: slot.landing, from: updated.sourceGroupID)
     }
 
-    /// Tapping a group while a kid is in the air aims at the end of it, and carries the card
-    /// over so "where is this kid going" has the same answer however it was asked.
+    /// Settling the carried card onto the space that has opened for it.
     ///
-    /// The card is parked with its **top** on the space that has opened, which is the one place
-    /// in the app where `GroupsGhost.top` is evaluated at runtime — everywhere else the same
-    /// arithmetic is played by the layout itself. Top rather than middle because that is the
-    /// relationship a lift already has: at the moment of pick-up `translation` is 0 and the
-    /// card sits exactly over the row's top edge. It also means this returns 0 for the target
-    /// `beginMove` starts with, so the two agree on the first frame rather than nudging the
-    /// card by half a row before the finger has moved.
-    private func aim(at groupID: Group.ID) {
-        guard let current = move, let slot = current.lastSlot(in: groupID) else { return }
-
-        var updated = current
-        updated.target = slot
-        updated.translation = GroupsGhost.top(of: slot, lifted: current.origin) - current.origin.minY
+    /// The one place in the app where `GroupsGhost.top` is evaluated at runtime — everywhere
+    /// else the same arithmetic is played by the layout itself. Top rather than middle because
+    /// that is the relationship a lift already has: at the moment of pick-up `translation` is 0
+    /// and the card sits exactly over the row's top edge.
+    ///
+    /// This was `aim(at:)`, which is what tapping a group's card did while a kid hung in the
+    /// air. Nothing taps a card mid-move any more — a move only outlives the finger while a
+    /// court change is being confirmed, and a dialog has the screen then — so the arithmetic has
+    /// moved to the moment it is now worth playing. The card lands in the space it is going to
+    /// and stays there while the question is read, which is what makes even the drop that asks
+    /// first look like a row dropping into place.
+    private func park(on slot: GroupsDropSlot) {
+        guard var updated = move else { return }
+        updated.translation = GroupsGhost.top(of: slot, lifted: updated.origin) - updated.origin.minY
         withAnimation(Motion.fold(reduceMotion: reduceMotion)) { move = updated }
     }
 
-    /// Putting the kid back. Animated, unlike `drop()`: the rows closing over the space again
-    /// and the card returning to the row it came out of is exactly the story a cancel is
-    /// telling.
-    private func cancelMove() {
-        move = nil
-    }
-
-    private func drop() {
-        guard let move, let slot = move.target else { return }
-
-        // Not animated, and this is the one asymmetry with `cancelMove()`. The write below is
-        // asynchronous, so between clearing the move and the new ladder arriving there is a
-        // window — a whole network round trip against the Supabase repository. Letting the
-        // shift animate through it plays the move *backwards*: the space closing, the source
-        // card growing its row back, and only then the kid appearing where they were asked to
-        // go. Setting this in the same pass that clears the move is what the animation modifier
-        // reads; `beginMove` clears it again.
-        isDropping = true
-        self.move = nil
-
-        // Landing either side of where the kid already stands is not a move.
-        guard !move.isNoop(slot) else { return }
-        commit(move.row, to: slot.landing)
-    }
-
-    /// The rotor equivalent of the drag, so the ladder is reorderable without one.
+    /// The gesture was taken away rather than finished.
     ///
-    /// Through the same commit as the drag rather than a `reorder` of its own: the old screen's
+    /// Only a move still being carried is torn down, and the guard is not defensive — it is the
+    /// whole point. `@GestureState` resets *after* `onEnded` has run, so this fires on an
+    /// ordinary release too, and by then the release has either committed (there is nothing left
+    /// to cancel) or parked the kid over a question. Answering that question on the reader's
+    /// behalf, one frame after they lifted their finger, would make the confirmation impossible
+    /// to reach at all.
+    private func cancelTracking() {
+        guard move?.isDragging == true else { return }
+        cancelMove()
+    }
+
+    /// Putting the kid back. Animated, unlike a commit: the rows closing over the space again
+    /// and the card returning to the row it came out of is exactly the story a cancel is
+    /// telling, and `body`'s `value: move == nil` animation is what plays it.
+    ///
+    /// Guarded, because two of its callers fire on every keystroke in the search field.
+    private func cancelMove() {
+        guard move != nil || pendingLanding != nil else { return }
+        endMove()
+    }
+
+    /// Everything a move turns on, turned off. Shared by the commit and the cancel so that
+    /// neither can forget one of them.
+    private func endMove() {
+        // Only the cards this move opened, and read before the move that knows them is cleared.
+        if let unfolded = move?.unfolded { expandedGroupIDs.subtract(unfolded) }
+        move = nil
+        pendingLanding = nil
+        isConfirmingCourtChange = false
+        stopAutoscroll()
+        // Guarded for the same reason `perform` guards `errorMessage`: `@Observable` does not
+        // compare before it fires, and this is read by `MainTabView.body`.
+        if store.isFocused { store.isFocused = false }
+    }
+
+    // MARK: The list coming to the finger
+
+    /// The loop that walks the list while the carried card sits near an edge.
+    ///
+    /// A tick rather than one animated scroll to a computed destination, because there is no
+    /// destination: how far the list should travel depends on where the finger is *now*, and the
+    /// finger is still moving. Sixteen milliseconds is one frame, and the step is small enough at
+    /// that rate to read as a scroll rather than as a series of jumps.
+    private func startAutoscroll() {
+        autoscroll?.cancel()
+        autoscroll = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: GroupsAutoscroll.tick)
+                guard !Task.isCancelled else { return }
+                tickAutoscroll()
+            }
+        }
+    }
+
+    private func stopAutoscroll() {
+        autoscroll?.cancel()
+        autoscroll = nil
+    }
+
+    /// Ask the list for one more step towards the finger.
+    ///
+    /// The tick only *asks*. What the list actually did arrives through `creditListTravel(_:)`,
+    /// and the split is the load-bearing part: crediting the carried card with the step that was
+    /// requested would be a guess about a scroll view. At either end of the content it takes
+    /// none, on macOS there is nothing driving it at all (`GroupsListScroll`), and a card
+    /// credited with travel the list never made runs away from the finger a step per frame until
+    /// it is aiming at a group nobody can see. Asking is cheap and idempotent — the destination
+    /// is absolute, so requesting the same one twice while the geometry catches up costs nothing.
+    private func tickAutoscroll() {
+        guard let move, move.isDragging, !move.awaitingGeometry else { return }
+        guard let destination = GroupsAutoscroll.destination(carrying: move.carried, in: viewport)
+        else { return }
+        listScroll.scroll(to: destination)
+    }
+
+    /// The list moved under a finger that did not, so the card moved.
+    ///
+    /// Both numbers carry it: `translation` is where the card is drawn, and `listTravel` is what
+    /// the gesture's next reading is re-based on — the drag measures in `.global` and has no idea
+    /// the content slid underneath it.
+    ///
+    /// Only while the finger is down. A step still in flight when the finger leaves is left
+    /// uncredited on purpose: `endTracking` has already read the target and settled the card on
+    /// it, and moving the aim after the reader has let go would land the kid somewhere they never
+    /// pointed at. The most that costs is one tick of list — `GroupsAutoscroll.maxStep`, a third
+    /// of a row — and only when a release interrupts a scroll that is still running.
+    private func creditListTravel(_ travelled: CGFloat) {
+        guard travelled != 0, var updated = move, updated.isDragging, !updated.awaitingGeometry
+        else { return }
+
+        updated.translation += travelled
+        updated.listTravel += travelled
+        retarget(&updated)
+        move = updated
+    }
+
+    // MARK: The rotor
+
+    /// The rotor equivalent of the drag, so the ladder is reorderable without a pointer.
+    ///
+    /// Through the same landing as the drag rather than a `reorder` of its own: the old screen's
     /// version handed `store.reorder` the *filtered* rows, so nudging one of two search results
     /// hoisted both of them to the top of the group.
+    ///
+    /// **Widened past the card it starts in.** "Move up" on the kid at the top of Group 2 used to
+    /// do nothing at all, which meant the only non-pointer route through this screen stopped at
+    /// exactly the boundary the gesture exists to cross — a VoiceOver reader could reorder a
+    /// court and never move anybody between two. At the head of a card it lands at the back of
+    /// the card above; at the foot of one, at the front of the card below. The same step, said
+    /// one card along.
     private func nudge(_ row: PlayerRow, in entry: GroupsEntry, by offset: Int) {
-        guard let index = entry.card.rows.firstIndex(where: { $0.id == row.id }) else { return }
+        guard let landing = landing(nudging: row, in: entry, by: offset) else { return }
+        requestLanding(row, to: landing, from: entry.id)
+    }
+
+    /// Where one step up or down puts a kid, inside their card or past the end of it.
+    ///
+    /// Split from `nudge` so that both answers reach the store through one call: a change to how
+    /// a rotor nudge commits — the confirmation rule, what it counts as coming *from* — has one
+    /// place to be made rather than the in-card one people find and the boundary one they do not.
+    private func landing(nudging row: PlayerRow, in entry: GroupsEntry, by offset: Int) -> GroupsLanding? {
+        guard let index = entry.card.rows.firstIndex(where: { $0.id == row.id }) else { return nil }
         let destination = index + offset
-        guard entry.card.rows.indices.contains(destination) else { return }
+
+        guard entry.card.rows.indices.contains(destination) else {
+            return landingInCardBeside(entry, by: offset)
+        }
 
         // Moving up lands above the neighbour being passed. Moving down lands above whoever is
         // beyond them — or at the back of the group, when there is nobody.
@@ -663,28 +1047,82 @@ struct GroupsView: View {
                 ? entry.card.rows[destination + 1].id
                 : nil
 
-        commit(row, to: GroupsLanding(
-            groupID: entry.id,
-            venueID: entry.card.group.venueID,
-            anchor: anchor
-        ))
+        return GroupsLanding(groupID: entry.id, venueID: entry.card.group.venueID, anchor: anchor)
+    }
+
+    /// A nudge that has run out of card: the step carries on into the next one along.
+    ///
+    /// The venue's own card order is what "above" and "below" mean here, and it is the order the
+    /// screen draws — so a reader hearing "Group 2" under "Group 1" gets the card they were told
+    /// about. Up joins the back of the card above and down the front of the card below, which
+    /// either way puts the kid beside the row they were already next to. An empty card below
+    /// takes them at its back, which `GroupsLandingPlan` already reads as "the back of a group
+    /// with nobody in it".
+    private func landingInCardBeside(_ entry: GroupsEntry, by offset: Int) -> GroupsLanding? {
+        let venueEntries = entries(in: selectedVenue)
+        guard let here = venueEntries.firstIndex(where: { $0.id == entry.id }),
+              venueEntries.indices.contains(here + offset)
+        else { return nil }
+
+        let neighbour = venueEntries[here + offset]
+        return GroupsLanding(
+            groupID: neighbour.id,
+            venueID: neighbour.card.group.venueID,
+            anchor: offset < 0 ? nil : neighbour.card.rows.first?.id
+        )
     }
 
     // MARK: - Committing
 
+    /// One drop's decision: write it, or ask about it first.
+    ///
+    /// **The confirmation is only for a change of court.** Reordering inside a court is a change
+    /// of place in a list the reader is looking at, it is undone by dragging the row back, and a
+    /// dialog in front of the common gesture would make the cheap thing the expensive one.
+    /// Changing court is the drop a slip of the thumb near a card boundary actually produces,
+    /// and it moves the kid's band in the camp ladder as well as their card — which is the one
+    /// part of a landing the row itself does not say. So that is the one that asks.
+    ///
+    private func requestLanding(_ row: PlayerRow, to landing: GroupsLanding, from groupID: Group.ID) {
+        // The card is read for its name and nothing else — anchoring on an id removed the last
+        // reason to — but a landing in a group this venue does not have is still not something
+        // to write.
+        guard let card = card(landing.groupID) else {
+            cancelMove()
+            return
+        }
+
+        guard landing.groupID != groupID else {
+            commit(row, to: landing)
+            return
+        }
+
+        // `Group.label` rather than the card's own "Group 2" heading: the design keeps "Group"
+        // for a band of the ladder and "Court" for the place it is played on, and a question
+        // about where a kid is going is about the place.
+        pendingLanding = PendingLanding(row: row, landing: landing, groupName: card.group.label)
+        isConfirmingCourtChange = true
+    }
+
     /// The one place an order is written, whether a finger or the rotor asked for it.
     ///
     /// Section 8 folds ranking into this screen, so a move is a change to the **camp ladder**
-    /// first and to the group second. `store.reorder` writes `courtRank` and leaves
-    /// `overallRank` exactly where it was — and every numeral on this screen is `overallRank`.
-    /// Committing the group alone would land the kid in the right card wearing the wrong number,
-    /// leave the band under the group's name reading a range with a hole in it, and make the
-    /// "Drops in at #9" the target card promised a lie. So the ladder goes first, through the
-    /// intent the Rank tab used, and the group order follows it.
+    /// first and to the group second. Writing `courtRank` alone would land the kid in the right
+    /// card wearing the wrong number, leave the band under the group's name reading a range with
+    /// a hole in it, and make the "Drops in at #9" the target card promised a lie — every
+    /// numeral on this screen is `overallRank`. `GroupsLandingPlan` produces both orders from one
+    /// landing, and `AppStore.land` writes both as one intent.
+    ///
+    /// The two used to be awaited one after the other from here, and that is what "not
+    /// intuitive/responsive" was: the row snapped home, the screen sat still for two serialised
+    /// round trips, and the kid reappeared somewhere else a second later. `land` applies the plan
+    /// to the graph before it writes anything, so the ladder the move is torn down into is
+    /// already the one the drop asked for.
     private func commit(_ row: PlayerRow, to landing: GroupsLanding) {
-        // The card is not read any more — anchoring on an id removed the last reason to — but a
-        // landing in a group this venue does not have is still not something to write.
-        guard let camp = store.camp, card(landing.groupID) != nil else { return }
+        guard let camp = store.camp, card(landing.groupID) != nil else {
+            cancelMove()
+            return
+        }
 
         // The arithmetic itself is in `GroupsLandingPlan`, which is where it can be tested — it
         // needs neither the store, the environment nor the main actor, and this is the one piece
@@ -694,14 +1132,22 @@ struct GroupsView: View {
             to: landing,
             ladder: store.rankAssignments(),
             roster: camp.players(inGroup: landing.groupID)
-        ) else { return }
-
-        Task {
-            await store.commitRankOrder(plan.assignments)
-            // `reorder` carries group *and* venue membership, so this is also what moves the kid
-            // between cards; `commitRankOrder` only reassigns a group when the venue changed.
-            await store.reorder(group: landing.groupID, playerIDs: plan.courtOrder)
+        ) else {
+            cancelMove()
+            return
         }
+
+        // The shift is not animated, and this is the one asymmetry with `cancelMove()`. The move
+        // is being torn down into a graph that already holds the drop, so animating it would play
+        // the *old* layout — the space closing, the source card growing its row back, the cards
+        // folding again — over a list that has already renumbered itself. This flag is read by
+        // the inner `.animation(_:value: move?.target)`, which is scoped to the cards and so wins
+        // for them; the header swapping back out of "Moving Austin" is outside it and still
+        // travels. Set in the same pass that clears the move; `beginMove` clears it again.
+        isDropping = true
+        endMove()
+
+        Task { await store.land(plan, in: landing.groupID) }
     }
 }
 

@@ -36,16 +36,21 @@ struct GroupCard: View {
 
     let onToggle: () -> Void
     let onOpenPlayer: (PlayerRow) -> Void
-    /// Tapping a card while a kid is in the air aims at it.
-    let onAim: () -> Void
     let onMoveBegan: (PlayerRow) -> Void
     let onMoveChanged: (CGFloat) -> Void
+    /// The finger left the handle, which lands the kid. See `GroupsView.endTracking()`.
     let onMoveEnded: () -> Void
-    /// VoiceOver's equivalent of the drag: one place up or down inside this group.
+    /// The gesture was taken away rather than finished — a call arriving, a system gesture
+    /// winning. Separate from `onMoveEnded` now that ending commits: a lift the reader never
+    /// completed must not write a move, and a kid left in the air has nothing left to land them.
+    let onMoveCancelled: () -> Void
+    /// VoiceOver's equivalent of the drag: one place up or down. Past the ends of this card it
+    /// carries on into the next one along — see `GroupsView.nudgeAcross`.
     let onNudge: (PlayerRow, Int) -> Void
     /// Every drawn row's rectangle, in the list's coordinate space — the raw material for every
     /// drop slot. The screen ignores these while a kid is in the air, because a slot is only
-    /// meaningful measured off the list at rest; see `GroupsView.cardView(_:)`.
+    /// meaningful measured off the list at rest; the one exception is the settling pass, which is
+    /// drawn at rest for exactly that reason. See `GroupsView.cardView(_:)` and `isSettling`.
     let onRowFrame: (Player.ID, CGRect) -> Void
 
     /// The design writes a court's rank band as "Group 1" and keeps "Court 1" for the place it
@@ -64,11 +69,21 @@ struct GroupCard: View {
     private var isFoldable: Bool { card.rows.count > GroupsRules.previewRows + 1 }
     private var isExpanded: Bool { hiddenCount == 0 }
 
+    /// The move is still being measured, so this card draws itself exactly as it does at rest:
+    /// no ghost, and the lifted row keeping its space.
+    ///
+    /// That is not a cosmetic choice, it is what makes the pass measurable. The lift opens every
+    /// folded card in the venue and the frames arriving afterwards are what every drop slot is
+    /// rebuilt from — and a slot is only meaningful measured off the list at rest. A ghost of
+    /// height `H` arriving while a row of height `H` leaves would put two corrections into
+    /// numbers that are supposed to describe the layout without either. See
+    /// `GroupsMove.awaitingGeometry`.
+    private var isSettling: Bool { move?.awaitingGeometry == true }
+
     /// Where this card opens a space for the kid in the air, if it is the one they are aimed at.
     private var ghostSeat: GroupsGhost.Seat? {
-        move.flatMap {
-            GroupsGhost.seat(aimedAt: $0.target, card: card.id, drawnRows: visibleRows)
-        }
+        guard let move, !isSettling else { return nil }
+        return GroupsGhost.seat(aimedAt: move.target, card: card.id, drawnRows: visibleRows)
     }
 
     /// Whether there is anything under the header at all: kids of the card's own, a "+N more"
@@ -147,11 +162,17 @@ struct GroupCard: View {
 
     // MARK: Header
 
-    /// A real `Button` rather than a tap gesture: it is a control with two jobs — fold the card,
-    /// or aim a kid at it — and being one means it presses, and reaches Voice Control and the
-    /// keyboard, for free. The rows below it cannot do the same; see `GroupPlayerRow`.
+    /// A real `Button` rather than a tap gesture: it is a control that folds the card, and being
+    /// one means it presses, and reaches Voice Control and the keyboard, for free. The rows below
+    /// it cannot do the same; see `GroupPlayerRow`.
+    ///
+    /// It used to have a second job — tapping a card while a kid hung in the air aimed at it —
+    /// and that job has gone with the latch. A move now lasts exactly as long as the finger
+    /// carrying it (plus any confirmation, which has the screen), so there is no moment at which
+    /// a second finger could tap a card to aim. The reach that bought is paid for by the lift
+    /// opening every card and by `GroupsAutoscroll`.
     private var header: some View {
-        Button(action: headerTapped) {
+        Button(action: onToggle) {
             headerContent
         }
         .buttonStyle(.plain)
@@ -161,17 +182,10 @@ struct GroupCard: View {
 
     /// Only when there is something for it to do. A card small enough to draw whole has nothing
     /// to fold, and a chevron-less header that still presses is a control that lies.
-    private var isHeaderActive: Bool { move != nil || isFoldable }
-
-    private func headerTapped() {
-        // Aiming wins while a kid is in the air: folding a card away underneath a move would
-        // take its drop slots with it.
-        if move != nil {
-            onAim()
-        } else if isFoldable {
-            onToggle()
-        }
-    }
+    ///
+    /// Dead while a kid is in the air, and deliberately: folding a card away underneath a move
+    /// would take its drop slots with it, and every card is open at that point anyway.
+    private var isHeaderActive: Bool { move == nil && isFoldable }
 
     private var headerContent: some View {
         HStack(spacing: Spacing.medium) {
@@ -210,8 +224,7 @@ struct GroupCard: View {
     }
 
     private var headerHint: String {
-        if move != nil { return "Aim the kid at this group" }
-        guard isFoldable else { return "" }
+        guard move == nil, isFoldable else { return "" }
         return isExpanded ? "Fold this group" : "Show every kid"
     }
 
@@ -250,6 +263,7 @@ struct GroupCard: View {
             onMoveBegan: { onMoveBegan(row) },
             onMoveChanged: onMoveChanged,
             onMoveEnded: onMoveEnded,
+            onMoveCancelled: onMoveCancelled,
             onNudge: { onNudge(row, $0) }
         )
         // Hidden rather than replaced. The row owns the gesture that is carrying the kid, and a
@@ -267,9 +281,15 @@ struct GroupCard: View {
         // `.frame(height: isHeld ? 0 : nil)`: `nil → 0` is not interpolable, so the row would
         // snap shut while its neighbours slid, and the two motions are meant to be one. A
         // `CGFloat` of padding animates.
+        //
+        // The space is given up only once there is a ghost to take it. For the frame or two a
+        // lift spends re-measuring (`isSettling`) the row is invisible but still standing in the
+        // flow, exactly as `RankView`'s lifted row does for the whole of its drag — which is what
+        // lets the frames arriving in that pass describe the list at rest. Nothing shows through
+        // the gap: the card carrying the kid is drawn directly over it at `translation` 0.
         .opacity(isHeld ? 0 : 1)
         .accessibilityHidden(isHeld)
-        .padding(.bottom, isHeld ? -(move?.origin.height ?? 0) : 0)
+        .padding(.bottom, isHeld && !isSettling ? -(move?.origin.height ?? 0) : 0)
     }
 
     /// The kid, greyed, in the space that has opened for them.
@@ -341,8 +361,13 @@ struct GroupCard: View {
             metrics: .inline(indent: GroupsMetrics.numeralWidth + GroupsMetrics.cardPadding),
             action: onToggle
         )
-        // A card that unfolded under a move would move every slot beneath it.
-        .disabled(move != nil)
+        // It used to carry `.disabled(move != nil)`, because a card that unfolded under a move
+        // would move every slot beneath it. The rule still holds and the modifier is gone,
+        // because it can no longer be reached: a lift opens every folded card in the venue, so
+        // for the whole of a move `hiddenCount` is 0 and this row is not in `seats` at all. A
+        // disabled state nothing can enter is a claim about the screen that the screen no longer
+        // makes — and the reason it does not is worth more than the guard was. See
+        // `GroupsView.beginMove`.
     }
 }
 
@@ -397,6 +422,7 @@ private struct GroupPlayerRow: View {
     let onMoveBegan: () -> Void
     let onMoveChanged: (CGFloat) -> Void
     let onMoveEnded: () -> Void
+    let onMoveCancelled: () -> Void
     let onNudge: (Int) -> Void
 
     /// True for exactly as long as the lift gesture is live. A sequenced gesture that is
@@ -434,9 +460,15 @@ private struct GroupPlayerRow: View {
         .accessibilityAction(named: "Move down") { onNudge(1) }
         .overlay(alignment: .trailing) { handle }
         .onChange(of: isHolding) { _, holding in
-            // The safety net for a cancelled lift, which never reaches `onEnded`. Ending the
-            // tracking twice costs nothing — it does not commit anything.
-            if !holding { onMoveEnded() }
+            // The safety net for a cancelled lift, which never reaches `onEnded`.
+            //
+            // It calls a *different* thing now, and the distinction is load-bearing: ending
+            // commits. This fires for a real release too — `@GestureState` resets after
+            // `onEnded` has run — so the screen answers it by cancelling only a move that is
+            // still being dragged, which a released one is not. A gesture the reader never
+            // finished must not write anybody to a new court, and with the move bar gone, a kid
+            // left in the air by an interrupted lift has nothing left on screen to land them.
+            if !holding { onMoveCancelled() }
         }
     }
 
@@ -507,7 +539,7 @@ private struct GroupPlayerRow: View {
                 )
             )
             .accessibilityLabel("Move \(row.player.displayName)")
-            .accessibilityHint("Picks the kid up. Aim at a group, then drop.")
+            .accessibilityHint("Hold, then drag. Let go to drop them where they are.")
     }
 
     /// Hold, then drag. The long press is what lets this win against the enclosing scroll view's
@@ -519,9 +551,13 @@ private struct GroupPlayerRow: View {
     /// itself is moving. That is the classic SwiftUI feedback loop: the translation moves the
     /// row, the row changes the translation, and the target oscillates between two slots.
     ///
-    /// Behaviour-preserving everywhere nothing shifts. `GroupsView` disables scrolling while a
-    /// finger is on the handle, so for the duration of this gesture screen travel and list
-    /// travel are the same number.
+    /// Screen travel, not list travel, and those have come apart. `GroupsView` takes the pan away
+    /// from the reader while a kid is in the air, but the list still moves itself when the
+    /// carried card nears an edge (`GroupsAutoscroll`) — and a finger that has not moved reports
+    /// no travel however far the content has slid underneath it. The screen adds the two: this
+    /// number plus `GroupsMove.listTravel`. Measuring in the list's own space instead would fold
+    /// the scroll in for free, and would report nothing at all while the finger was still, which
+    /// is exactly when the autoscroll needs to be believed.
     private var lift: some Gesture {
         LongPressGesture(minimumDuration: 0.2)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
@@ -536,7 +572,7 @@ private struct GroupPlayerRow: View {
                     break
                 }
             }
-            // The kid stays in the air when the finger leaves; this only stops the tracking.
+            // Letting go is the drop. See `GroupsView.endTracking()`.
             .onEnded { _ in onMoveEnded() }
     }
 }
@@ -576,10 +612,10 @@ private struct GroupCardPreviewHarness: View {
                             }
                         },
                         onOpenPlayer: { _ in },
-                        onAim: {},
                         onMoveBegan: { _ in },
                         onMoveChanged: { _ in },
                         onMoveEnded: {},
+                        onMoveCancelled: {},
                         onNudge: { _, _ in },
                         onRowFrame: { _, _ in }
                     )
@@ -651,10 +687,10 @@ private struct GroupCardMovePreviewHarness: View {
                                 move: move(in: card, mover: visible[0], anchor: aim.anchor),
                                 onToggle: {},
                                 onOpenPlayer: { _ in },
-                                onAim: {},
                                 onMoveBegan: { _ in },
                                 onMoveChanged: { _ in },
                                 onMoveEnded: {},
+                                onMoveCancelled: {},
                                 onNudge: { _, _ in },
                                 onRowFrame: { _, _ in }
                             )
@@ -681,6 +717,7 @@ private struct GroupCardMovePreviewHarness: View {
             nextRowID: nil,
             origin: CGRect(x: 0, y: 0, width: 320, height: HitTarget.minimum),
             slots: [],
+            unfolded: [],
             target: GroupsDropSlot(
                 landing: GroupsLanding(
                     groupID: card.id,
