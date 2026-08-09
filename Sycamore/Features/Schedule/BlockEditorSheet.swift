@@ -305,8 +305,8 @@ struct BlockEditorSheet: View {
     // MARK: Writes
 
     /// Closes first, then writes. The sheet has nothing left to show once the values are handed
-    /// over, and `AppStore.perform` owns both the spinner and the banner — which are floated by
-    /// whichever screen presented this one, not by this one.
+    /// over, and `AppStore.perform` owns the banner — floated by whichever screen presented this
+    /// one, not by this one. No spinner goes with it: the capsule that used to is gone.
     private func commit() {
         guard draft.isValid else { return }
         let block = draft.block()

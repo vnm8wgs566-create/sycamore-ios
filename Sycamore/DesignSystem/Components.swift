@@ -1052,39 +1052,25 @@ struct ErrorBanner: View {
     }
 }
 
-/// The in-flight affordance for `AppStore.isWorking`: a small capsule that floats over the
-/// screen while an intent is running. Inert by design — it reports, it does not block.
-struct WorkingIndicator: View {
-    var label: String = "Working…"
-
-    init(label: String = "Working…") {
-        self.label = label
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            // The mark's own seed, autorotating, rather than a system spinner — the same
-            // motion the full-screen loads use, at the scale of a capsule.
-            SpinningSeed(size: 15)
-            Text(label)
-                .typeStyle(.chipMedium, color: Theme.inkSecondary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(Theme.surface, in: Capsule(style: .continuous))
-        .overlay { Capsule(style: .continuous).strokeBorder(Theme.hairline, lineWidth: BorderWidth.hairline) }
-        .shadow(Shadows.tabItem)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-    }
-}
-
 extension View {
     /// Floats an `ErrorBanner` over the receiver whenever `message` is non-nil. An overlay, so
     /// nothing underneath moves when a failure arrives.
     ///
     /// Pass `store.errorMessage` and `store.clearError`; the banner animates in and out with the
     /// message and is dismissed by its own close button.
+    ///
+    /// Deliberately without an in-flight counterpart, and this is the one place that reasoning is
+    /// written down. There was one: a "Working…" capsule that `storeWorkingIndicator` floated from
+    /// these same call sites, over every write in the app. It went because these writes land in
+    /// well under the time it takes to read a capsule, so what it drew was a label flashing at the
+    /// top of the screen on every tap. A failure is news and gets a banner; a write that is merely
+    /// happening is not, and the row that changes under your finger already reports it.
+    ///
+    /// `AppStore.isWorking` stays, but the capsule was the only consumer that wanted its general
+    /// "some intent is running" meaning. The three that remain are all camp-specific — the seed
+    /// fall over the picker, and camp creation's double-tap guard and Import dim — so `perform`
+    /// now sets a flag on every intent that only those three read. See the PR body for the split
+    /// into `isLoadingMemberships` / `isCreatingCamp` this wants.
     func storeErrorBanner(
         message: String?,
         alignment: Alignment = .top,
@@ -1101,25 +1087,6 @@ extension View {
             }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.9), value: message)
-    }
-
-    /// Floats a `WorkingIndicator` over the receiver while `isWorking` is true. Hit testing
-    /// passes straight through it.
-    func storeWorkingIndicator(
-        _ isWorking: Bool,
-        label: String = "Working…",
-        alignment: Alignment = .top,
-        edgePadding: CGFloat = Spacing.small
-    ) -> some View {
-        overlay(alignment: alignment) {
-            if isWorking {
-                WorkingIndicator(label: label)
-                    .padding(alignment == .bottom ? .bottom : .top, edgePadding)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
-            }
-        }
-        .animation(.easeInOut(duration: 0.18), value: isWorking)
     }
 }
 
@@ -1314,7 +1281,6 @@ private struct ControlsPreviewHarness: View {
 /// Hoisted to file scope for the same mangling reason as `ControlsPreviewHarness`.
 private struct StatusPreviewHarness: View {
     @State private var message: String? = "That court is full. Move a kid down first."
-    @State private var isWorking = true
 
     var body: some View {
         VStack(spacing: 16) {
@@ -1328,17 +1294,14 @@ private struct StatusPreviewHarness: View {
                 .multilineTextAlignment(.center)
             Spacer(minLength: 0)
             ErrorBanner("A banner with no close button, for a caller that retires it itself.")
-            WorkingIndicator()
         }
         .padding(Spacing.bar)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.grouped)
         .storeErrorBanner(message: message) { message = nil }
-        .storeWorkingIndicator(isWorking, alignment: .bottom)
-        .onTapGesture { isWorking.toggle() }
     }
 }
 
-#Preview("Error banner & in-flight") {
+#Preview("Error banner") {
     StatusPreviewHarness()
 }

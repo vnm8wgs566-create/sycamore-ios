@@ -71,8 +71,11 @@ struct OnboardingFlowView: View {
         .onChange(of: path) { _, steps in
             if !steps.contains(.review) { file = nil }
         }
+        // The banner, and nothing beside it. A "Creating the camp…" capsule floated here — the
+        // only one in the app with a label of its own — and went with the rest. What still shows
+        // the write: `finish()` guards the second tap below, `8d` dims its Import button, and the
+        // flow is torn down by its own success the moment `store.camp` lands.
         .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
-        .storeWorkingIndicator(store.isWorking, label: "Creating the camp…")
     }
 
     @ViewBuilder

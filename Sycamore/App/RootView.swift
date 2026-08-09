@@ -50,6 +50,10 @@ struct RootView: View {
                 // unmounts the view whose task is doing the loading — the task is cancelled,
                 // `isWorking` never clears, and the app sits on the seed screen for ever.
                 // Overlaying keeps it mounted and the load runs to completion.
+                //
+                // The "Working…" capsule that used to float over every write is gone; this
+                // overlay is not, and neither is the flag behind it. Waiting for a whole camp
+                // to arrive is the one wait long enough to be worth drawing.
                 CampPickerView()
                     .overlay {
                         if store.isWorking {
@@ -86,18 +90,19 @@ struct MainTabView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.grouped)
-        // Failure and in-flight state are surfaced once, here, rather than in each of the
-        // four tabs. Everything behind the tabs — marking a kid away, committing a rank
-        // order, partitioning, even-out, editing a venue or a staff member — reports through
-        // `errorMessage`, and without this the row simply snapped back and said nothing.
+        // Failure is surfaced once, here, rather than in each of the four tabs. Everything
+        // behind the tabs — marking a kid away, committing a rank order, partitioning,
+        // even-out, editing a venue or a staff member — reports through `errorMessage`, and
+        // without this the row simply snapped back and said nothing.
+        //
+        // Failure only: a "Working…" capsule used to hang beside this for the in-flight half.
+        // `perform` still sets `isWorking`; nothing floats it — see `storeErrorBanner`.
         .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
-        .storeWorkingIndicator(store.isWorking)
         .sheet(item: $store.activeSheet) { sheet in
             // A presented sheet covers the overlay above, so it carries its own copy.
             sheetView(for: sheet)
                 .environment(store)
                 .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
-                .storeWorkingIndicator(store.isWorking)
         }
         // One slot, two presentations — see `Binding.presenting(fullScreen:)`.
         .sheet(item: $store.pushedScreen.presenting(fullScreen: false), content: pushedView)
@@ -135,8 +140,8 @@ struct MainTabView: View {
     /// sheet is what supplies their dismissal. `8m` and `8q` draw a ✕ and a back caret, and the
     /// court screen draws `8q`'s, so all three take the whole frame the design gives them.
     ///
-    /// The store and the two overlays are carried in here rather than at each presentation site:
-    /// a modal covers the pair `MainTabView` floats, so it needs its own copy of both.
+    /// The store and the banner are carried in here rather than at each presentation site: a
+    /// modal covers the one `MainTabView` floats, so it needs a copy of its own.
     @ViewBuilder
     private func pushedView(for screen: PushedScreen) -> some View {
         SwiftUI.Group {
@@ -157,7 +162,6 @@ struct MainTabView: View {
         }
         .environment(store)
         .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
-        .storeWorkingIndicator(store.isWorking)
     }
 
     // MARK: Sheets
