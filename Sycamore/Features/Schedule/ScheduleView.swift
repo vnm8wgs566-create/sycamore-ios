@@ -93,9 +93,17 @@ struct ScheduleView: View {
         loadedDay == selectedDay ? store.scheduleBlocks : []
     }
 
-    /// The block the camp is in the middle of, by the clock rather than by which one somebody
+    /// The blocks the camp is in the middle of, by the clock rather than by which ones somebody
     /// remembered to mark done. Shared with Overview and the repository so the two tabs cannot
     /// name different blocks as current.
+    ///
+    /// **All of them, and this screen is the one that wants all of them.** `8k` is the whole
+    /// morning at one venue, so a warm-up on Court 1 running beside free play on Courts 2–4 is two
+    /// cards that are both true and both get the highlight. Overview asks the narrower question —
+    /// `ScheduleBlock.running(on:in:at:)`, what is on *your* court — because its card is about the
+    /// reader rather than about the venue.
+    ///
+    /// A `Set` because the only thing asked of it is membership, once per card.
     ///
     /// `store.timeOfDay`, not `TimeOfDay.now()`. Reading the wall clock directly gives an answer
     /// that is correct once and then held: nothing tells a view to look again, so the highlight
@@ -103,8 +111,8 @@ struct ScheduleView: View {
     /// the screen. `store.timeOfDay` is the app's one ticking clock, so the current block moves
     /// on its own — and, since Overview now reads the same value, the two tabs cannot drift apart
     /// while both are open, which is the thing this comment already claimed.
-    private var currentBlockID: ScheduleBlock.ID? {
-        ScheduleBlock.running(in: blocks, at: store.timeOfDay)?.id
+    private var currentBlockIDs: Set<ScheduleBlock.ID> {
+        Set(ScheduleBlock.running(in: blocks, at: store.timeOfDay).lazy.map(\.id))
     }
 
     /// `5 blocks`, and nothing at all on a day with none — the design only draws the count on
@@ -164,7 +172,7 @@ struct ScheduleView: View {
         .fullScreenPresentation(item: $openedBlock) { block in
             BlockDetailView(
                 block: block,
-                isCurrent: block.id == currentBlockID,
+                isCurrent: currentBlockIDs.contains(block.id),
                 conflict: conflicts[block.id],
                 onClose: { openedBlock = nil }
             )
@@ -277,14 +285,16 @@ struct ScheduleView: View {
         } else {
             // Asked once for the list rather than once per card, which is where it was: it reads
             // the wall clock through `Calendar` and filters the day, so a twelve-block morning
-            // paid for twelve calendar round trips to mark one card.
-            let currentID = currentBlockID
+            // paid for twelve calendar round trips to mark one card. It walks the day twice over
+            // now — `hasFinished` asks each open-ended block what started after it — so hoisting
+            // it matters rather more than it did.
+            let currentIDs = currentBlockIDs
 
             LazyVStack(spacing: ScheduleMetrics.blockGap) {
                 ForEach(blocks) { block in
                     ScheduleBlockCard(
                         block: block,
-                        isCurrent: block.id == currentID,
+                        isCurrent: currentIDs.contains(block.id),
                         resizingID: $resizingID,
                         // Looked up rather than worked out, and the same habit again. This
                         // argument used to be a per-card walk of the whole day for the card's

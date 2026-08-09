@@ -322,10 +322,13 @@ extension InMemoryRepository: SectionEightData {
     /// Every column `today_courts` selects is already in the graph, so there is nothing to store.
     func courts(forVenue venueID: Venue.ID, campID: Camp.ID) async throws -> [CourtCard] {
         let camp = try await camp(id: campID)
-        let activity = ScheduleBlock.running(
-            in: try await scheduleBlocks(forVenue: venueID, day: .today, campID: campID),
-            at: .now()
-        )?.title
+        // The day and the clock, read once for the venue; the *block* is then asked per court.
+        // `activity` used to be one title resolved here and stamped on every card, which was the
+        // same venue-wide assumption `ScheduleBlock.running` used to make and is wrong in the same
+        // way: a warm-up on Court 1 has nothing to say about Courts 2–4, and writing its title
+        // across all four is the card claiming a session that court is not in.
+        let day = try await scheduleBlocks(forVenue: venueID, day: .today, campID: campID)
+        let now = TimeOfDay.now()
 
         return camp.groups(in: venueID)
             .sorted { $0.rankOrder < $1.rankOrder }
@@ -341,7 +344,7 @@ extension InMemoryRepository: SectionEightData {
                     coachName: coach?.name,
                     playersHere: camp.players(inGroup: group.id)
                         .count { !camp.isAway($0.id, on: .today) },
-                    activity: activity,
+                    activity: ScheduleBlock.running(on: group.id, in: day, at: now)?.title,
                     // A closed court keeps its card — the design draws the reason on it — so the
                     // closure is an overlay on the derivation, not a row that replaces it.
                     status: closedCourts[group.id].map { .closed(reason: $0) } ?? .open

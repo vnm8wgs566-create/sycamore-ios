@@ -169,7 +169,7 @@ struct ScheduleResizePlan: Equatable, Sendable {
 
     /// `9:00am – 10:15am` — the span the block will have if the finger lifts now.
     ///
-    /// `ScheduleBlock.timeLabel`'s spelling (`SectionEight.swift:118-121`), restated rather than
+    /// `ScheduleBlock.timeLabel`'s spelling (`SectionEight.swift:156-160`), restated rather than
     /// borrowed because a plan holds two times and not a block. The two are tested against each
     /// other so the live readout and the card underneath it cannot start disagreeing.
     var spanLabel: String { "\(startsAt.clockLabel) – \(endsAt.clockLabel)" }

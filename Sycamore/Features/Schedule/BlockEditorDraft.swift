@@ -108,7 +108,7 @@ enum BlockRules {
     ///
     /// **It states the wrong rule.** An EXCLUDE keyed on `site_id` says "two blocks at one venue
     /// may not claim the same minute", and `ScheduleBlockKind.assigned` with `courtIDs`
-    /// (`SectionEight.swift:110-121`) exists precisely so that they may. "Warm-up 9:00–9:15 on
+    /// (`SectionEight.swift:143-154`) exists precisely so that they may. "Warm-up 9:00–9:15 on
     /// Court 1" beside "Free play 9:00–9:15 on Courts 2–4" is a morning the schedule is now meant
     /// to be able to write down, and a venue-wide constraint makes it unsayable **at the
     /// database** — the one layer the app cannot work around.
@@ -177,10 +177,33 @@ enum BlockRules {
     ///
     /// Venue and day first, because `AppStore.scheduleBlocks` holds one of each and a block moved
     /// off them must be compared against nothing rather than wrongly.
-    private static func sharesSpace(_ a: ScheduleBlock, _ b: ScheduleBlock) -> Bool {
+    ///
+    /// **Internal rather than private**, which it was when this rule only had one reader. The
+    /// clash flag was the first question asked of it and it is no longer the only one:
+    /// `ScheduleBlock.running(in:at:)` (`SectionEight.swift:294`) asks the identical question —
+    /// *do these two contend for the same courts* — to decide whether one block ends another. Two
+    /// spellings of that would be two answers to it, and a morning where the editor flagged a
+    /// clash the "On now" highlight did not believe in.
+    static func sharesSpace(_ a: ScheduleBlock, _ b: ScheduleBlock) -> Bool {
         guard a.venueID == b.venueID, a.day == b.day else { return false }
         guard let aCourts = claim(of: a), let bCourts = claim(of: b) else { return true }
         return !aCourts.isDisjoint(with: bCourts)
+    }
+
+    /// Whether `block` claims `court` — the same rule as `sharesSpace(_:_:)` asked of one court
+    /// rather than of another block.
+    ///
+    /// A block that claims the whole venue claims every court in it, which is what makes the nil
+    /// case `true` here and `true` there: "Lunch" is on your court, and so is an `.assigned`
+    /// block nobody has finished picking courts for. Built on `claim(of:)` rather than reading
+    /// `courtIDs.contains` directly, so the two questions cannot drift on what an empty list of
+    /// courts means.
+    ///
+    /// Note it says nothing about venue or day — it cannot, having only a court to go on. Every
+    /// caller reaches it through `running(in:at:)`, which is handed one venue's day; a caller that
+    /// is not should filter first.
+    static func claims(_ block: ScheduleBlock, court: CourtGroup.ID) -> Bool {
+        claim(of: block).map { $0.contains(court) } ?? true
     }
 
     /// The courts a block claims, or nil for "the whole venue".
