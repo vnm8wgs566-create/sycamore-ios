@@ -200,6 +200,20 @@ enum OverviewFixtures {
         TodayCourts.roster(forCourt: card.id, in: camp, day: day, limit: limit)
     }
 
+    /// The `8 of 8` at the head of a card, read out of the same camp the roster comes from.
+    ///
+    /// Resolved rather than written out, so a preview cannot show a denominator the graph does not
+    /// have. `SampleData` derives every court's ceiling from its venue's limits
+    /// (`Models.swift:1377`), and the figure the design happens to draw is what that arithmetic
+    /// produces for Sycamore — which is worth seeing rather than asserting.
+    ///
+    /// Expressed through `TodayCourts.capacities(in:)` rather than `camp.group(_:)?.capacity`, for
+    /// the reason `roster(for:limit:)` directly above gives about its own read: one implementation
+    /// of "how full is this court", so a preview cannot draw a figure the screen would not.
+    static func capacity(for card: CourtCard) -> CourtCapacity? {
+        CourtCapacity.reading(for: card, capacity: TodayCourts.capacities(in: camp)[card.id])
+    }
+
     /// A court's whole list, as the screen holds it before folding — so a preview can draw the
     /// open state without a `@State` set behind it.
     static func fullRoster(for card: CourtCard) -> CourtRoster {

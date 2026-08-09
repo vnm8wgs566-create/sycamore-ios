@@ -112,6 +112,50 @@ struct TodayCourtsRostersTests {
         #expect(TodayCourts.rosters(in: dealtCamp(courts: 3, players: 0)).isEmpty)
     }
 
+    // MARK: Narrowing to the courts that will draw one
+
+    /// `8j` draws exactly one roster — your own court — and every other court as a one-line row
+    /// with no kids on it. Narrowing is what stops the other eleven being built, sorted and
+    /// allocated on every tick of the clock for nobody to read; see `OverviewScreen.body`.
+    @Test("Asking for one court builds one court")
+    func narrowedToOneCourt() {
+        let camp = dealtCamp(courts: 6, players: 50)
+        let mine = courts(of: camp)[2]
+
+        let rosters = TodayCourts.rosters(in: camp, courts: [mine.id])
+
+        #expect(rosters.count == 1)
+        #expect(rosters[mine.id] != nil)
+    }
+
+    /// The narrowed answer has to be the *same* answer, not a differently-ordered one — the card
+    /// draws identically whichever path built it, and a screen that renumbered its kids when the
+    /// reader happened to be standing on a court would be very hard to see and impossible to
+    /// explain.
+    @Test("A narrowed roster is exactly the roster the whole-camp pass would have built")
+    func narrowingChangesNothingElse() {
+        let camp = SampleData.uclaTennisCamp
+        let all = TodayCourts.rosters(in: camp, day: .wed)
+
+        for court in camp.groups {
+            let one = TodayCourts.rosters(in: camp, day: .wed, courts: [court.id])
+            #expect(one[court.id]?.rows == all[court.id]?.rows)
+        }
+    }
+
+    @Test("Asking for no courts at all builds nothing")
+    func narrowedToNothing() {
+        #expect(TodayCourts.rosters(in: dealtCamp(courts: 6, players: 50), courts: []).isEmpty)
+    }
+
+    /// Nil is every court, which is `8i` — an admin sees a list under each of them.
+    @Test("Nil is still the whole venue")
+    func nilIsEverything() {
+        let camp = dealtCamp(courts: 6, players: 50)
+
+        #expect(TodayCourts.rosters(in: camp, courts: nil).count == courts(of: camp).count)
+    }
+
     // MARK: The day
 
     /// Overview answers "who is on this court right now", so an away child is left out of the

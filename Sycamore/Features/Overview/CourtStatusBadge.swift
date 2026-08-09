@@ -5,6 +5,15 @@
 //  Whether a court is in play. Two states, drawn very differently on purpose: a closed court
 //  is a warning on an amber plate, and your own open court is a filled accent pill.
 //
+//      8i: gap:6px;background:#FAF6EC;border-radius:99px;padding:4px 10px
+//          ph-warning 13px #B67A16 · font:600 11.5px #8A6416   "Closed"
+//      8j: padding:7px 13px;border-radius:99px;background:#1A7F55
+//          font:600 12.5px #fff                                "Open"
+//
+//  Both were a size larger before the frames were in the repository — a 14pt glyph on 6/12 of
+//  padding, and the `Open` pill at 600 13 on 9/15 — which made a badge that sits *beside* a card's
+//  head-count read as heavy as the head-count itself.
+//
 //  A status, not a control. The design draws no way to close a court anywhere in section 8 —
 //  `setCourtStatus` exists on the repository and nothing yet calls it — and a pill that looks
 //  pressable but is not lies to VoiceOver as well as to the eye. It stays inert until the
@@ -20,10 +29,6 @@ struct CourtStatusBadge: View {
     /// of "Open" badges is noise, and the design only badges the one court that is yours and
     /// the one court that is shut.
     var isProminent: Bool = false
-
-    /// 14 sits in the body band of the type table, so the glyph grows at the same rate as the
-    /// `Closed` beside it.
-    @ScaledMetric(relativeTo: .body) private var glyphSize = OverviewTheme.badgeGlyph
 
     @ViewBuilder
     var body: some View {
@@ -44,19 +49,17 @@ struct CourtStatusBadge: View {
             .accessibilityLabel("This court is open")
     }
 
+    /// `WarningPill`, not a second drawing of it. `CourtCapacityBadge` puts the same amber capsule
+    /// on the same header row when a court is past its ceiling, and the two had already drifted by
+    /// half a point of type before they were held side by side.
+    ///
+    /// The words stay here, and so does what VoiceOver hears: the pill draws, this says what it
+    /// means. "Closed" alone, read out after a court's name and its activity, is an adjective with
+    /// nothing to attach to.
     private var closedBadge: some View {
-        HStack(spacing: OverviewTheme.badgeGap) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: glyphSize, weight: .regular))
-                .foregroundStyle(Theme.warning)
-            Text(status.badge)
-                .typeStyle(.chipSoft, color: Theme.warningDark)
-        }
-        .padding(.horizontal, OverviewTheme.badgeHorizontal)
-        .padding(.vertical, OverviewTheme.badgeVertical)
-        .background(Theme.warningTint, in: Capsule(style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("This court is closed")
+        WarningPill(label: status.badge)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("This court is closed")
     }
 }
 
