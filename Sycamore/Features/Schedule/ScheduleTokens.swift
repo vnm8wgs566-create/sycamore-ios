@@ -56,6 +56,36 @@ enum ScheduleMetrics {
     /// `4` — `padding:0 4px` on the rows that carry no card of their own.
     static let rowInset: CGFloat = 4
 
+    // MARK: The resize handle
+
+    /// `22` — how far a finger travels for one fifteen-minute step of a block's end.
+    ///
+    /// Not transcribed, because the design draws no handle: `8k` is a list and not a timeline, so
+    /// there is no drawn height a drag could be measured against and the ratio has to be chosen.
+    /// An hour costs 88pt here, a little more than a card's own height, so a drag of "about one
+    /// card" reads as about an hour.
+    ///
+    /// Half of it, 11pt, is the deadzone before anything moves at all — which is about the travel
+    /// the platform itself already treats as a drag rather than as a touch. `SwipeMetrics.axisLock`
+    /// arrives at 12 from the other side and says why (`SwipeToDelete.swift:39-43`).
+    static let resizeTravel: CGFloat = 22
+
+    /// `28 × 3` — the grabber on a card's bottom edge.
+    ///
+    /// `SheetGrabber`'s 38×4 (`Components.swift:37-47`) at the scale of a card rather than of a
+    /// screen: deliberately the same vocabulary for "this edge moves", one step quieter, because
+    /// it is drawn on every upcoming block rather than once at the top of a sheet.
+    static let resizeGrab = CGSize(width: 28, height: 3)
+    /// `6` — the grabber's lift off the card's bottom border, so it sits inside the 14pt padding
+    /// rather than on the stroke.
+    static let resizeGrabLift: CGFloat = 6
+    /// `76` — the width of the column that catches a finger reaching for the grabber. Wider than
+    /// the 28 drawn, so it can be hit; well short of the card, so the rest of the card keeps the
+    /// tap that opens it.
+    static let resizeHitWidth: CGFloat = 76
+    /// `8` — the live readout's lift off the grabber while a drag is live.
+    static let resizeLabelLift: CGFloat = 8
+
     // MARK: A card's note line
 
     /// `10` — the rule above a note line, above and below.
