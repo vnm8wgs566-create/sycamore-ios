@@ -84,8 +84,9 @@ enum GroupsType {
     /// rather than as a duplicate.
     static let liftedName = TypeStyle.rowLabel
 
-    /// `600 13.5` — `Cancel` / `Drop here`.
-    static let moveBarButton = TypeStyle.tabLabel
+    // `moveBarButton` — `600 13.5`, `Cancel` / `Drop here` — has gone with the bar it set. The
+    // move commits on release now and cancels through a confirmation dialog, which wears the
+    // system's own type. See `GroupsMove.swift`'s header.
 
     /// `600 13` — a venue chip.
     static let venueChip = TypeStyle.chip
@@ -197,14 +198,14 @@ enum GroupsMetrics {
     /// inside it. A literal here would be a promise this file cannot keep.
     static let ghostHeight: CGFloat = 30
 
-    /// `gap:10px;padding:8px 10px` — the plate `Cancel` and `Drop here` sit on.
-    static let moveBarGap: CGFloat = 10
-    static let moveBarPadding: CGFloat = 10
-    static let moveBarPaddingVertical: CGFloat = 8
-    /// `padding:10px 18px` / `padding:10px 20px` — the two buttons on it.
-    static let moveBarButtonPadding: CGFloat = 10
-    static let cancelPadding: CGFloat = 18
-    static let dropPadding: CGFloat = 20
+    // Six numbers used to sit here — `moveBarGap`, `moveBarPadding`, `moveBarPaddingVertical`,
+    // `moveBarButtonPadding`, `cancelPadding` and `dropPadding` — for the plate `Cancel` and
+    // `Drop here` sat on. The move commits when the finger leaves the handle now, so there is no
+    // bar to measure and no plate to pad. `GroupsMove.swift`'s header carries the argument.
+    //
+    // Nothing replaces them here. The autoscroll that took over the latch's reach is a pair of
+    // *gesture* thresholds rather than a measurement read off the design, and it lives in
+    // `GroupsAutoscroll` where it can be tested — this file is for numbers the CSS states.
 
     // MARK: `8g`
 

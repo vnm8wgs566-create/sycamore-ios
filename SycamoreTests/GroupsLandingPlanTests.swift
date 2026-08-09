@@ -227,7 +227,8 @@ struct GroupsLandingPlanTests {
             sourceGroupID: board.courtOne,
             nextRowID: board.c.id,
             origin: .zero,
-            slots: []
+            slots: [],
+            unfolded: []
         )
         #expect(move.isNoop(GroupsDropSlot(
             landing: board.landing(board.courtOne, above: board.a.id), y: 0, rank: 1
