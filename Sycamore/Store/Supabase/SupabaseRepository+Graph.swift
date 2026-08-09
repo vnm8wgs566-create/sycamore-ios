@@ -278,7 +278,14 @@ extension SupabaseRepository {
             // The player is scoped through `sites` rather than looked up on their own, so a kid
             // at another camp is `unknownPlayer` here exactly as they are offline — and neither
             // failure leaves a row behind.
-            async let campTask: [CampRecord] = db.select(
+            // `RowIDRecord`, not `CampRecord`. The projection is `id` alone — this only asks
+            // whether the camp exists — but `CampRecord` declares five more non-optional columns,
+            // so decoding a one-key row into it threw `keyNotFound` on `name` before the write
+            // was ever attempted. Against the real backend that meant **every** attendance write
+            // failed: the offline build has no decode step, so the whole of `8m` worked in the
+            // simulator and nowhere else. `RowIDRecord` exists at `SupabaseDTOs.swift:164` for
+            // exactly this shape.
+            async let campTask: [RowIDRecord] = db.select(
                 Relation.camps, .select("id").eq("id", campID)
             )
             async let playerTask: [PlayerRecord] = db.select(
