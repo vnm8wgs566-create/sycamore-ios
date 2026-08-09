@@ -417,12 +417,18 @@ final class AppStore {
 
 extension AppStore {
 
-    /// The day it is, read off the app's clock so it changes when the clock ticks.
+    /// The day it is, read off the app's clock, and moving when the *day* does.
     ///
     /// This was `Weekday.today`, which was stubbed to Wednesday. Going through `clock` does two
     /// things the static could not: it reads the real calendar, and — because `AppClock` is
     /// `@Observable` — a view that draws today's date redraws when midnight passes under it
     /// rather than holding yesterday until somebody switches tabs.
+    ///
+    /// This line read "so it changes when the clock ticks", which was true and was the bug: the
+    /// clock ticks every minute, this answer moves once a day, and every screen reading it —
+    /// Schedule, Overview, Attendance, a court, a player — rebuilt 1440 times for each time it
+    /// changed. `AppClock.today` is stored and written only on the rollover now, so a reader of
+    /// this is back to a day-granularity dependency. See `AppClock.swift`.
     var today: Weekday { clock.today }
 
     /// The wall clock, for the two screens that ask which block is running.

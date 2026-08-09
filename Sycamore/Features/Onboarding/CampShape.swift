@@ -12,6 +12,10 @@
 //  writes each row's real values back through `updateVenue`, which re-syncs the courts. The
 //  round trip is invisible and the saved camp is the shape the person drew.
 //
+//  A shape may be empty, and starts that way. `8b` is drawn as a "No venues yet" state, so nought
+//  is a legal count for the *form* even though a camp's floor is one — `empty`, `isCreatable` and
+//  `removeVenue` are the three places that distinction is written down.
+//
 //  A venue's name, subtitle and emoji ride the same round trip. `Camp.make(from:)` gives every new
 //  venue the name and icon its position implies, which is the right guess and the wrong answer
 //  once somebody has edited one — so the edits are stored on the row here and written over the
@@ -112,6 +116,10 @@ struct CampShape: Hashable, Sendable {
 
     /// Bounds. The two venue-facing ones are `CampDraft`'s, so a shape can never describe a
     /// camp the draft cannot then create.
+    ///
+    /// `venueRange.lowerBound` is a rule about a **camp**, not about this form. `8b` draws a state
+    /// with no venues at all, so a shape is allowed to sit below the floor while it is being
+    /// filled in and `isCreatable` is where the floor is actually kept — see `removeVenue`.
     static let venueRange = CampDraft.venueRange
     static let courtRange = CampDraft.groupRange
     static let kidsRange = 1...24
@@ -150,8 +158,24 @@ struct CampShape: Hashable, Sendable {
         clamp(courts * coachesPerCourt, into: venueCoachRange)
     }
 
-    /// Two venues, six courts each — the app's own `CampDraft()` defaults, so opening `8b` and
-    /// saving without touching anything creates exactly what it did before.
+    /// What a brand-new camp opens on: nothing.
+    ///
+    /// `8b` is drawn as an empty state — a dashed plate reading "No venues yet" over a card that
+    /// says what a venue is for — and its own footnote is the argument against seeding anything:
+    /// *"One venue is enough to start. Add the second the day you need it."* This screen used to
+    /// open on `initial()`, which is two venues called Venue 1 and Venue 2, and the second of
+    /// those is a guess the app makes on somebody's behalf and then carries into Groups, into
+    /// Rank, into the venue chip row and into the schedule until they find it and delete it.
+    ///
+    /// Deliberately not a shape with one venue in it either, which would have skipped the drawn
+    /// state while still guessing. The design asks for the first venue rather than assuming it.
+    static let empty = CampShape(venues: [])
+
+    /// Two venues, six courts each — the app's own `CampDraft()` defaults.
+    ///
+    /// No longer what `8b` opens on (see `empty`), so this is now what a *seeded* shape is: the
+    /// fixture the tests and the previews build a populated screen out of, and the rotation
+    /// `addVenue` continues one row at a time.
     static func initial(
         venueCount: Int = CampDraft().venueCount,
         courts: Int = CampDraft().groupsPerVenue,
@@ -178,6 +202,29 @@ struct CampShape: Hashable, Sendable {
     }
 
     var totalCourts: Int { venues.reduce(0) { $0 + $1.courts } }
+
+    /// Whether this shape describes a camp that could exist.
+    ///
+    /// The floor `removeVenue` used to keep, moved to the one place it is a fact: a *form* may
+    /// hold no venues, because that is the state `8b` is drawn in, and a *camp* may not, because
+    /// `CampDraft.venueRange` says so.
+    ///
+    /// It is also the **only** question `CreateCampView` asks about how many venues there are —
+    /// which state to draw, which sentence the header carries, and whether `saveTheShape` will
+    /// run are one predicate rather than three spellings of it. A screen that branched on
+    /// `venues.isEmpty` in two places and on this in a third would eventually disagree with
+    /// itself.
+    ///
+    /// The floor only. `venueRange.contains(venues.count)` was the first spelling and it was two
+    /// rules in a trench coat: `addVenue` already refuses past `venueRange.upperBound`, so the
+    /// upper half could not fail, and a shape somehow holding nine venues should not be answered
+    /// by drawing "No venues yet" at it.
+    var isCreatable: Bool { venues.count >= Self.venueRange.lowerBound }
+
+    /// Whether there is room for another row. The ceiling, named for the same reason the floor is
+    /// — `addVenue` guards on it and `8b`'s "Add a venue" both disables *and* dims itself by it,
+    /// which was `venues.count >= venueRange.upperBound` written out three times.
+    var canAddVenue: Bool { venues.count < Self.venueRange.upperBound }
 
     /// `2 venues · 10 courts`, in the sport's own noun.
     func summaryLine(noun: String) -> String {
@@ -252,7 +299,7 @@ struct CampShape: Hashable, Sendable {
     /// every row is either at its own positional number or carries a typed name, and a typed name
     /// can never look positional.
     mutating func addVenue() {
-        guard venues.count < Self.venueRange.upperBound else { return }
+        guard canAddVenue else { return }
         let index = venues.count
         let courts = venues.last?.courts ?? CampDraft().groupsPerVenue
         venues.append(
@@ -287,8 +334,14 @@ struct CampShape: Hashable, Sendable {
     /// emoji is chosen, re-deriving would silently take back a choice made two taps earlier and
     /// hand the row a colour nobody asked for. A number is positional; an emoji is not, and
     /// neither is a name.
+    ///
+    /// **The last row may now go.** This used to refuse below `venueRange.lowerBound`, on the
+    /// argument that one venue is the fewest a camp can have — which is true of a camp and was
+    /// never true of this form, and the proof is that `8b` is drawn with no venues in it. Removing
+    /// the only venue is how somebody who created the wrong one gets back to the state the design
+    /// draws, and the floor is kept by `isCreatable` instead, where it stops a camp rather than a
+    /// keystroke.
     mutating func removeVenue(_ id: VenueShape.ID) {
-        guard venues.count > Self.venueRange.lowerBound else { return }
         venues.removeAll { $0.id == id }
         for index in venues.indices where Self.isPositionalName(venues[index].name) {
             venues[index].name = Self.positionalName(for: index)
@@ -332,6 +385,12 @@ struct CampShape: Hashable, Sendable {
     /// Names, subtitles and the two head counts cannot ride here any more than the icon can:
     /// `CampDraft` has one field per camp and these are one per venue. They take the same
     /// correction path.
+    ///
+    /// A shape with no venues writes a `venueCount` of nought, and that is deliberately **not**
+    /// clamped here. `Camp.make(from:)` reads it as `max(1, 0)` (`Models.swift:1460`) and would
+    /// build one venue nobody drew, so a clamp would turn a bug into a plausible-looking camp.
+    /// The defences are the real ones instead: `CreateCampView.saveTheShape` refuses unless
+    /// `isCreatable`, and the empty state draws no button to press in the first place.
     func applied(to draft: CampDraft) -> CampDraft {
         var draft = draft
         draft.venueCount = venues.count
