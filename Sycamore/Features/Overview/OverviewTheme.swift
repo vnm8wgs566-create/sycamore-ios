@@ -79,6 +79,18 @@ enum OverviewTheme {
     /// `600 13` — the filled `Open` pill your own court carries.
     static let statusPill = TypeStyle.chip
 
+    // The three the empty-blocks card is set in. Named against `8f`'s hero, which is the frame
+    // this screen's version of that card is transcribed from — see `OverviewEmptyDayHero`.
+
+    /// `24` serif — "No blocks on Wednesday."
+    static let emptyHeading = TypeStyle.profileName
+
+    /// `400 13.5/1.6` — the sentence under it.
+    static let emptyCopy = TypeStyle.emptyBody
+
+    /// `600 15` — "Add a block".
+    static let emptyCta = TypeStyle.bodyStrong
+
     // MARK: Metrics
     //
     // The design's own numbers, named rather than spelled at the call site.
@@ -120,6 +132,9 @@ enum OverviewTheme {
     /// edge and the name gets the room.
     static let coachPillInset: CGFloat = 4
     static let coachPillTrailing: CGFloat = 13
+    /// The `+` an empty pill draws in place of a face. 15 against a 30pt disc is the same share of
+    /// the circle `Initials.make` gives two letters, so the pill keeps its silhouette either way.
+    static let coachPlusGlyph: CGFloat = 15
     /// A `Closed` badge — `padding:6px 12px`, `gap:7px`.
     static let badgeHorizontal: CGFloat = 12
     static let badgeVertical: CGFloat = 6
@@ -134,6 +149,74 @@ enum OverviewTheme {
     static let bannerVertical: CGFloat = 10
     static let bannerGap: CGFloat = 9
     static let bannerGlyph: CGFloat = 14
+
+    // MARK: The running block
+    //
+    // `RunningBlockCard` is not in the design — see its header for why the design's own header line
+    // implies it — so these are composed from the numbers around them rather than transcribed. The
+    // card is a court card's frame with different contents, and it says so by reusing that card's
+    // radius, padding, rule gap and title metrics rather than picking new ones.
+
+    /// One note on the block to the next.
+    static let noteStackGap: CGFloat = 8
+    /// The mark at the head of a note to the note itself — the banner's `gap:9px`, restated because
+    /// a value shared by coincidence is a value that gets changed for one caller.
+    static let noteGap: CGFloat = 9
+    /// The 13pt mark itself, in the callout band alongside the marks at the end of a roster line.
+    static let noteGlyph: CGFloat = 13
+
+    // MARK: The coach picker
+
+    /// The disc in a picker row — the same one as in the pill the sheet was opened from, and
+    /// written as that rather than as a second 30. Two numbers that must agree and are only equal by
+    /// coincidence of typing is how the sheet ends up drawing a face the pill does not.
+    static let pickerAvatar = coachAvatar
+    /// The tick against whoever already has the court.
+    static let pickerMark: CGFloat = 15
+    /// The line under a name in the picker — `Worker · Sycamore · Court 3`.
+    ///
+    /// `rowDetail`, which is what `ScheduleType.assigneeMeta` puts the same line at in
+    /// `BlockCoachPicker`. It read at `sheetSubtitle` here until the two were held side by side: a
+    /// person drawn at 12.5 on one picker and 13 on the other is a drift nothing would ever catch,
+    /// both being lists of coaches.
+    static let pickerMeta = TypeStyle.rowDetail
+    /// The sheet's height over 700pt.
+    ///
+    /// `ActiveSheet.staff`'s 0.73, because it is very nearly the same sheet — a header and a card of
+    /// people. Its own constant rather than a reference to that one, for the reason
+    /// `BlockEditorSheet.swift:33-37` gives about its own detent: `ActiveSheet.detentFraction` is a
+    /// property of a presentation slot this sheet does not occupy.
+    static let coachPickerDetent: Double = 0.73
+
+    // MARK: A day with no blocks on it
+    //
+    // `8f`'s hero, and every number below is `ScheduleMetrics`' — the same eight values, restated.
+    //
+    // **This is a stopgap, and should not survive.** `AccentDisc.swift:21-22` is not cover for it:
+    // that argument keeps sizes per-caller because the three discs it serves are "transcribed from
+    // three *different* frames … so they are a real difference", and this is the same frame twice.
+    // What differs between Schedule's empty day and this one is three strings, which is a parameter
+    // and not a second constant table.
+    //
+    // It is written out here because section 8 is being built by several hands at once and the
+    // consolidation crosses two folders this unit does not own — `ScheduleEmptyDayHero` would have
+    // to take its copy as arguments, or the pair would have to be lifted beside `AccentDisc` in the
+    // design system. Either is right; both are somebody else's file. Until then these numbers and
+    // Schedule's have to be changed together, and nothing but this paragraph says so.
+
+    static let emptyMark: CGFloat = 52
+    static let emptyMarkGlyph: CGFloat = 24
+    /// Mark to headline.
+    static let emptyTitleGap: CGFloat = 16
+    /// Headline to sentence.
+    static let emptyCopyGap: CGFloat = 9
+    /// Sentence to button.
+    static let emptyCtaGap: CGFloat = 20
+    /// The sentence is capped well short of the card so it stays a paragraph rather than a banner.
+    static let emptyCopyWidth: CGFloat = 250
+    static let emptyCtaHeight: CGFloat = 50
+    static let emptyPaddingHorizontal: CGFloat = 20
+    static let emptyPaddingVertical: CGFloat = 26
 
     // MARK: The fold
     //

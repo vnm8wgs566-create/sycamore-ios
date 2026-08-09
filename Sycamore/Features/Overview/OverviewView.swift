@@ -15,12 +15,24 @@
 //      courts          -> `today_courts`, which the offline repository derives from the camp
 //                         graph the app has already loaded. Every column that view selects is
 //                         in the graph; none of it is invented.
-//      schedule blocks -> the activity on each court, and "Skills rotation · until 10:30".
-//                         Nothing is drawn in their place — the header says which venue is on
-//                         screen instead, which is true whether or not a day is planned.
-//      inbox items     -> the pinned note above the courts. No note, no banner.
+//      schedule blocks -> the block the venue is inside, which is now the subject of a card of
+//                         its own rather than a phrase in the header. See `OverviewNow`.
+//      inbox items     -> the notes an admin has pinned, above the courts.
 //
-//  So the screen is complete the moment any of the three has rows, and honest until then.
+//  ── The screen follows the clock ─────────────────────────────────────────────────────────────
+//
+//  Which block is running is a question about the time, and until `AppClock` arrived nothing told
+//  this view to ask it again: `TimeOfDay.now()` was read once per body pass and then held, so a
+//  phone left on this tab named the nine o'clock block at half past eleven. Everything below reads
+//  `store.timeOfDay` and `store.today`, which come off the clock and therefore move — the card
+//  changes over at the block boundary without anybody touching the screen.
+//
+//  ── And says so when there is nothing to follow ──────────────────────────────────────────────
+//
+//  A day with no blocks on it used to fall back to "Sycamore · 4 courts" in the header and draw
+//  the courts as though that were the whole of the tab. It is not: the coaches on the block, the
+//  instruction and the notes all live on the schedule, and a venue that has never written one had
+//  no way of learning that from here. `OverviewEmptyDayHero` is what it says instead.
 //
 
 import SwiftUI
@@ -29,15 +41,48 @@ struct OverviewView: View {
 
     @Environment(AppStore.self) private var store
 
+    /// Which read produced the lists the store is currently holding.
+    ///
+    /// Nil until the first one lands, and that is the whole job: `scheduleBlocks` starts empty, an
+    /// empty list is also what a day with nothing on it looks like, and telling those apart is the
+    /// difference between the call to action and a flash of it on every cold open.
+    /// `ScheduleView.loadedDay` is the same guard against the same flash.
+    ///
+    /// The whole key rather than the day alone, because the day is not the only thing that goes
+    /// stale. `loadOverview` does not clear the lists before it reads, so switching venue leaves
+    /// the previous venue's blocks in the store for as long as the round trip takes — and a marker
+    /// that only remembered the day would call them current and name the other venue's block as
+    /// the one running here.
+    ///
+    /// Deliberately not a copy of the blocks: it is a marker about this screen's loading, which is
+    /// a fact that lives nowhere else.
+    @State private var loaded: OverviewLoad?
+
     var body: some View {
-        OverviewScreen(
+        // Everything the screen needs, derived once and handed on rather than left as computed
+        // properties the argument list reads twice. A computed property read twice is computed
+        // twice: written the obvious way, the header line and the card were the same resolve, and
+        // between them they walked the venue's whole staff list into a dictionary twice on every
+        // tick of the clock — the cost `OverviewNow`'s own header exists to refuse.
+        let key = OverviewLoad(campID: store.camp?.id, venueID: store.readVenueID, day: store.today)
+        let blocks = todaysBlocks(for: key)
+
+        return OverviewScreen(
             store: store,
             courts: store.courts,
-            pinnedNote: pinnedNote,
-            blockNote: runningBlock?.notes.first?.text,
-            nowLine: nowLine
+            now: runningBlock(in: blocks ?? []),
+            pinnedNotes: pinnedNotes,
+            // Nil is "nobody has looked yet", which draws neither the card nor the invitation.
+            dayIsUnscheduled: blocks?.isEmpty == true,
+            venueLine: venueLine
         )
-        .task(id: store.readVenueID) { await load() }
+        .task(id: key) {
+            await store.loadOverview()
+            // The key `body` computed, not one read back off the store: the venue can be switched
+            // from another tab while this is in flight, and recording the new one against the old
+            // one's rows is exactly the staleness the marker exists to catch.
+            loaded = key
+        }
     }
 
     // MARK: What the screen draws
@@ -48,52 +93,111 @@ struct OverviewView: View {
     /// where the others used `orderedVenues.first`. `venues` has no guaranteed order.
     private var venueID: Venue.ID? { store.readVenueID }
 
+    /// Today's blocks — or nil, meaning nobody has read them yet.
+    ///
+    /// Three states rather than two, and the third is the one an empty array cannot express. Nil is
+    /// "unread", `[]` is "read, and the day is genuinely empty", and only the second of those is
+    /// something to put a call to action under. `ScheduleView.blocks` draws the same distinction for
+    /// the same reason; the gate is applied once, here, so that every reader downstream looks at the
+    /// same list rather than each deciding for itself whether to trust it.
+    ///
+    /// **The day filter is not belt and braces.** Even once loaded, `store.scheduleBlocks` is not
+    /// guaranteed to be *this* day's: `addScheduleBlock` answers with `scheduleBlocks(forVenue:day:)`
+    /// for **the block's** day (`SectionEightRepository.swift:323`), and the composer this screen now
+    /// opens lets somebody change the day before saving. Write a block onto Friday from here and the
+    /// store comes back holding Friday while the marker still says today — so without this, Overview
+    /// would name a Friday block as the one running now, on a Tuesday afternoon.
+    private func todaysBlocks(for key: OverviewLoad) -> [ScheduleBlock]? {
+        guard loaded == key else { return nil }
+        return store.scheduleBlocks.filter { $0.day == store.today }
+    }
+
+    /// The block the venue is in the middle of, with its coaches, its instruction and its notes.
+    ///
     /// One rule, on the model, shared with the repository and with Schedule. This screen used to
     /// ask the clock in its own words while Schedule asked block *status*, so on any morning a
     /// coach forgot to mark a block done the two tabs named different blocks as current.
-    private var runningBlock: ScheduleBlock? {
-        ScheduleBlock.running(in: store.scheduleBlocks, at: .now())
-    }
-
-    /// The design banners one note. Items arrive newest first, so the newest one still standing
-    /// is the one the morning is about.
     ///
-    /// Read off the stored `pinned` flag rather than guessed. This used to be "the newest
-    /// unresolved note", which bannered the first thing any coach happened to write down — and it
-    /// disagreed with the Inbox, which drew its green pin for a different rule again ("a note
-    /// against no court"). Two guesses, two answers, neither of them the question the design is
-    /// asking, which is *what has an admin pinned*. One column answers it now, and the two screens
-    /// read the same column.
-    private var pinnedNote: InboxItem? {
-        store.inboxItems.first { $0.pinned && !$0.resolved }
+    /// `store.timeOfDay`, not `TimeOfDay.now()`. The static reads the wall clock inside itself and
+    /// nothing observes it; the store's reads `AppClock`, which is `@Observable` and ticks on the
+    /// minute — which is what makes this card change over on its own.
+    private func runningBlock(in blocks: [ScheduleBlock]) -> OverviewNow? {
+        OverviewNow.resolve(in: blocks, at: store.timeOfDay, staff: store.camp?.staff ?? [])
     }
 
-    /// "Skills rotation · until 10:30" while a block is running.
-    private var nowLine: String? {
-        if let runningBlock {
-            guard let ends = runningBlock.endsAt else { return runningBlock.title }
-            return "\(runningBlock.title) · until \(ends.formatted)"
-        }
-        // Nothing scheduled: name the venue on screen instead. An admin can be responsible for
-        // more than one and every venue numbers its courts from 1, so which one this is is the
-        // most useful thing the line can say.
+    // What the call to action turns on is `blocks?.isEmpty == true` at the call site above:
+    // somebody has looked, and there is nothing there. Deliberately *not* "no block is running" —
+    // a day whose blocks have all finished by four o'clock is a scheduled day, and offering to
+    // write its first block would be wrong twice over: it has blocks, and it is over.
+
+    /// Every note an admin has pinned and nobody has resolved, newest first.
+    ///
+    /// **All of them, where this used to banner exactly one.** Read off the stored `pinned` flag
+    /// rather than guessed — it used to be "the newest unresolved note", which bannered the first
+    /// thing any coach happened to write down, and it disagreed with the Inbox, which drew its
+    /// green pin for a different rule again. That much is settled and stays.
+    ///
+    /// What has changed is the count. Taking `first` was a reading of a design frame with one
+    /// banner in it, and as a rule it is indefensible: pinning is an admin's deliberate act, the
+    /// app offers no way to say "and this one too", and the Inbox lists every pin — so an admin who
+    /// pinned the allergy after the shade tent watched the allergy silently not appear, on the tab
+    /// they pinned it for. Two screens, one column, one answer.
+    ///
+    /// Uncapped, deliberately. A cap would be the same defect with a bigger number, and the pins
+    /// are one clipped line each on a screen that already scrolls — where four cards of courts sit
+    /// below them. The thing that limits this list is an admin taking a pin down, which is the
+    /// control the Inbox already has.
+    ///
+    /// Not narrowed to `readVenueID` either, which is the one filter this screen might be expected
+    /// to apply and must not. There is no camp-wide pin in the model: `addPinnedMessage` stamps
+    /// every one with wherever its author happened to be standing, so scoping by venue would hide
+    /// "sports day Friday, everyone on the lawn at nine" from the other half of the camp. That is
+    /// the defect `AppStore.loadInbox` records having already fixed once, from the other side.
+    ///
+    /// `newestFirst` rather than the order the list arrives in. The repository does sort, and
+    /// `filter` preserves it, so this changes nothing today — which is exactly why `InboxSection`
+    /// centralised the comparison rather than trusting the read: four screens now put these rows in
+    /// order and none of them should be the one that quietly disagrees.
+    private var pinnedNotes: [InboxItem] {
+        store.inboxItems.filter { $0.pinned && !$0.resolved }.newestFirst
+    }
+
+    /// `Sycamore · 4 courts` — what the header says when no block is running.
+    ///
+    /// This used to be half of a `nowLine` that returned the block's line when there was one and
+    /// this when there was not. Both halves then travelled to the screen: `now` for the card and
+    /// the composed string for the header, and the screen could not tell that the second already
+    /// contained the first. Only the fallback crosses now, and `OverviewScreen` composes
+    /// `now?.headerLine ?? venueLine` where it draws it — one fact, one place.
+    ///
+    /// An admin can be responsible for more than one venue and every venue numbers its courts from
+    /// 1, so which one this is is the most useful thing the line can say. It is no longer the *only*
+    /// thing said about an unscheduled day — that quiet fallback is what `OverviewEmptyDayHero` now
+    /// answers — but it stays, because it is also true on the other day this line is reached on:
+    /// one whose blocks have all finished.
+    private var venueLine: String? {
         guard let venue = venueID.flatMap({ store.venue($0) }) else { return nil }
         let count = store.courts.count
         return "\(venue.name) · \(count) court\(count == 1 ? "" : "s")"
     }
+}
 
-    // MARK: Loading
+// MARK: - Reload key
 
-    /// Through the store, not the repository.
-    ///
-    /// This screen held its three lists in `@State` and read the repository directly, because the
-    /// unit that built it could not edit `AppStore`. That meant a write on another tab was
-    /// invisible here — resolving an Inbox item that reassigns a court has to change what these
-    /// cards say — and every tab switch re-issued the whole read set, because `MainTabView`
-    /// switches on the selected tab and so destroys the view and its `@State` each time.
-    private func load() async {
-        await store.loadOverview()
-    }
+/// What Overview's three reads depend on. `.task(id:)` re-reads when any of the three moves.
+///
+/// The day joined the key when the clock became real. `loadOverview` fetches `self.today`'s blocks,
+/// and this screen's `.task` used to be keyed on the venue alone — so a phone left on this tab
+/// through midnight went on drawing yesterday's morning against today's date, and the card naming
+/// the running block would have been reading a list from the wrong day.
+///
+/// A private type beside the one view that uses it, which is where `ScheduleView.ScheduleLoad`
+/// keeps its own copy of this idea. It is not a shape the app has; it is an argument list with a
+/// name.
+private struct OverviewLoad: Equatable {
+    let campID: Camp.ID?
+    let venueID: Venue.ID?
+    let day: Weekday
 }
 
 // MARK: - Previews
