@@ -605,8 +605,10 @@ struct SetupView: View {
     /// leaving the field open until it lands would show a name the camp has already taken.
     private func commitIdentity(_ typed: String, _ sport: Sport) {
         let name = typed.trimmingCharacters(in: .whitespaces)
-        // `renameCamp` refuses an empty name; the editor's Save is already disabled for it, and
-        // this is the backstop for the keyboard's own Return.
+        // `renameCamp` refuses an empty name, and nothing upstream can hand one over any more:
+        // the editor's Save is disabled for it and its Return key now asks the same gate the
+        // button does (`InlineRowEditor.save()`), which is the hole this guard was written to
+        // plug. It stays as the guard on the store call rather than as the guard on a keyboard.
         guard !name.isEmpty else { return }
         isEditingIdentity = false
         Task { await store.renameCamp(name: name, sport: sport) }
@@ -633,25 +635,35 @@ struct SetupView: View {
 /// The camp's name and the sport it plays, edited in place.
 ///
 /// The design draws this row with a caret and never draws what is behind it, so the editor is
-/// assembled from pieces the design does specify: `8s`'s in-place phone editor for the shape,
-/// and screen 4's own sport chips for the sport — so the two places that ask which sport a camp
-/// plays ask it the same way.
+/// assembled from pieces the design does specify: `InlineRowEditor` for the shape — the box `8s`
+/// opens its name and phone rows into, and now literally that box rather than a transcription of
+/// it — and screen 4's own sport chips for the sport, so the two places that ask which sport a
+/// camp plays ask it the same way.
+///
+/// What is left here is what is genuinely `8t`'s: the sport, and the rule about what a camp may
+/// be called.
 private struct CampIdentityEditor: View {
 
-    /// Held here rather than bound up to `SetupView`, and that is the whole of the change.
+    /// Held here rather than bound up to `SetupView`, and that is most of what is left of this
+    /// view.
     ///
     /// `SetupView` is seventeen computed `some View` properties inlined into one body, so a
-    /// draft living on it meant every character re-ran all of them: every venue's staffing
-    /// status recomputed, `filteredStaff` and `staffChips` refiltered, the whole 710-line screen
-    /// rebuilt to redraw one text field. The editor is the only thing that reads these while
-    /// they are being typed, so it is the only thing that needs to hear about them.
-    @State private var name: String
+    /// choice living on it meant every tap re-ran all of them: every venue's staffing status
+    /// recomputed, `filteredStaff` and `staffChips` refiltered, the whole 710-line screen rebuilt
+    /// to redraw one row of chips. The chips are the only thing that reads this while it is being
+    /// chosen, so this is the only thing that needs to hear about it.
+    ///
+    /// The name used to sit beside it under the same argument and no longer does. The draft lives
+    /// one level further in, in `InlineRowEditor`, which makes that argument once for both of its
+    /// callers rather than having each of them make it again.
     @State private var sport: Sport
+
+    /// The name the camp has now — a seed rather than a draft. The editor takes a copy of it and
+    /// does the typing.
+    let name: String
 
     let onCancel: () -> Void
     let onSave: (String, Sport) -> Void
-
-    @FocusState private var isFocused: Bool
 
     init(
         name: String,
@@ -659,77 +671,32 @@ private struct CampIdentityEditor: View {
         onCancel: @escaping () -> Void,
         onSave: @escaping (String, Sport) -> Void
     ) {
-        _name = State(initialValue: name)
+        self.name = name
         _sport = State(initialValue: sport)
         self.onCancel = onCancel
         self.onSave = onSave
     }
 
-    /// The same rule `CampDraft.isValid` applies on the way in — literally the same, now, rather
-    /// than a second copy of half of it. This used to test only for empty, so the rename field
-    /// would happily send an eighty-one character name to a column that refuses one.
-    private var isValid: Bool {
-        CampName.isValid(name.trimmingCharacters(in: .whitespaces))
-    }
-
     var body: some View {
-        CardRow(
-            spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: 13, alignment: .top
+        InlineRowEditor(
+            title: "Camp name & sport",
+            field: .campName,
+            value: name,
+            // The row is named for more than the field holds. The sport is chosen under it, by
+            // chips that say their own names.
+            fieldLabel: "Camp name",
+            // The same rule `CampDraft.isValid` applies on the way in — literally the same,
+            // rather than a second copy of half of it. This used to test only for empty, so the
+            // rename field would happily send an eighty-one character name to a column that
+            // refuses one.
+            isSaveEnabled: { CampName.isValid($0.trimmingCharacters(in: .whitespaces)) },
+            onCancel: onCancel,
+            // The sport is not typed, so it does not come back through the field. It is read off
+            // this view at the moment Save is tapped, which is all this closure is for.
+            onSave: { onSave($0, sport) }
         ) {
-            VStack(alignment: .leading, spacing: Spacing.small) {
-                Text("Camp name & sport")
-                    .typeStyle(.rowLabel, color: Theme.ink)
-
-                nameField
-                sportChips
-
-                HStack(spacing: Spacing.small) {
-                    Spacer(minLength: 0)
-                    Pill(
-                        "Cancel", tone: .outline,
-                        horizontalPadding: 13, verticalPadding: 8, action: onCancel
-                    )
-                    Pill(
-                        "Save", tone: .accent,
-                        horizontalPadding: 13, verticalPadding: 8,
-                        action: { onSave(name, sport) }
-                    )
-                    // Refusing before the tap rather than after it: the alternative is a banner
-                    // saying "Give the camp a name first" over a field that is already open.
-                    .opacity(isValid ? 1 : 0.45)
-                    .disabled(!isValid)
-                }
-            }
+            sportChips
         }
-        .onAppear { isFocused = true }
-    }
-
-    /// A property rather than inline in `body` because the `#if` needs a `return`, which a
-    /// `@ViewBuilder` body cannot give it. The same shape `8s`'s phone field takes.
-    private var nameField: some View {
-        let field = TextField(
-            "", text: $name, prompt: Text("Camp name").foregroundStyle(Theme.inkFaint)
-        )
-        .textFieldStyle(.plain)
-        .typeStyle(.fieldValue, color: Theme.ink)
-        .focused($isFocused)
-        .autocorrectionDisabled()
-        .accessibilityLabel("Camp name")
-        .onSubmit { onSave(name, sport) }
-        .padding(.horizontal, Spacing.medium)
-        .padding(.vertical, Spacing.small)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Theme.grouped, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-        )
-
-        #if os(iOS)
-        return field
-            .textInputAutocapitalization(.words)
-            .submitLabel(.done)
-        #else
-        return field
-        #endif
     }
 
     /// `FlowLayout` rather than a plain row: five chips do not fit across a card inset by the
@@ -754,10 +721,17 @@ private struct CampIdentityEditor: View {
 
 /// Which days the camp opens, edited in place.
 ///
-/// `CampIdentityEditor`'s shape above, with the chips in place of the field: seeded from what it
-/// is handed, its state its own, and the chosen week handed back through `onSave`. That is not
+/// `InlineRowEditor`'s shape, with the chips in place of the field: seeded from what it is
+/// handed, its state its own, and the chosen week handed back through `onSave`. That is not
 /// styling — the reason is the one that file gives, that a draft on `SetupView` re-runs seventeen
 /// computed properties per tap, and a set of days is four taps for a camp that runs Tue/Thu.
+///
+/// Drawn out longhand rather than opened through that editor, which is the row above's answer
+/// now. `InlineRowEditor` is built around a text field — a prompt, a keyboard, a draft `String`
+/// — and this row has no field at all: a week is chosen, not typed. Adopting it would mean an
+/// optional field and an optional keyboard threaded through a component whose whole subject is
+/// the field, to save a `CardRow` and two `Pill`s. What the two rows genuinely share is the
+/// numbers, and those are the design's, stated in both places from the same drawing.
 ///
 /// Cancel and Save rather than writing on each tap, for the same four taps: every one of them
 /// would be a PATCH and a whole camp back, and three of the four would describe a week nobody

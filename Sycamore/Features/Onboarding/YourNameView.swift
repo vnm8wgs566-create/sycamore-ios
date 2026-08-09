@@ -105,9 +105,10 @@ struct YourNameView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    // Deliberately not auto-focused. `EmergencyPhoneEditor` and `DisplayNameEditor` raise the
-    // keyboard on appear because they are a row that has just swapped itself for a field, and the
-    // tap that opened them *was* the request to type. This is a whole screen arriving on its own,
+    // Deliberately not auto-focused. `InlineRowEditor` raises the keyboard on appear — for every
+    // settings row that opens into it, including the emergency number and the display name it was
+    // once named after — because it is a row that has just swapped itself for a field, and the tap
+    // that opened it *was* the request to type. This is a whole screen arriving on its own,
     // and the other two full-screen fields in the flow — sign-in's address and `8b`'s camp name —
     // both let the reader read the question first. A keyboard that appears unasked over "Not now"
     // is the same discourtesy in every app that does it.
