@@ -2,10 +2,10 @@
 //  FallingSeeds.swift
 //  Sycamore
 //
-//  Falling samaras — the app's one loading and entrance motif.
+//  Falling samaras — the app's entrance motif, and now nothing else.
 //
 //  The seed that falls is `SycamoreSeed`, the same shape the mark is built from, not a
-//  redrawing of it. That is the point: the thing spinning down the screen while a camp loads
+//  redrawing of it. That is the point: the thing spinning down the screen while the app opens
 //  is literally the logo coming apart into its parts, and if the mark's curves change these
 //  follow without anyone remembering.
 //
@@ -13,12 +13,26 @@
 //  axis while it descends, which is why it falls slowly. That is the whole reason the shape is
 //  worth animating, so each seed spins at a steady rate and drifts sideways as it goes.
 //
-//  Deliberately not a `ProgressView`: this is the one moment the app's own mark can do the
-//  waiting. It still reports itself to VoiceOver as busy.
+//  Deliberately not a `ProgressView`: opening the app is the one moment the app's own mark can
+//  do the waiting. It still reports itself to VoiceOver as busy.
 //
-//  There was a `SpinningSeed` here too — one seed autorotating in place, at the scale of a
-//  spinner, for the "Working…" capsule that floated over every write. The capsule went and took
-//  its only caller with it; see `storeErrorBanner` in `Components.swift` for why.
+//  ---------------------------------------------------------------------------------------------
+//  TWO THINGS HAVE LEFT THIS FILE, AND BOTH WENT THE SAME WAY
+//  ---------------------------------------------------------------------------------------------
+//
+//  There was a `SpinningSeed` — one seed autorotating in place, at the scale of a spinner, for the
+//  "Working…" capsule that floated over every write. The capsule went and took its only caller
+//  with it; see `storeErrorBanner` in `Components.swift` for why.
+//
+//  There was a `SeedLoadingView` — the flock full-bleed on `Theme.grouped`, which `RootView` laid
+//  over the whole first run whenever `store.isWorking` was true. `isWorking` is raised by every
+//  intent (`AppStore.perform`), so it fell for switching camps and for the write behind "That's
+//  me" as readily as for a wait; and the one real wait it covered it was only *hiding*, because
+//  underneath it the memberships had not arrived and the wrong question was being asked. That is
+//  fixed at the cause now — `AppStore.hasLoadedMemberships` says whether the answer is known and
+//  `FirstRunStep` declines to answer until it is — which left this with no callers at all.
+//
+//  So the seeds fall once, on the splash, and never again. Which is where they came from.
 //
 
 import SwiftUI
@@ -115,26 +129,6 @@ struct FallingSeeds: View {
     }
 }
 
-// MARK: - Loading panel
-
-/// The full-bleed loading state — just the flock.
-///
-/// No mark and no wordmark here, unlike `SeedEntrance`. Opening the app is a moment worth
-/// naming; waiting for a camp to load, several times a session, is not. The logo parked in the
-/// middle of every load turns the identity into a progress indicator, which is the fastest way
-/// to make people stop seeing it.
-struct SeedLoadingView: View {
-    var label: String = "Loading"
-
-    var body: some View {
-        ZStack {
-            Theme.grouped
-            FallingSeeds(label: label)
-        }
-        .ignoresSafeArea()
-    }
-}
-
 // MARK: - Entrance
 
 /// The lockup: the mark, and the wordmark typing itself in beside it.
@@ -195,6 +189,13 @@ private struct EntranceLockup: View {
 /// Held to about two seconds. Long enough to read as intentional, short enough that somebody
 /// opening the app to mark a kid away twenty times a day never waits on it. The seeds and the
 /// typing are both skipped when Reduce Motion is on; the mark and the word still arrive.
+///
+/// The only place the flock is drawn, and the reason is the one `SeedLoadingView` used to give for
+/// carrying no mark: opening the app is a moment worth naming, and waiting for a camp to load,
+/// several times a session, is not. A logo parked in the middle of every load turns the identity
+/// into a progress indicator, which is the fastest way to make people stop seeing it. That
+/// argument now settles the whole question rather than half of it — there is no second place for
+/// the seeds to fall.
 struct SeedEntrance: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasLanded = false
@@ -210,8 +211,8 @@ struct SeedEntrance: View {
                 FallingSeeds(count: 9, label: "Opening Sycamore")
             }
 
-            // Tiled for the same reason as `SeedLoadingView` — a bare pair mark is lost among
-            // the seeds falling past it.
+            // The mark *and* the name, rather than the mark on its own: a bare pair mark at this
+            // size is lost among the seeds falling past it.
             EntranceLockup(typedCount: typedCount)
                 .scaleEffect(hasLanded ? 1 : 0.92)
                 .opacity(hasLanded ? 1 : 0)
