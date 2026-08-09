@@ -21,6 +21,30 @@
 //  which is how two views end up disagreeing about which block is running. One value, read from
 //  the environment, is also the only shape a test can pin.
 //
+//  ── Two granularities, stored apart ──────────────────────────────────────────────────────────
+//
+//  `now` moves every minute. The day it belongs to moves once. `today` was
+//  `var today: Weekday { Weekday.today(now) }`, and a computed property hands its readers the
+//  storage it was computed from: `@Observable` records what a `body` *read*, so every screen that
+//  asked what day it was had subscribed to a value that changes 1440 times for each time the
+//  answer does.
+//
+//  That is not theoretical. `ScheduleView` resolves the day it opens on from `store.today` inside
+//  `body` (`ScheduleView.swift:79`) rather than seeding a `@State`, so the chip row, every block
+//  card and the current-block calculation rebuilt once a minute on a screen nobody had touched —
+//  which is the state the tab is in on every fresh presentation. The same read is at
+//  `AttendanceView.swift:206`, `OverviewView.swift:67`, `OverviewScreen.swift:87`,
+//  `CourtScreen.swift:167` and `PlayerScreen.swift:231`.
+//
+//  So `today` is stored, and `refresh(to:)` writes it only when the day has actually rolled over.
+//  The `if` is the whole of the fix and not an optimisation on top of one: `@Observable` does not
+//  compare before it fires, so assigning the same `Weekday` still announces a mutation and all six
+//  of those reads invalidate anyway. Same lesson `AppStore.perform` records at
+//  `AppStore.swift:1380-1385` about clearing an `errorMessage` that was already nil.
+//
+//  `timeOfDay` stays computed off `now`, because there the minute *is* the answer — a reader of
+//  it wants to hear about every one.
+//
 
 import Foundation
 import Observation
@@ -35,12 +59,19 @@ import SwiftUI
 @MainActor
 final class AppClock {
 
-    /// The moment the last tick landed. Views read `today` and `timeOfDay` off this rather than
-    /// calling `.now` themselves, so everything on screen agrees about when it is.
+    /// The moment the last tick landed. Views read `timeOfDay` off this rather than calling
+    /// `.now` themselves, so everything on screen agrees about when it is.
+    ///
+    /// `today` is derived from it too, but through `refresh(to:)` rather than on read — see the
+    /// header for why a screen that only wants the day must not be reading this.
     private(set) var now: Date
 
     /// The day it is, which is also what decides whether the Schedule opens on today.
-    var today: Weekday { Weekday.today(now) }
+    ///
+    /// Stored rather than computed off `now`, and written only when it changes. That guard is
+    /// what keeps a screen asking for the day off a value that moves every minute; the header
+    /// has the six call sites and the reasoning.
+    private(set) var today: Weekday
 
     /// The wall clock, as the camp's own time-of-day — what `ScheduleBlock.running(in:at:)` takes.
     var timeOfDay: TimeOfDay { TimeOfDay.now(now) }
@@ -49,6 +80,7 @@ final class AppClock {
 
     init(now: Date = .now) {
         self.now = now
+        self.today = Weekday.today(now)
     }
 
     deinit {
@@ -74,7 +106,7 @@ final class AppClock {
                     return
                 }
                 guard !Task.isCancelled else { return }
-                self.now = .now
+                self.refresh()
             }
         }
     }
@@ -87,10 +119,25 @@ final class AppClock {
         ticker = nil
     }
 
-    /// Pulls the time forward now rather than waiting for the next minute. Used on foreground,
-    /// where the gap since the last tick can be hours.
-    func refresh() {
-        now = .now
+    /// Moves the clock, and is the only thing that does — the tick above and the foreground come
+    /// through here. Called bare on foreground it pulls the time forward now rather than waiting
+    /// for the next minute, where the gap since the last tick can be hours.
+    ///
+    /// One writer rather than an assignment to `now` at each site, because `today` has to be
+    /// reconsidered alongside it: two writers is how a clock ends up carrying today's minute
+    /// under yesterday's day. The tick used to set `now` itself (`self.now = .now`).
+    ///
+    /// Takes the date rather than reading `.now` inside itself, for the reason
+    /// `Weekday.today(_:calendar:)` gives at `Models.swift:148-149` — a test can walk this across
+    /// a midnight without waiting for one. Nothing in the app passes it.
+    func refresh(to date: Date = .now) {
+        now = date
+        // Guarded, and the guard is what storing `today` is *for* — not a saving on top of it.
+        // `@Observable` announces the assignment, not the change, so writing the same `Weekday`
+        // back would rebuild every screen that reads the day — once a minute, for an answer that
+        // moves at midnight. See the header.
+        let day = Weekday.today(date)
+        if day != today { today = day }
     }
 }
 
