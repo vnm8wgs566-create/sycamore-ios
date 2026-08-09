@@ -349,7 +349,7 @@ actor SupabaseRepository: SycamoreRepository {
                 .within("players.site_id", siteIDs)
                 .eq("session", Self.session)
                 .gte("day", week.monday)
-                .lte("day", week.friday)
+                .lte("day", week.sunday)
         )
         async let inboxTask: [InboxItemRecord] = db.select(
             Relation.inboxItems,

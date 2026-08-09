@@ -101,6 +101,19 @@ struct ScheduleBlock: Identifiable, Hashable, Sendable, Codable {
     /// added above `notes` would have broken all three at once.
     var coachIDs: [StaffMember.ID] = []
 
+    /// What kind of thing this block is — and therefore what the editor asks about it.
+    ///
+    /// Appended after `coachIDs` for the reason stated directly above: the memberwise initialiser
+    /// is called positionally in three files, so the tail is the only safe place to grow.
+    ///
+    /// Deliberately **not** folded into `status`, which is `planned | done | needs_coach` and
+    /// answers a different question. A block's kind is what it *is*; its status is where it has
+    /// got to. Overloading one on the other would make "a done warm-up" unsayable.
+    var kind: ScheduleBlockKind = .regular
+    /// The courts this block runs on, when it is one that says. Empty on a `.regular` block, and
+    /// empty on an `.assigned` one nobody has chosen courts for yet.
+    var courtIDs: [Group.ID] = []
+
     /// "8:30", and "8:30 – 9:00" once there is an end.
     var timeLabel: String {
         guard let endsAt else { return startsAt.clockLabel }
@@ -181,6 +194,36 @@ extension ScheduleBlock {
                 guard let ends = block.endsAt, ends <= time else { return block }
                 return nil
             }
+    }
+}
+
+/// What a block is, as opposed to where it has got to.
+///
+/// Two kinds, because the design asks two different sets of questions. A regular block is a title,
+/// a time and whatever notes hang off it — a lunch, a parents' briefing. An assigned block also
+/// says *where* it happens and *who is on it*: "warm-up, one court, everybody", which is a
+/// sentence the schedule could not previously write down. Before this, the courts a block used
+/// lived in `detail` — one free-text line reading "Courts 1–3 · 22 players" that nothing could
+/// read back.
+enum ScheduleBlockKind: String, Hashable, Sendable, Codable, CaseIterable {
+    /// A block that just happens. The shape everything on the schedule had until now.
+    case regular
+    /// A block that names its courts and the coaches on them.
+    case assigned
+
+    var displayName: String {
+        switch self {
+        case .regular: "Regular event"
+        case .assigned: "Courts & coaches"
+        }
+    }
+
+    /// The one line under each option in the editor's picker.
+    var detail: String {
+        switch self {
+        case .regular: "A title and a time. Lunch, a briefing, a break."
+        case .assigned: "Says which courts are running and who is on them."
+        }
     }
 }
 

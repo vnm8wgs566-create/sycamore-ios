@@ -725,7 +725,14 @@ struct RepositoryAttendanceTests {
 
         #expect(after.leavesAt(kid) == TimeOfDay(14, 30))
         #expect(!after.isAway(kid))
-        #expect(after.attendance(for: kid)?.leavingEarlyLabel == "Leaves Wed at 14:30")
+        // Against `.today` rather than the literal "Wed" this used to assert. That passed only
+        // because `Weekday.today` was stubbed to Wednesday; now that it reads the calendar, a
+        // hardcoded day makes this test fail on six days out of seven — which is exactly what it
+        // did the first time the stub came out.
+        #expect(
+            after.attendance(for: kid)?.leavingEarlyLabel
+                == "Leaves \(Weekday.today.shortName) at 14:30"
+        )
     }
 
     @Test("Cancelling a pick-up removes the row rather than blanking it")

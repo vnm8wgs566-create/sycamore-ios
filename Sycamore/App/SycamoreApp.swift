@@ -61,6 +61,7 @@ struct SycamoreApp: App {
     /// differs, with no dependence on what context the mutation happened in.
     @State private var entranceOpacity: Double = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Shared by the modifier and the teardown, so the wait cannot drift from the animation.
     private var fadeDuration: Double { Motion.Entrance.fade(reduceMotion: reduceMotion) }
@@ -125,6 +126,25 @@ struct SycamoreApp: App {
                 // layout together is worth more than uncapped growth that breaks it; lifting
                 // it is a layout job, not a typography one.
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                // The one clock, started here because it belongs to the app rather than to
+                // whichever screen happened to be on top when somebody wanted the time.
+                //
+                // Stopped on the way out and pulled forward on the way back in: a tick nobody
+                // can see is a wake-up nobody asked for, and the gap across a backgrounded
+                // night is hours — long enough that waiting for the next minute would draw
+                // yesterday's date on the first frame.
+                .onAppear { store.clock.start() }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .active:
+                        store.clock.refresh()
+                        store.clock.start()
+                    case .inactive, .background:
+                        store.clock.stop()
+                    @unknown default:
+                        break
+                    }
+                }
         }
         #if os(macOS)
         // The macOS build exists only so `swift build` typechecks the shared sources.

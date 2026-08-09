@@ -2,10 +2,14 @@
 //  CampWeek.swift
 //  Sycamore
 //
-//  `Weekday` is `mon = 1 … fri = 5`. Postgres stores a `date`. This is the conversion.
+//  `Weekday` is `mon = 1 … sun = 7`. Postgres stores a `date`. This is the conversion.
 //
-//  The model is right to hold a weekday: a camp week is Monday to Friday and the early pick-up
-//  sheet offers exactly those five, so a kid leaving at 14:30 on Thursday is a fact about
+//  It read "mon = 1 … fri = 5" until camps that open at a weekend needed saying. The numbering
+//  here never changed — it was ISO all along, Monday 1 through Sunday 7 — so the two new cases
+//  cost this file nothing but the sentences that had been describing the old limit. Which days a
+//  *particular* camp runs is `Camp.days`, and no concern of the calendar.
+//
+//  The model is right to hold a weekday: a kid leaving at 14:30 on Thursday is a fact about
 //  Thursday and not about the 6th of August. The database is right to hold a date: attendance
 //  accumulates across weeks and a weekday alone cannot say which one. Neither is wrong, so
 //  something has to sit between them, and it is better that it sit in one file than be
@@ -51,16 +55,22 @@ enum CampWeek {
         string(from: date(for: day, in: week))
     }
 
-    /// The Monday and Friday of the week containing `reference`, as a range to filter a date
+    /// The Monday and Sunday of the week containing `reference`, as a range to filter a date
     /// column on — `camp(id:)` reads a whole week of attendance in one request.
-    static func weekBounds(in week: Date = .now) -> (monday: String, friday: String) {
-        (dateString(for: .mon, in: week), dateString(for: .fri, in: week))
+    ///
+    /// The far end was Friday while the model had no weekend. A camp that runs on a Saturday
+    /// writes attendance on a Saturday, and a bound that stopped at Friday would have read the
+    /// week back without it — the register would look empty on the one day it had been taken.
+    static func weekBounds(in week: Date = .now) -> (monday: String, sunday: String) {
+        (dateString(for: .mon, in: week), dateString(for: .sun, in: week))
     }
 
     // MARK: Date to weekday
 
-    /// Nil for a Saturday or Sunday: the model has no case for them, and a row written on a
-    /// weekend describes a day no screen can show.
+    /// Nil only for a string that is not a date. This used to say "nil for a Saturday or Sunday:
+    /// the model has no case for them" — it has both now, and the ISO arithmetic below already
+    /// produced 6 and 7 for them, so the weekend stopped being unrepresentable the moment
+    /// `Weekday` gained the cases.
     static func weekday(from text: String) -> Weekday? {
         guard let date = date(from: text) else { return nil }
         // Back to Monday = 1 … Sunday = 7, then straight into `Weekday`'s raw value.

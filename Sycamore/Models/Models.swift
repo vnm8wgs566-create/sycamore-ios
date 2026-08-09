@@ -97,9 +97,16 @@ enum Gender: String, Codable, Hashable, CaseIterable, Sendable {
     var noun: String { self == .x ? "Kid" : label }
 }
 
-/// Camp weeks run Monday to Friday; the early pick-up sheet offers exactly these five.
+/// A day of the week, Monday first.
+///
+/// This ran Monday to Friday until camps that run at a weekend needed saying. The raw values are
+/// the ISO numbering — Monday 1 … Sunday 7 — which is what `CampWeek` was already converting to
+/// and from (`CampWeek.swift:63-65`), so the two new cases cost that file nothing but a comment
+/// that had been describing the old limit.
+///
+/// Which of the seven a *particular* camp runs is `Camp.days`, not a property of the calendar.
 enum Weekday: Int, Codable, Hashable, CaseIterable, Identifiable, Sendable {
-    case mon = 1, tue, wed, thu, fri
+    case mon = 1, tue, wed, thu, fri, sat, sun
 
     var id: Int { rawValue }
 
@@ -110,6 +117,8 @@ enum Weekday: Int, Codable, Hashable, CaseIterable, Identifiable, Sendable {
         case .wed: "Wed"
         case .thu: "Thu"
         case .fri: "Fri"
+        case .sat: "Sat"
+        case .sun: "Sun"
         }
     }
 
@@ -123,13 +132,98 @@ enum Weekday: Int, Codable, Hashable, CaseIterable, Identifiable, Sendable {
         case .wed: "Wednesday"
         case .thu: "Thursday"
         case .fri: "Friday"
+        case .sat: "Saturday"
+        case .sun: "Sunday"
         }
     }
 
-    /// The app has no clock of its own yet — the offline build is always "Wednesday",
-    /// which is the day the design's screens depict. Swap this for a real calendar
-    /// lookup when the backend lands.
-    static var today: Weekday { .wed }
+    /// The day it actually is.
+    ///
+    /// This returned `.wed` unconditionally — "the day the design's screens depict" — and every
+    /// screen that asked what day it was got Wednesday, on a Tuesday, forever. Twenty call sites
+    /// read it, including the Postgres query that fetches a day's schedule and the whole of
+    /// attendance, so the stub was not cosmetic: a coach taking Thursday's register was writing
+    /// it against Wednesday's date.
+    ///
+    /// Injectable rather than reading the clock inside itself, so a test can ask what happens on
+    /// a Sunday without waiting for one.
+    static func today(_ date: Date = .now, calendar: Calendar = .current) -> Weekday {
+        // Back to ISO — Monday 1 … Sunday 7 — which is exactly this enum's raw value.
+        // `Calendar.component(.weekday:)` is Sunday 1 … Saturday 7 whatever the locale's
+        // `firstWeekday` is set to, so the arithmetic does not move with the reader's region.
+        let iso = (calendar.component(.weekday, from: date) + 5) % 7 + 1
+        return Weekday(rawValue: iso) ?? .mon
+    }
+
+    /// `today()`, for the call sites that have no date to hand. Kept as a property because
+    /// twenty of them read it that way.
+    static var today: Weekday { today() }
+}
+
+// MARK: - Which days a camp runs
+
+/// The days of the week a camp actually opens.
+///
+/// A camp is not the calendar: a tennis week runs Monday to Friday, a swim club runs Saturday
+/// mornings, and both are ordinary. So the days are the camp's own answer, chosen when the camp
+/// is shaped, and the Schedule screen draws chips for these rather than for all seven.
+///
+/// An `OptionSet` over one `smallint` rather than a join table or seven columns: the answer is
+/// seven bits, it is read on every schedule load, and a table would be seven rows to say what a
+/// number says. `rawValue` is the wire format — bit 0 is Monday, matching `Weekday`'s raw value
+/// less one.
+struct CampDays: OptionSet, Codable, Hashable, Sendable {
+    let rawValue: Int
+
+    init(rawValue: Int) { self.rawValue = rawValue }
+
+    static let mon = CampDays(rawValue: 1 << 0)
+    static let tue = CampDays(rawValue: 1 << 1)
+    static let wed = CampDays(rawValue: 1 << 2)
+    static let thu = CampDays(rawValue: 1 << 3)
+    static let fri = CampDays(rawValue: 1 << 4)
+    static let sat = CampDays(rawValue: 1 << 5)
+    static let sun = CampDays(rawValue: 1 << 6)
+
+    /// What a camp runs unless somebody says otherwise, and what every camp created before this
+    /// column existed is taken to have meant.
+    static let weekdays: CampDays = [.mon, .tue, .wed, .thu, .fri]
+    static let everyDay: CampDays = [.mon, .tue, .wed, .thu, .fri, .sat, .sun]
+
+    init(_ days: [Weekday]) {
+        self.init(rawValue: days.reduce(0) { $0 | (1 << ($1.rawValue - 1)) })
+    }
+
+    func contains(_ day: Weekday) -> Bool {
+        rawValue & (1 << (day.rawValue - 1)) != 0
+    }
+
+    mutating func toggle(_ day: Weekday) {
+        if contains(day) {
+            self = CampDays(rawValue: rawValue & ~(1 << (day.rawValue - 1)))
+        } else {
+            self = CampDays(rawValue: rawValue | (1 << (day.rawValue - 1)))
+        }
+    }
+
+    /// Monday first, which is the order the chips are drawn in.
+    var ordered: [Weekday] { Weekday.allCases.filter(contains) }
+
+    /// A camp with no days is a camp nobody can schedule anything on, so the editor refuses the
+    /// empty set rather than letting it reach the database. This is what it checks.
+    var isValid: Bool { !ordered.isEmpty }
+
+    /// The day to open the Schedule on: today when the camp runs today, otherwise the next day
+    /// it does — wrapping into next week, so a Sunday at a Monday-to-Friday camp opens Monday
+    /// rather than falling backwards into a Friday that has already happened.
+    func openingDay(from today: Weekday = .today) -> Weekday? {
+        guard isValid else { return nil }
+        for step in 0..<7 {
+            let raw = (today.rawValue - 1 + step) % 7 + 1
+            if let day = Weekday(rawValue: raw), contains(day) { return day }
+        }
+        return nil
+    }
 }
 
 /// A wall-clock time with no date attached. Early pick-up only ever needs `14:30`.
@@ -728,6 +822,9 @@ struct CampDraft: Hashable, Sendable {
     var sport: Sport = .tennis
     var venueCount: Int = 2
     var groupsPerVenue: Int = 6
+    /// Which days the camp runs. Carried on the draft because it is asked on `8b`, beside the
+    /// venues and the courts, rather than discovered later in Camp settings.
+    var days: CampDays = .weekdays
 
     /// What `camps.name` should actually hold. A name is not its surrounding whitespace, and the
     /// column's CHECK counts every character it is given — so `"  UCLA  "` spends four of its
@@ -843,6 +940,12 @@ struct Camp: Identifiable, Hashable, Codable, Sendable {
     var inviteCode: String
     var icon: String
     var tint: VenueTint
+    /// The days this camp opens. Chosen when the camp is shaped and editable afterwards; the
+    /// Schedule screen draws a chip per day in here rather than one per day of the week.
+    ///
+    /// Defaulted rather than required, so every camp written before the column existed reads as
+    /// Monday-to-Friday — which is what they all were.
+    var days: CampDays = .weekdays
     var venues: [Venue] = []
     var groups: [Group] = []
     var players: [Player] = []

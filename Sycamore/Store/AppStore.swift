@@ -384,6 +384,12 @@ final class AppStore {
     var pickupDay: Weekday = .today
     var pickupTime: TimeOfDay = TimeOfDay(14, 30)
 
+    // MARK: The clock
+
+    /// The app's one clock, ticking once a minute. See `AppClock` for why it is here rather than
+    /// behind its own environment key, and why every screen reads this instead of `Date.now`.
+    let clock = AppClock()
+
     // MARK: Status
 
     var isWorking = false
@@ -411,7 +417,16 @@ final class AppStore {
 
 extension AppStore {
 
-    var today: Weekday { .today }
+    /// The day it is, read off the app's clock so it changes when the clock ticks.
+    ///
+    /// This was `Weekday.today`, which was stubbed to Wednesday. Going through `clock` does two
+    /// things the static could not: it reads the real calendar, and — because `AppClock` is
+    /// `@Observable` — a view that draws today's date redraws when midnight passes under it
+    /// rather than holding yesterday until somebody switches tabs.
+    var today: Weekday { clock.today }
+
+    /// The wall clock, for the two screens that ask which block is running.
+    var timeOfDay: TimeOfDay { clock.timeOfDay }
 
     var account: Account? {
         if case .signedIn(let account) = auth { return account }
