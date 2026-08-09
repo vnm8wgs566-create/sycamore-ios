@@ -2,19 +2,30 @@
 //  ScheduleResize.swift
 //  Sycamore
 //
-//  What a finger on a block's bottom edge does to the block's end time — the arithmetic, with no
-//  view in it.
+//  What a finger on a block does to the block's times — the arithmetic, with no view in it. Two
+//  plans: `ScheduleResizePlan` moves the end, `ScheduleMovePlan` moves both together.
 //
 //  Lifted out for the reason `SwipeRevealPlan` was (`SwipeToDelete.swift:81-86`) and
 //  `GroupsLandingPlan` before it (`GroupsLandingPlan.swift:7-11`): every threshold below decides
 //  something a person can otherwise only check by putting a finger on a device, and every way it
 //  can be wrong looks right. The edge moves, a time is written, nothing throws.
 //
-//  It moves the **end** and never the start. `8k` is a list in time order rather than a timeline —
-//  a fifteen-minute block and a two-hour block draw the same height — so there is no proportional
-//  height for a drag to be measured against and no top edge worth grabbing. The mapping from
-//  travel to minutes is therefore a chosen ratio rather than a geometric one, and the ratio is
-//  `ScheduleMetrics.resizeTravel`, which argues for its own number.
+//  ── THE RATIO IS GEOMETRIC NOW ────────────────────────────────────────────────────────────────
+//
+//  This header used to argue that it could not be. `8k` was a list in time order rather than a
+//  timeline — a fifteen-minute block and a two-hour block drew the same height — so there was no
+//  proportional height for a drag to be measured against, the mapping from travel to minutes had
+//  to be a chosen number, and `ScheduleBlockCard` could offer nothing but a text capsule while a
+//  finger was down.
+//
+//  `8k` is a duration-proportional canvas now (`ScheduleTimeline.swift`), so all of that is
+//  false. `travelPerStep` is an `init` parameter and always was; what changed is what the screen
+//  passes it — `ScheduleTimeline.travelPerStep`, which is the height the grid itself draws fifteen
+//  minutes at. The edge is under the finger because the two are the same number, rather than
+//  because a number was tuned until they looked alike. `travel` survives as the default for the
+//  callers with no geometry in hand, and says so.
+//
+//  There is a top edge worth grabbing now too, and `ScheduleMovePlan` is what a hand on it does.
 //
 //  ── THE NEIGHBOUR IS NO LONGER A WALL ─────────────────────────────────────────────────────────
 //
@@ -70,19 +81,54 @@ struct ScheduleResizePlan: Equatable, Sendable {
     /// would be a block its own editor cannot offer an end for.
     static let dayEnd: TimeOfDay = BlockClock.options.last ?? TimeOfDay(20, 0)
 
-    /// `22` — how far a finger travels for one `step` of the block's end.
+    /// `22` — how far a finger travels for one `step`, when nobody says otherwise.
     ///
-    /// Here rather than in `ScheduleMetrics`, and that is where `SwipeMetrics.actionWidth` sits
-    /// too (`SwipeToDelete.swift:32-43`): this is not a drawn dimension. `8k` is a list and not a
-    /// timeline, so there is no height on the screen a drag could be measured against and the
-    /// ratio had to be chosen — which makes it a property of the arithmetic below rather than of
-    /// anything transcribed. What *is* drawn — the grabber, its column — is in `ScheduleMetrics`.
+    /// **A default and no longer a decision.** `8k` draws a proportional canvas now, so the screen
+    /// passes `ScheduleTimeline.travelPerStep` — 30pt, the height the grid rules a quarter of an
+    /// hour at — and the edge lands where the finger is because the two numbers are one number.
+    /// This paragraph used to argue at length that no such height existed to measure against.
     ///
-    /// An hour costs 88pt, a little more than a card's own height, so a drag of "about one card"
-    /// reads as about an hour. Half of it, 11pt, is the deadzone before anything moves at all,
-    /// which is about the travel the platform itself already treats as a drag rather than as a
-    /// touch — `SwipeMetrics.axisLock` arrives at 12 from the other side and says why.
+    /// Its readers today are the two test suites, which state their cases in points and so need a
+    /// ratio that does not move when the canvas is retuned. That is thin ground for a constant and
+    /// it is worth being exact about: the VoiceOver rotor is *not* a second reader, because
+    /// `adjusted(by:)` never touches a ratio at all — a rotor step is one grid step whatever the
+    /// screen looks like. What keeps it is that a plan built without a ratio still has to settle
+    /// somewhere sane, and 22 is a working drag rather than a zero.
+    ///
+    /// Here rather than in `ScheduleMetrics`, and that is where `SwipeMetrics.actionWidth` sits too
+    /// (`SwipeToDelete.swift:32-43`): it is a fallback belonging to the arithmetic below rather
+    /// than a dimension anything draws. What *is* drawn — the grabber, its column — is in
+    /// `ScheduleMetrics`.
     static let travel: CGFloat = 22
+
+    /// A minute onto the grid, then inside a pair of walls — in that order, and the order is
+    /// load-bearing.
+    ///
+    /// One function because there are three callers and the order is the thing every comment on it
+    /// calls load-bearing: this plan's `settled`, `ScheduleMovePlan`'s, and
+    /// `ScheduleTimeline.time(atY:)`, which asks the same question of a point on the canvas. Three
+    /// copies is three places to get it right and two places for a fix to be silently missed.
+    ///
+    /// Snapping a value that has already been clamped would push it straight back out of the wall
+    /// it was just held at. The floor is where that shows: a 9:00–9:05 block has a floor of 9:05,
+    /// and snapping *after* clamping would round that to 9:00 — an end equal to its start, which is
+    /// the one thing `ends_after_starts` forbids. Clamping second means the walls win, and a value
+    /// may sit exactly on one even when that moment is off-grid.
+    ///
+    /// Rounds to the nearest step rather than towards zero, so an edge lands on the grid line
+    /// nearest the finger. Truncating instead would make the first half of every step inert and the
+    /// edge would lag the finger by up to fifteen minutes; what a nudge must not do is *creep*, and
+    /// half a step is the deadzone that stops it.
+    static func settled(_ minutes: CGFloat, between floor: Int, and ceiling: Int) -> TimeOfDay {
+        let step = CGFloat(Self.step)
+        // Bounded before the conversion rather than after it. `Int(_:)` traps on a value past
+        // `Int.max`, and the travel is a number these types are handed rather than one they
+        // control; one step of slack either side leaves every reachable answer untouched.
+        let bounded = min(max(minutes, CGFloat(floor) - step), CGFloat(ceiling) + step)
+        let onGrid = Int((bounded / step).rounded() * step)
+        let clamped = min(max(onGrid, floor), ceiling)
+        return TimeOfDay(clamped / 60, clamped % 60)
+    }
 
     /// The frame a drag is measured in.
     ///
@@ -189,29 +235,12 @@ struct ScheduleResizePlan: Equatable, Sendable {
         settled(CGFloat(restingEnd.id + steps * Self.step))
     }
 
-    /// Onto the grid, then inside the walls — in that order, and the order is load-bearing.
+    /// Onto the grid, then inside this plan's own two walls. The order, and why it is load-bearing,
+    /// is on `ScheduleResizePlan.settled(_:between:and:)`.
     ///
-    /// Snapping a value that has already been clamped would push it straight back out of the wall
-    /// it was just held at. The floor is where that shows now: a 9:00–9:05 block has a floor of
-    /// 9:05, and snapping *after* clamping would round that to 9:00 — an end equal to its start,
-    /// which is the one thing `ends_after_starts` forbids. Clamping second means the walls win,
-    /// and a block may sit exactly on one even when that moment is off-grid.
-    ///
-    /// The neighbour used to be the example this paragraph gave, and it is gone with the clamp.
-    ///
-    /// Rounds to the nearest step rather than towards zero, so the edge lands on the grid line
-    /// nearest the finger. Truncating instead would make the first half of every step inert and
-    /// the edge would lag the finger by up to fifteen minutes; what a nudge must not do is *creep*,
-    /// and half a step — `ScheduleMetrics.resizeTravel / 2` — is the deadzone that stops it.
+    /// The neighbour used to be the example that argument gave, and it is gone with the clamp.
     private func settled(_ minutes: CGFloat) -> TimeOfDay {
-        let step = CGFloat(Self.step)
-        // Bounded before the conversion rather than after it. `Int(_:)` traps on a value past
-        // `Int.max`, and the travel is a number this type is handed rather than one it controls;
-        // one step of slack either side leaves every reachable answer untouched.
-        let bounded = min(max(minutes, CGFloat(floor) - step), CGFloat(ceiling) + step)
-        let onGrid = Int((bounded / step).rounded() * step)
-        let clamped = min(max(onGrid, floor), ceiling)
-        return TimeOfDay(clamped / 60, clamped % 60)
+        Self.settled(minutes, between: floor, and: ceiling)
     }
 }
 
@@ -222,3 +251,151 @@ struct ScheduleResizePlan: Equatable, Sendable {
 //
 // A forwarding shim was considered and is worse than either: it would keep a name that means
 // "wall" alive in a file that no longer has one.
+
+// MARK: - Moving a block
+
+/// One block being carried up or down the canvas, mid-drag.
+///
+/// `ScheduleResizePlan`'s shape, one axis over: built when the finger lands, fed the drag's travel,
+/// read for the two times to write. It moves `startsAt` and `endsAt` **together** — the block keeps
+/// its length and changes when it happens, which is the one thing the resize cannot express and the
+/// thing the canvas made askable. A morning that has slipped twenty minutes is a drag now rather
+/// than four taps through two menus.
+///
+/// It has the same three properties that make its sibling safe. The walls are decided once, in
+/// `init`, from where the block sat at that moment, so a plan cannot be made to clamp against a day
+/// that has changed underneath it. They are widened to admit the resting start, so a finger that
+/// lands and lifts writes nothing. And it snaps to `ScheduleResizePlan.step`, so every start it can
+/// produce is one the editor's own menu could offer back.
+///
+/// **It adds no overlap wall either**, and that is the same decision rather than a second one. A
+/// block dragged over its neighbour is a morning the camp is allowed to have; the amber line names
+/// it and, since `8k` became a canvas, the two now visibly sit side by side. The long argument is
+/// in this file's header and in `BlockRules.overlap(with:in:)`.
+struct ScheduleMovePlan: Equatable, Sendable {
+
+    // MARK: Where the block sat when the finger landed
+
+    /// The block's start when the finger landed. A drag of nothing settles back on exactly this,
+    /// which is what stops merely picking a card up changing anything.
+    let restingStart: TimeOfDay
+
+    /// Its end at that moment, or nil for a block running open-ended.
+    let restingEnd: TimeOfDay?
+
+    /// How long the block is, in minutes, or nil when it has no stated end.
+    ///
+    /// Held rather than recomputed from the two times on every frame, because it is the invariant:
+    /// a move is the one gesture that must not change it, and a length read back out of a clamped
+    /// pair of times is a length that can quietly shrink at a wall.
+    private let length: Int?
+
+    /// The walls, as the earliest and latest start, both inclusive.
+    ///
+    /// Each widened to admit `restingStart` — see `init`. A block already sitting outside the grid
+    /// keeps its place until it is actually dragged.
+    let floor: Int
+    let ceiling: Int
+
+    /// How far a finger travels for one `ScheduleResizePlan.step`.
+    let travelPerStep: CGFloat
+
+    /// Where the start sits right now: snapped to the grid and inside the walls, at every moment
+    /// and not only on release.
+    private(set) var startsAt: TimeOfDay
+
+    /// …and the end that follows it, still `length` minutes later, still nil if it always was.
+    var endsAt: TimeOfDay? { end(after: startsAt) }
+
+    private func end(after start: TimeOfDay) -> TimeOfDay? {
+        guard let length else { return nil }
+        let minutes = start.id + length
+        return TimeOfDay(minutes / 60, minutes % 60)
+    }
+
+    // MARK: Building one
+
+    /// - Parameters:
+    ///   - endsAt: optional, unlike `ScheduleResizePlan`'s. A block with no stated end has no
+    ///     bottom edge to drag, which is why that type refuses one — but it has a start, and a
+    ///     start is the whole of what this one moves.
+    ///   - dayStart / dayEnd: injected so a test can ask what happens at either end of the grid
+    ///     without building a morning around it.
+    init(
+        startsAt: TimeOfDay,
+        endsAt: TimeOfDay?,
+        dayStart: TimeOfDay = ScheduleTimeline.dayStart,
+        dayEnd: TimeOfDay = ScheduleTimeline.dayEnd,
+        travelPerStep: CGFloat = ScheduleResizePlan.travel
+    ) {
+        self.restingStart = startsAt
+        self.restingEnd = endsAt
+        self.startsAt = startsAt
+        self.travelPerStep = travelPerStep
+        // Nil rather than zero for an open end, so `endsAt` cannot invent one. A negative length is
+        // data the CHECK forbids and Postgres would still hold; carried as it is rather than
+        // repaired, because a move is not the gesture that gets to decide a block's length.
+        self.length = endsAt.map { $0.id - startsAt.id }
+
+        // The top of the grid, …and never later than the block already starts. A block that begins
+        // before seven can be dragged into the day, but picking it up must not drag it on its own.
+        self.floor = min(startsAt.id, dayStart.id)
+
+        // The bottom of the grid, less the block's own length, so the *end* is what stops at 20:00
+        // rather than the start — which is the whole of "clamped so neither end leaves the day". A
+        // block with no end has none to keep inside, so its start may reach the grid's last line;
+        // that is exactly the block `BlockClock` can express there, since `endOptions(after:)`
+        // offers nothing after 20:00 and a block starting on it can only be open-ended.
+        //
+        // …and never earlier than the block already starts, for `floor`'s reason from the other
+        // side: an evening block that already runs past eight keeps its place until it is dragged.
+        // The two widenings together are what guarantee `floor <= ceiling` on any pair of times.
+        self.ceiling = max(startsAt.id, dayEnd.id - (self.length ?? 0))
+    }
+
+    // MARK: What the drag produces
+
+    /// True once the drag has actually moved the block off where it started. The commit is guarded
+    /// on this, for the reason `ScheduleResizePlan.hasMoved` gives: `AppStore.perform` tracks
+    /// in-flight work with a single `Bool`, so a write that changes nothing still costs a round
+    /// trip and still flickers the screen's spinner.
+    var hasMoved: Bool { startsAt != restingStart }
+
+    /// `9:00am – 10:15am`, or `8:30am` for a block with no stated end.
+    ///
+    /// `ScheduleBlock.timeLabel`'s spelling (`SectionEight.swift:157-160`) including its nil case,
+    /// restated rather than borrowed because a plan holds two times and not a block. The two are
+    /// tested against each other so a live readout and the card under it cannot start disagreeing.
+    var spanLabel: String {
+        guard let endsAt else { return startsAt.clockLabel }
+        return "\(startsAt.clockLabel) – \(endsAt.clockLabel)"
+    }
+
+    /// One `onChanged`.
+    ///
+    /// - Parameter height: the drag's vertical travel in points, downward positive — a later block.
+    ///   Measured in the canvas's own named coordinate space; see `ScheduleResizePlan.listSpace`.
+    mutating func drag(by height: CGFloat) {
+        let step = CGFloat(ScheduleResizePlan.step)
+        startsAt = settled(CGFloat(restingStart.id) + height * step / travelPerStep)
+    }
+
+    /// One step of the rotor, for the adjustable action that is the non-pointer route to the same
+    /// answer. Non-mutating, like its sibling's: VoiceOver adjusts the block rather than a live
+    /// drag, so each call starts again from where the block actually sits.
+    ///
+    /// Returns **both** times, where `ScheduleResizePlan.adjusted(by:)` returns one — because a
+    /// move writes both, and a caller left to add the length back on itself is a second place the
+    /// length could be got wrong. Non-mutating is also what lets `#expect` call it: Swift Testing's
+    /// macro cannot reach a `mutating` member.
+    func adjusted(by steps: Int) -> (startsAt: TimeOfDay, endsAt: TimeOfDay?) {
+        let start = settled(CGFloat(restingStart.id + steps * ScheduleResizePlan.step))
+        return (start, end(after: start))
+    }
+
+    /// Onto the grid, then inside this plan's own two walls — the shared routine, for the reason it
+    /// gives for being shared.
+    private func settled(_ minutes: CGFloat) -> TimeOfDay {
+        ScheduleResizePlan.settled(minutes, between: floor, and: ceiling)
+    }
+}
