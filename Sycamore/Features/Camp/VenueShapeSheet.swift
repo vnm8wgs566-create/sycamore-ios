@@ -52,9 +52,14 @@ struct VenueShapeSheet: View {
     /// "court", "field", "lane" — what this sport calls a group.
     let courtNoun: String
     let onSave: (VenueShape) -> Void
-    /// `nil` for the last venue in the camp, which cannot go. Hides the button rather than
-    /// disabling it: a control that can never be used is not a control.
-    let onRemove: (() -> Void)?
+    /// Takes the venue back off the list.
+    ///
+    /// Not optional any more. It was `(() -> Void)?` so that the *last* venue in a camp could be
+    /// handed nothing and have the button hidden — one venue being the fewest a camp could have —
+    /// and `8b` is drawn with no venues at all, so removing the only one lands on a state the
+    /// design draws rather than on an action that would have to refuse. With the one caller
+    /// always supplying it, the optional was a branch nothing could take.
+    let onRemove: () -> Void
     let onClose: () -> Void
 
     @State private var draft: VenueShape
@@ -97,7 +102,7 @@ struct VenueShapeSheet: View {
         shape: CampShape,
         courtNoun: String,
         onSave: @escaping (VenueShape) -> Void,
-        onRemove: (() -> Void)?,
+        onRemove: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
         self.shape = shape
@@ -149,7 +154,7 @@ struct VenueShapeSheet: View {
             isPresented: $isConfirmingRemoval,
             titleVisibility: .visible
         ) {
-            Button("Remove venue", role: .destructive) { onRemove?() }
+            Button("Remove venue", role: .destructive, action: onRemove)
             Button("Keep it", role: .cancel) {}
         } message: {
             Text("Nothing has been created yet, so nothing is lost but what is on this screen.")
@@ -409,20 +414,17 @@ struct VenueShapeSheet: View {
         onSave(saved)
     }
 
-    @ViewBuilder
     private var removeButton: some View {
-        if onRemove != nil {
-            PrimaryButton(
-                "Remove this venue",
-                tone: .danger,
-                height: nil,
-                radius: Radius.row,
-                font: .buttonCompact
-            ) {
-                isConfirmingRemoval = true
-            }
-            .padding(.top, 9)
+        PrimaryButton(
+            "Remove this venue",
+            tone: .danger,
+            height: nil,
+            radius: Radius.row,
+            font: .buttonCompact
+        ) {
+            isConfirmingRemoval = true
         }
+        .padding(.top, 9)
     }
 }
 
@@ -432,6 +434,8 @@ struct VenueShapeSheet: View {
     VenueShapeSheetPreviewHarness(venueCount: 2)
 }
 
+/// The last venue in the camp, which now offers Remove like every other one — the shape it leaves
+/// behind is `8b`'s "No venues yet" rather than a state nothing could draw.
 #Preview("Venue editor — the last venue") {
     VenueShapeSheetPreviewHarness(venueCount: 1)
 }
@@ -449,7 +453,7 @@ private struct VenueShapeSheetPreviewHarness: View {
                 shape: shape,
                 courtNoun: "court",
                 onSave: { _ in },
-                onRemove: venueCount > 1 ? {} : nil,
+                onRemove: {},
                 onClose: {}
             )
             .frame(height: 630)
