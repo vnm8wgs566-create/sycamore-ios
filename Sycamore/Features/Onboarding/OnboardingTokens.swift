@@ -74,6 +74,19 @@ enum OnboardingMetrics {
     /// How far a 28pt control has to grow to reach the 44pt minimum touch target: `(44 - 28) / 2`.
     /// Spent as padding that is added and then taken away again, so nothing moves on screen.
     static let stepperHitInset: CGFloat = 8
+
+    /// How much of the frame `8b`'s venue editor takes.
+    ///
+    /// Screen 11's own sheet is `612/700` and it draws four blocks; this one draws five — the same
+    /// name, icon and limits blocks, plus a call to action and a way to take the venue back off
+    /// the list — and its limits card carries a keyboard-summoning field on two of its three rows.
+    /// 0.90 is what clears the last of those with the keyboard up.
+    ///
+    /// Here rather than on `ActiveSheet.detentFraction`, which is a property of a slot this sheet
+    /// does not occupy: `MainTabView` presents `ActiveSheet` (`RootView.swift:95`) and is not
+    /// mounted while `store.camp == nil`. `BlockEditorSheet.swift:31-33` gives the same reasoning
+    /// for its own.
+    static let venueEditorDetent: Double = 0.90
 }
 
 enum OnboardingShadows {

@@ -23,7 +23,8 @@ struct IntakeStepper: View {
     var step: Int = 1
     /// What the number counts, spoken as the control's name — "courts at Venue 1".
     let label: String
-    /// 28pt beside a venue, 34 in the per-court card, where the value reaches two digits.
+    /// 28pt beside a venue, 34 in the "Every venue" card and the venue editor, where the value
+    /// reaches two digits.
     var valueWidth: CGFloat = 28
 
     /// The design's 28pt button. Scaled, so at the larger sizes the glyph is not pressed against
