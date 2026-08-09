@@ -87,8 +87,14 @@ struct ScheduleBlock: Identifiable, Hashable, Sendable, Codable {
     var endsAt: TimeOfDay?
     /// "Skills rotation", "Water & regroup", "Lunch".
     var title: String
-    /// The grey second line — "Courts 1–3 · 22 players", "Shade lawn", "15 min". One field
-    /// rather than parsed parts because the design composes it differently on every row.
+    /// The grey second line — "Shade lawn", "15 min", "Round two". One field rather than parsed
+    /// parts because the design composes it differently on every row.
+    ///
+    /// It used to be where the courts lived too: the design writes "Courts 1–3 · 22 players" on
+    /// one of its cards, and this comment used to cite that as the reason the field could only
+    /// ever be free text. `courtIDs` is that half of the sentence now, in a column that can be
+    /// read back and acted on — so what is left here is prose, and a block that says "Courts 1–3"
+    /// in it is describing itself rather than recording anything.
     var detail: String?
     var status: ScheduleBlockStatus = .planned
     /// "1 note · shade tent is up". Notes hang off a block; the count is what the card shows.
@@ -151,6 +157,28 @@ struct ScheduleBlock: Identifiable, Hashable, Sendable, Codable {
         case 1: names[0]
         case 2: "\(names[0]) & \(names[1])"
         default: "\(names[0]) +\(names.count - 1)"
+        }
+    }
+
+    /// Where this block runs, in words: "Court 1", "Court 1 & Court 2", "Court 1, Court 2 and
+    /// Court 4". Nil on a block that names no courts, which every screen draws as an absence
+    /// rather than as an empty line.
+    ///
+    /// Beside `coachLine(in:)` on purpose, and takes its courts the same way round: resolved by
+    /// the caller, never stored, so renaming a court in Setup cannot leave yesterday's spelling on
+    /// the timetable. `BlockCourtPicker.courts(on:in:)` is what resolves them.
+    ///
+    /// The one difference is the tail. `coachLine` stops at two and counts the rest ("Nass +2")
+    /// because a name is long and a card is narrow; a court label is "Court 4", so they all fit —
+    /// and a reader wants all of them. Knowing that three courts are running without knowing
+    /// *which* three is no use to somebody carrying a ball cart.
+    func courtLine(in courts: [Group]) -> String? {
+        let labels = courts.map(\.label)
+        guard let last = labels.last else { return nil }
+        return switch labels.count {
+        case 1: last
+        case 2: "\(labels[0]) & \(last)"
+        default: "\(labels.dropLast().joined(separator: ", ")) and \(last)"
         }
     }
 }

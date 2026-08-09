@@ -51,6 +51,22 @@ protocol SectionEightData: Sendable {
         fromDay: Weekday, toDay: Weekday, venueID: Venue.ID, campID: Camp.ID
     ) async throws -> [ScheduleBlock]
 
+    /// The block editor's "put every kid on these courts" and "divide them evenly".
+    ///
+    /// Returns the camp rather than the day's blocks, and is the one method on this protocol that
+    /// does. It writes no block: the courts were saved a moment ago by `addScheduleBlock` or
+    /// `updateScheduleBlock`, and what moves here is where the kids stand — which is the camp
+    /// graph, and which the file's first convention says comes back whole.
+    ///
+    /// One call for the whole deal rather than one per court, and that is the point of it being
+    /// here at all. Both implementations run it as a single mutation, so a spread either seats
+    /// every kid or seats none: a per-court loop that failed halfway would leave kids pulled off
+    /// the courts they were on and never put down anywhere.
+    func spreadKids(
+        _ spread: BlockKidSpread, overCourts courtIDs: [Group.ID],
+        atVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp
+
     /// Pins a line to a block. Returns the day, because the count on every other card is drawn
     /// from the same read and a note added to one block renumbers nothing else — but the caller
     /// should not have to know that.
@@ -169,6 +185,64 @@ enum DayShape: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+// MARK: - What to do with the kids on a block's courts
+
+/// The two things an assigned block can do to the venue's roster when it is saved, and doing
+/// nothing, which is the default.
+///
+/// Here beside `DayShape` rather than in the editor that offers it, for the reason that type gives
+/// a few lines up: `spreadKids` has to *run* one, and a definition that sat in SwiftUI would mean
+/// the repository could not. It is not a property of a block either — no column holds it, and
+/// re-opening a saved block offers `.leaveThem` again. It is an instruction, carried once.
+///
+/// Armed in the sheet and applied at the commit rather than fired on the tap. The courts are not
+/// committed until the button at the foot of the editor is pressed, so a spread that ran on the
+/// tap would deal the camp onto whichever courts happened to be ticked at that moment, and then
+/// sit there being wrong while somebody changed their mind. Applied at the commit, it always uses
+/// the courts that were saved.
+enum BlockKidSpread: Hashable, Sendable, CaseIterable {
+    /// The only one that writes nothing. Where the kids stand is the camp's business until
+    /// somebody says otherwise, and most edits to a block are about its title.
+    case leaveThem
+    /// Every kid at the venue, dealt across the block's courts. "Warm-up, one court, everybody."
+    case allKids
+    /// Only the kids already on those courts, levelled across them. A block running on courts 1–3
+    /// while another owns 4–6 wants this one — levelling three courts must not empty the other
+    /// three into them.
+    case evenly
+
+    var displayName: String {
+        switch self {
+        case .leaveThem: "Leave them where they are"
+        case .allKids: "Put every kid on these courts"
+        case .evenly: "Divide the kids on them evenly"
+        }
+    }
+
+    /// The one line under each option in the editor's picker.
+    var detail: String {
+        switch self {
+        case .leaveThem: "Nothing moves."
+        case .allKids: "Everybody at the venue, dealt top-down by rank."
+        case .evenly: "Nobody is pulled in from a court this block does not use."
+        }
+    }
+
+    /// Runs the spread against a camp — the two `Camp` primitives, chosen between.
+    ///
+    /// A `Camp` mutation and nothing else, which is what lets both repositories share it: the
+    /// in-memory one hands it to `mutate`, the Postgres one to `mutateLadder`, and neither has to
+    /// know what the difference between the two cases is. The arithmetic stays in `Camp` because
+    /// it is a fact about a camp.
+    func apply(to camp: inout Camp, venueID: Venue.ID, courtIDs: [Group.ID]) {
+        switch self {
+        case .leaveThem: break
+        case .allKids: camp.redistribute(in: venueID, across: courtIDs)
+        case .evenly: camp.evenOut(courtIDs, in: venueID)
+        }
+    }
+}
+
 // MARK: - In-memory implementation
 
 /// Keeps the offline build working while the Postgres one is written, and is what every
@@ -248,13 +322,30 @@ extension InMemoryRepository: SectionEightData {
     /// The Postgres read orders notes by `created_at` ascending; the filter below keeps them in
     /// `sectionEightInbox` order, which is insertion order and therefore the same order — with
     /// the array settling the ties that a timestamp on its own leaves open.
+    ///
+    /// A block's `courtIDs` are filtered against the camp's live courts for a reason of the same
+    /// family. `schedule_block_courts.group_id` cascades on delete, so a court removed in Setup
+    /// takes its rows with it and Postgres simply stops returning that id. Nothing does that here
+    /// — `Camp.syncGroups(for:)` trims the `Group` rows and never sees this array — so without the
+    /// filter the offline build would go on claiming a block runs on a court the camp no longer
+    /// has. That is exactly the divergence this file already caught twice, and it would be
+    /// invisible in the only build that has it.
     func scheduleBlocks(
         forVenue venueID: Venue.ID, day: Weekday, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
-        let staff = (try? await camp(id: campID))?.staff ?? []
+        let camp = try? await camp(id: campID)
         let authorNames = Dictionary(
-            staff.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
+            (camp?.staff ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
         )
+        // Every court in the camp, not just this venue's: the foreign key is to `groups`, and a
+        // block naming a court at another venue is wrong in a way that dropping the id would hide.
+        //
+        // Optional, and not `?? []`. A camp this repository does not hold answers "I don't know
+        // which courts exist", where an empty set answers "none of them" — and that second answer
+        // would strip the courts off every block on the way out. `authorNames` can degrade to no
+        // names because a missing name is drawn as an absence; a missing court is drawn as a block
+        // that runs nowhere.
+        let liveCourts = camp.map { Set($0.groups.map(\.id)) }
         // Grouped once rather than filtered per block, which is what the Postgres sibling does
         // and the only reason to write it out here too: two implementations of one question that
         // differ in shape are how they start differing in answer.
@@ -267,6 +358,7 @@ extension InMemoryRepository: SectionEightData {
             .sorted { $0.startsAt.id < $1.startsAt.id }
             .map { block in
                 var block = block
+                if let liveCourts { block.courtIDs = block.courtIDs.filter(liveCourts.contains) }
                 block.notes = (notesByBlock[block.id] ?? [])
                     .map { item in
                         BlockNote(
@@ -365,8 +457,9 @@ extension InMemoryRepository: SectionEightData {
         // Replaces the day rather than appending to it. "Start from a shape" is only offered on
         // an empty day, but a double tap must not produce two overlapping timetables.
         //
-        // A shape names no coaches — `DayShape.blocks` is `(hour, minute, title, detail)` — so
-        // the blocks below arrive with `coachIDs` empty, exactly as they do from Postgres.
+        // A shape names no coaches and no courts — `DayShape.blocks` is
+        // `(hour, minute, title, detail)` — so the blocks below arrive `.regular`, with `coachIDs`
+        // and `courtIDs` empty, exactly as they do from Postgres.
         removeBlocks { $0.venueID == venueID && $0.day == day }
         for spec in shape.blocks {
             sectionEightBlocks.append(
@@ -382,15 +475,22 @@ extension InMemoryRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: venueID, day: day, campID: campID)
     }
 
-    /// Copies a day. The coaches follow the blocks; the notes do not.
+    /// Copies a day. The coaches and the courts follow the blocks; the notes do not.
     ///
     /// The source is read from `sectionEightBlocks` directly rather than through
     /// `scheduleBlocks(forVenue:day:campID:)`, so a copy is made from a block whose `notes` have
     /// not been derived onto it — which is the same answer Postgres gives for a different reason
     /// (there, a copy is minted a fresh id and no `inbox_items` row points at it). `copy.status`
     /// argues the case below: "net still down, play on 1–3" is true of the morning it was written
-    /// and is nobody's instruction for tomorrow. Who is rostered on a block is not that kind of
-    /// fact, so `coachIDs` rides along on the copy.
+    /// and is nobody's instruction for tomorrow. Who is rostered on a block and which courts it
+    /// runs on are not that kind of fact, so `coachIDs`, `kind` and `courtIDs` ride along on the
+    /// copy.
+    ///
+    /// They ride along *for free*, because `copy` is the whole struct. Its Postgres sibling copies
+    /// a row and has to insert each child list against the new ids by hand — see
+    /// `SupabaseRepository.copySchedule`, which names this asymmetry as the reason it does. The
+    /// two agree today; a fourth child relation would have to be added in both places or they
+    /// would stop agreeing silently, in the direction only the real database can show you.
     func copySchedule(
         fromDay: Weekday, toDay: Weekday, venueID: Venue.ID, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
@@ -405,6 +505,22 @@ extension InMemoryRepository: SectionEightData {
             sectionEightBlocks.append(copy)
         }
         return try await scheduleBlocks(forVenue: venueID, day: toDay, campID: campID)
+    }
+
+    /// The deal, as one mutation of the camp — the same shape `partitionCamp` and `evenOut` take
+    /// a few files away, because it is the same kind of write.
+    ///
+    /// `mutate` reindexes afterwards, which is what closes the court-rank gaps `Camp.deal`
+    /// deliberately does not: the deal numbers the courts it fills from 1, and a court it emptied
+    /// keeps whatever ranks were left behind until something renumbers them.
+    func spreadKids(
+        _ spread: BlockKidSpread, overCourts courtIDs: [Group.ID],
+        atVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard camp.venue(venueID) != nil else { throw SycamoreError.unknownVenue }
+            spread.apply(to: &camp, venueID: venueID, courtIDs: courtIDs)
+        }
     }
 
     /// Writes the note as an inbox row, in the same words the Postgres one uses: the block's

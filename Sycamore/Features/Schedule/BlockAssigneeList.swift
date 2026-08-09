@@ -29,6 +29,18 @@ struct BlockAssigneeList: View {
     let day: Weekday
     let timeLabel: String
     let venueName: String?
+    /// "Court 1 & Court 2" — the courts the *block* runs on, or nil on a block that does not say.
+    ///
+    /// Beside "Where" rather than instead of it: a venue and the courts inside it are two
+    /// different facts, and a block on two of Sycamore's six courts is at Sycamore.
+    ///
+    /// Worth stating that this is a different question from the court on each person's row below.
+    /// That one is `StaffMember.assignment` — where the camp has posted them, standing all day —
+    /// and this one is where the block runs. They are usually the same and the interesting case is
+    /// when they are not: a coach on this block whose row reads "Court 5" over a block running on
+    /// courts 1–3 is somebody who has been put on the wrong thing, and drawing the block's courts
+    /// on their row instead would be the one arrangement that could not show it.
+    var courtLine: String?
     /// Who is running the block, resolved. See `coaches(on:in:)`.
     let people: [StaffMember]
     /// The signed-in person, so their row can say "· you". Nil for somebody with no staff record
@@ -57,6 +69,10 @@ struct BlockAssigneeList: View {
 
                 if let venueName {
                     factRow("Where", value: venueName)
+                }
+
+                if let courtLine {
+                    factRow("Courts", value: courtLine)
                 }
 
                 if people.isEmpty {

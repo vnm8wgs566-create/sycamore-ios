@@ -139,6 +139,18 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
     /// `block()` puts the nil back.
     var detail: String
     var coachIDs: Set<StaffMember.ID>
+    /// What kind of thing this block is, and therefore whether the sheet asks about courts at all.
+    var kind: ScheduleBlockKind
+    /// The courts it runs on. A `Set` for the same reason `coachIDs` is one — picking a court is a
+    /// membership question, and a double tap must not add it twice — and `block()` orders it.
+    ///
+    /// Held across a switch back to `.regular` rather than cleared on the spot: somebody who taps
+    /// the wrong kind and taps back has not asked to lose four ticks. `block()` is where the
+    /// courts are dropped, because that is the value that gets written.
+    var courtIDs: Set<Group.ID>
+    /// What to do with the kids when this is saved. Never read off the block — see
+    /// `BlockKidSpread`.
+    var spread: BlockKidSpread = .leaveThem
 
     /// Carried through untouched so that saving an edit does not quietly reset the two things this
     /// sheet does not ask about. `status` is written by "Mark done" and by the seed; `notes` are
@@ -165,6 +177,8 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
         self.title = ""
         self.detail = ""
         self.coachIDs = []
+        self.kind = .regular
+        self.courtIDs = []
         self.status = .planned
         self.notes = []
     }
@@ -179,6 +193,8 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
         self.title = block.title
         self.detail = block.detail ?? ""
         self.coachIDs = Set(block.coachIDs)
+        self.kind = block.kind
+        self.courtIDs = Set(block.courtIDs)
         self.status = block.status
         self.notes = block.notes
     }
@@ -197,10 +213,45 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
     var trimmedDetail: String { detail.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     /// Every CHECK the insert will apply, asked of the values the insert will carry.
+    ///
+    /// `day` is deliberately not among them, even though the editor can now show a day the camp
+    /// has stopped running. See `dayOptions(in:)` — that is a warning, not a refusal, and there is
+    /// no column to mirror.
     var isValid: Bool {
         BlockRules.isValidTitle(trimmedTitle)
             && BlockRules.isValidDetail(trimmedDetail)
             && BlockRules.endsAfterStart(startsAt: startsAt, endsAt: endsAt)
+    }
+
+    /// The days this block may be moved to: the ones the camp actually runs, plus — when it is not
+    /// one of them — the day the block is already on.
+    ///
+    /// The camp's days, because Schedule now draws a chip per *camp* day rather than one per day
+    /// of the week and opens on `CampDays.openingDay(from:)`. An editor offering all seven could
+    /// therefore write a block onto a Saturday that the screen it came from cannot display: the
+    /// row would be saved, and then be invisible.
+    ///
+    /// Plus the block's own day, because a camp's days are editable after the fact. Drop Saturday
+    /// from a camp that had blocks on it and those blocks do not go anywhere — they simply stop
+    /// being drawn, and this sheet is the only screen left that can reach them. Showing the day
+    /// they are on is what makes them movable; leaving it out would present a row of five chips
+    /// with none of them selected, which reads as a bug rather than as a problem to fix.
+    ///
+    /// It is a warning and not a refusal (`isValid` says nothing about the day). Blocking the
+    /// commit would strand the block completely: somebody fixing a typo in its title would be made
+    /// to move it first, and "Delete block" would be the only way out of the sheet that worked.
+    ///
+    /// The stray day removes itself. Tap Monday and the Saturday chip is gone on the next pass,
+    /// because `draft.day` no longer names it.
+    func dayOptions(in camp: Camp?) -> [Weekday] {
+        guard let days = camp?.days else { return [day] }
+        return Weekday.allCases.filter { days.contains($0) || $0 == day }
+    }
+
+    /// True while the block sits on a day its camp has stopped running.
+    func isOnAClosedDay(in camp: Camp?) -> Bool {
+        guard let days = camp?.days else { return false }
+        return !days.contains(day)
     }
 
     /// The block to write. Trimmed, nil-ed where the column is nullable, and ordered.
@@ -210,6 +261,18 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
     /// that is the contract's shape. Sorted rather than left in hash order so two saves of the
     /// same selection produce the same row and `ScheduleBlock: Equatable` does not see a change
     /// where there is none.
+    ///
+    /// `courtIDs` is sorted the same way and for the same reason, and deliberately *not* put into
+    /// the venue's rank order here. That order is a fact about the venue, not about the block, and
+    /// pinning it into the stored row would mean a court reordered in Setup left every block
+    /// listing them the old way round. Every screen that draws them resolves through
+    /// `BlockCourtPicker.courts(on:in:)`, which asks the camp — the same shape
+    /// `BlockAssigneeList.coaches(on:in:)` already uses for people.
+    ///
+    /// Empty on a `.regular` block whatever is ticked. The kind is the question "does this block
+    /// say where it runs", and a regular one answers no — so the ticks stay in the draft, where
+    /// somebody who taps the wrong kind and taps back does not lose them, and are dropped here at
+    /// the write.
     func block() -> ScheduleBlock {
         ScheduleBlock(
             id: id,
@@ -221,7 +284,9 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
             detail: trimmedDetail.isEmpty ? nil : trimmedDetail,
             status: status,
             notes: notes,
-            coachIDs: coachIDs.sorted { $0.uuidString < $1.uuidString }
+            coachIDs: coachIDs.sorted { $0.uuidString < $1.uuidString },
+            kind: kind,
+            courtIDs: kind == .assigned ? courtIDs.sorted { $0.uuidString < $1.uuidString } : []
         )
     }
 }

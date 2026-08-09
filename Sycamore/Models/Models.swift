@@ -1256,10 +1256,73 @@ extension Camp {
     }
 
     /// Deals a venue's players across its courts in rank order.
+    ///
+    /// Every court the venue has. `partition()` and `evenOut()` both call this and both mean the
+    /// whole venue, so the no-argument spelling stays rather than becoming
+    /// `across: groups(in: venueID).map(\.id)` at two call sites — and it goes straight to `deal`
+    /// rather than through the subset below, which would resolve those ids back into the very list
+    /// they were flattened from.
     mutating func redistribute(in venueID: Venue.ID) {
-        let courts = groups(in: venueID)
+        deal(players(in: venueID), across: groups(in: venueID))
+    }
+
+    /// The same deal, over an explicit subset of the venue's courts.
+    ///
+    /// This is what a schedule block asks for. "Warm-up needs one court and all the kids" is not
+    /// something the whole-venue deal can say — it would put an eighth of the camp on each of
+    /// eight courts, which is the opposite instruction. Every kid at the venue lands on one of
+    /// `courtIDs`, including the ones standing on a court this block does not use.
+    ///
+    /// The subset does not set the order. The deal follows the venue's own `rankOrder`, so the top
+    /// of the ladder goes to the lowest-ranked court named whatever order the caller listed them
+    /// in — a set of ids from a picker has no meaningful order, and a court's position in the
+    /// venue is a fact about the venue.
+    mutating func redistribute(in venueID: Venue.ID, across courtIDs: [Group.ID]) {
+        deal(players(in: venueID), across: courts(courtIDs, in: venueID))
+    }
+
+    /// "Even out", narrowed to a handful of courts: levels the kids *already standing on*
+    /// `courtIDs` across those same courts.
+    ///
+    /// The other half of the pair above, and the difference between them is who gets moved.
+    /// `redistribute(in:across:)` pulls the venue in; this one touches nobody who was not already
+    /// there. A block running on courts 1–3 while another owns 4–6 wants this one: levelling three
+    /// courts should not empty the other three into them.
+    mutating func evenOut(_ courtIDs: [Group.ID], in venueID: Venue.ID) {
+        let courts = courts(courtIDs, in: venueID)
+        let onThem = Set(courts.map(\.id))
+        deal(
+            players(in: venueID).filter { $0.groupID.map(onThem.contains) ?? false },
+            across: courts
+        )
+    }
+
+    /// The venue's own courts, narrowed to `ids` and left in the venue's rank order.
+    ///
+    /// Resolved through `groups(in:)` rather than trusted, and that is the whole safety of the two
+    /// methods above. A block carries its court ids as data, and data goes stale: a court deleted
+    /// by `syncGroups(for:)` leaves its id on every block that named it, and an id from another
+    /// venue would otherwise move kids out of the venue the deal is about — which is the one thing
+    /// `evenOut()` has always promised it will not do. It deduplicates for free, since a court
+    /// named twice matches one row, and it is what makes the *caller's* order irrelevant.
+    private func courts(_ ids: [Group.ID], in venueID: Venue.ID) -> [Group] {
+        let chosen = Set(ids)
+        return groups(in: venueID).filter { chosen.contains($0.id) }
+    }
+
+    /// Deals `ladder` across `courts`, top-down, so every court ends within one kid of every other
+    /// and the leftovers go to the courts that come first.
+    ///
+    /// Takes resolved courts rather than ids so the whole-venue path does not go out through
+    /// `map(\.id)` and back in through a `Set` to rebuild the list it started with — `partition()`
+    /// runs this once per venue.
+    ///
+    /// Deliberately no `reindex()`, matching the shape this was extracted from: `partition()` and
+    /// `evenOut()` both reindex once at the end rather than once per venue. A caller that reads
+    /// `players(inGroup:)` straight afterwards needs none — that read filters and sorts the
+    /// players themselves, and it is only the denormalised counts on `Group` that go stale.
+    private mutating func deal(_ ladder: [Player], across courts: [Group]) {
         guard !courts.isEmpty else { return }
-        let ladder = players(in: venueID)
         let base = ladder.count / courts.count
         let remainder = ladder.count % courts.count
 
