@@ -52,30 +52,31 @@ struct RootView: View {
                 // `FirstRunView` ends at `CampPickerView`, which owns its own `NavigationStack`
                 // and pushes `CreateCampView`, so neither is wrapped in a stack of ours.
                 //
-                // The seeds go *over* it, never in place of it. `CampPickerView` owns
-                // `.task { loadMemberships() }`, so swapping it out for the loading view
-                // unmounts the view whose task is doing the loading — the task is cancelled,
-                // `isWorking` never clears, and the app sits on the seed screen for ever.
-                // Overlaying keeps it mounted and the load runs to completion.
+                // ── THERE IS NO LOADING SCREEN HERE ANY MORE ──────────────────────────────────
                 //
-                // The overlay covers the whole of the first run rather than only the picker, and
-                // that turns out to be load-bearing twice over. `AppStore.finishSignIn` sets
-                // `auth` to `.signedIn` and *then* awaits the memberships, both inside the same
-                // `perform` — so for that moment the account looks like it belongs to no camp,
-                // which is the condition `FirstRunStep` reads as "new here". `isWorking` is true
-                // for the whole of it, so what is on screen is the seed fall and not a flash of
-                // the wrong question. It also covers the write behind the name question.
+                // A full-screen seed fall used to lie over this whole branch whenever
+                // `store.isWorking` was true. It was covering two different things and only one
+                // of them was a wait.
                 //
-                // The "Working…" capsule that used to float over every write is gone; this
-                // overlay is not, and neither is the flag behind it. Waiting for a whole camp
-                // to arrive is the one wait long enough to be worth drawing.
+                // The wait is real: `AppStore.finishSignIn` sets `auth` to `.signedIn` and *then*
+                // awaits the memberships, both inside the same `perform`, so for that moment the
+                // account looks like it belongs to no camp — which is the condition
+                // `FirstRunStep` reads as "new here". The seeds hid the wrong question rather
+                // than stopping it being asked. That is fixed where it is caused now:
+                // `hasLoadedMemberships` says whether the answer is known, and `FirstRunStep`
+                // declines to answer until it is.
+                //
+                // The rest was not a wait at all. `isWorking` is raised by *every* intent
+                // (`AppStore.perform`), so the seeds also fell for the write behind "That's me"
+                // and for switching camps — writes that land faster than the animation starting
+                // over them. That is the same reasoning that removed the "Working…" capsule
+                // (`Components.swift:1092-1104`): a wait too short to read is a wait not worth
+                // drawing, and one drawn at random reads as a fault.
+                //
+                // So the seeds are the entrance and nothing else now, which is where they came
+                // from — see `SeedEntrance` and `SycamoreApp.swift:83`. Failure still speaks,
+                // below; only the in-flight half went quiet.
                 FirstRunView()
-                    .overlay {
-                        if store.isWorking {
-                            SeedLoadingView(label: "Loading your camp")
-                        }
-                    }
-                    .animation(.easeInOut(duration: 0.2), value: store.isWorking)
                     // The first run asks for a name, and asking for a name means a write that can
                     // fail. Screen 3 prints `errorMessage` inline in its own content
                     // (`CampPickerView.swift:140`), which covered this branch for as long as it
@@ -104,12 +105,26 @@ struct MainTabView: View {
 
     @Bindable var store: AppStore
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         ZStack(alignment: .bottom) {
             tab
-            FloatingTabBar(selection: $store.selectedTab)
-                .padding(.bottom, Spacing.tabBarInset)
+            // Gone while a tab is in the middle of something a stray tap must not end — see
+            // `AppStore.isFocused`. Dragging a kid down a Groups card ends the drag over the one
+            // control that leaves the screen entirely, and the pill floats *over* the content
+            // rather than reserving space beneath it, so there is nothing under a finger to warn
+            // that it is there.
+            //
+            // Removed rather than disabled: a dimmed pill still says "you are on Groups, here is
+            // Inbox", which is the wrong thing to be reading while aiming a row.
+            if !store.isFocused {
+                FloatingTabBar(selection: $store.selectedTab)
+                    .padding(.bottom, Spacing.tabBarInset)
+                    .transition(.opacity)
+            }
         }
+        .animation(Motion.fold(reduceMotion: reduceMotion), value: store.isFocused)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.grouped)
         // Failure is surfaced once, here, rather than in each of the four tabs. Everything

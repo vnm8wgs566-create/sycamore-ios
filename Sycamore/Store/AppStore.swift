@@ -299,6 +299,19 @@ final class AppStore {
     var memberships: [Membership] = []
     var selectedMembership: Membership?
 
+    /// True once `repository.memberships(forAccount:)` has answered at least once for the account
+    /// that is signed in now.
+    ///
+    /// The distinction it draws is between *no camps* and *not asked yet*, and those are the same
+    /// empty array. `finishSignIn` sets `auth` to `.signedIn` and then awaits the memberships, so
+    /// for that moment an account with three camps looks exactly like an account with none — which
+    /// is the condition `FirstRunStep` reads as "new here". The first run used to be covered by a
+    /// full-screen seed fall while that resolved; it is not any more, so the question has to be
+    /// one the store can decline to answer rather than one it answers wrongly and corrects.
+    ///
+    /// `private(set)`: every write is a fetch returning, and the four of them are in this file.
+    private(set) var hasLoadedMemberships = false
+
     /// The graph itself, held outside observation, plus the counter that stands in for
     /// it. Every write to `camp` bumps the counter, so a cheap `Int` identifies the
     /// state of a hundred players — which is what lets `groupsSections` memoise.
@@ -341,6 +354,18 @@ final class AppStore {
     /// Profile, Camp settings, Manage camps and (for now) Rank. One at a time — the design
     /// never stacks two of them.
     var pushedScreen: PushedScreen?
+
+    /// A tab is in the middle of something a stray tap must not end. While this is true
+    /// `MainTabView` does not draw the tab bar.
+    ///
+    /// Groups sets it while a kid is in the air. Dragging a row towards the bottom of the screen
+    /// ends the drag over the one control that leaves the screen entirely, and the cost of hitting
+    /// it is a half-finished move — so the pill goes away for as long as the finger is down.
+    ///
+    /// A store flag rather than something Groups owns, because the bar is drawn by `MainTabView`
+    /// and Groups is its sibling: there is no view in between for a preference to travel through.
+    /// It is not `@ObservationIgnored` — the whole point is that the root redraws.
+    var isFocused = false
 
     // MARK: Section 8's three reads
     //
@@ -862,9 +887,20 @@ extension AppStore {
         stopResendCountdown()
         auth = .signedIn(account)
         codeInput = ""
-        memberships = try await repository.memberships(forAccount: account.id)
+        try await fetchMemberships(for: account.id)
         selectedMembership = nil
         camp = nil
+    }
+
+    /// The one place memberships arrive.
+    ///
+    /// Four intents need them — signing in, the picker's own load, joining and creating — and each
+    /// used to make the call itself. That was fine while the answer was only an array; it stopped
+    /// being fine when `hasLoadedMemberships` had to be raised alongside it, because a flag set at
+    /// three of four sites is a flag that is wrong exactly once and silently. Here it cannot be.
+    private func fetchMemberships(for accountID: Account.ID) async throws {
+        memberships = try await repository.memberships(forAccount: accountID)
+        hasLoadedMemberships = true
     }
 
     // MARK: Countdown
@@ -894,7 +930,7 @@ extension AppStore {
     func loadMemberships() async {
         guard let account else { return }
         await perform {
-            self.memberships = try await self.repository.memberships(forAccount: account.id)
+            try await self.fetchMemberships(for: account.id)
         }
     }
 
@@ -915,7 +951,7 @@ extension AppStore {
             let membership = try await self.repository.joinCamp(
                 inviteCode: code, accountID: account.id
             )
-            self.memberships = try await self.repository.memberships(forAccount: account.id)
+            try await self.fetchMemberships(for: account.id)
             self.joinCodeInput = ""
             await self.select(membership)
         }
@@ -926,7 +962,7 @@ extension AppStore {
         let draft = campDraft
         await perform {
             let membership = try await self.repository.createCamp(draft, accountID: account.id)
-            self.memberships = try await self.repository.memberships(forAccount: account.id)
+            try await self.fetchMemberships(for: account.id)
             self.campDraft = CampDraft()
             await self.select(membership)
         }
@@ -945,9 +981,13 @@ extension AppStore {
         try? await repository.signOut()
         auth = .signedOut
         memberships = []
+        // The array and the flag go back together, or the next person to sign in on this device
+        // inherits the last one's answer to "have we asked yet?" and gets the wrong first run.
+        hasLoadedMemberships = false
         selectedMembership = nil
         camp = nil
         activeSheet = nil
+        isFocused = false
         // Signing out from Profile leaves Profile itself on screen otherwise — a pushed screen
         // full of a camp that is no longer loaded, sitting over the sign-in form.
         pushedScreen = nil
