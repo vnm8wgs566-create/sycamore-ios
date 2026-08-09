@@ -167,6 +167,52 @@ protocol SycamoreRepository: SectionEightData {
     func importPlayers(
         _ players: [Player], toVenue venueID: Venue.ID, campID: Camp.ID
     ) async throws -> Camp
+
+    /// `8d` again, a week later — the same file re-read against the camp it already built.
+    ///
+    /// Plural for the reason `importPlayers` is plural. Reconciling a roster is forty-odd kids at
+    /// once, and a singular `updatePlayer` would force every caller into a loop each iteration of
+    /// which returns a whole `Camp` that is thrown away except the last — precisely the cost the
+    /// batch above exists to avoid. A one-kid call site is `updatePlayers([kid], campID:)`, which
+    /// is how `addPlayer` already relates to `importPlayers`.
+    ///
+    /// Whole `Player` values rather than a patch of the fields that moved. The caller is already
+    /// holding the patched copy — it read the kid, applied the file's line to them, and is sending
+    /// the result back — and a half-shape going down against a whole shape coming up would be two
+    /// vocabularies for one write.
+    ///
+    /// **Deliberately does not touch venue, court or rank.** Those three are camp state. A file
+    /// says who is enrolled and how old they are; it has no opinion about where a child stands in
+    /// a ladder the camp spent a morning working out, and a re-import that silently reseated
+    /// everybody would undo a week of somebody's judgement. `movePlayer` and `reorderCamp` are
+    /// where a change of mind about any of the three goes.
+    ///
+    /// An unknown camp and an unknown kid both throw, and nothing in the batch is written when
+    /// they do — the same promise `importPlayers` keeps by checking the venue before its insert.
+    func updatePlayers(_ players: [Player], campID: Camp.ID) async throws -> Camp
+
+    /// `8d`'s "not on the new list" — ticked by an admin, then gone.
+    ///
+    /// Plural for the same reason, and because the tick list *is* the shape of the affordance: an
+    /// admin confirms a set of kids who did not come back, and the set leaves together.
+    ///
+    /// A hard delete, and deliberately not the deactivation `removeStaff` performs. That method's
+    /// two stated reasons (`SupabaseRepository.swift:652-655`) are that `attendance.noted_by` and
+    /// `ratings.last_by` reference `coaches` with no `on delete` clause, so the delete would fail
+    /// outright, and that succeeding would erase *who noted* a fact. Neither reason transfers.
+    /// Every foreign key into `players` names an action, so the delete succeeds; and a player is
+    /// the **subject** of their attendance and their ratings, not the author of them, so there is
+    /// no third party whose record is being rubbed out. The soft alternative was costed and is
+    /// worse — see `SupabaseRepository.removePlayers`.
+    ///
+    /// The ladder is left alone. Everyone else keeps the rating, the court and the order they
+    /// already had, and the 1…N numbering closes up behind whoever left. That is the asymmetry
+    /// with `importPlayers`: an insert *must* do arithmetic because it has to choose where in the
+    /// ladder a new kid goes, and a removal has no such choice to make.
+    ///
+    /// An unknown camp and an unknown kid both throw, and nothing in the batch goes when they do.
+    func removePlayers(_ playerIDs: [Player.ID], campID: Camp.ID) async throws -> Camp
+
     /// Screen 12's role chips.
     func updateStaffRole(_ staffID: StaffMember.ID, role: Role, campID: Camp.ID) async throws -> Camp
     /// Screen 12's court chips. `nil` means "No court".
@@ -540,6 +586,63 @@ actor InMemoryRepository: SycamoreRepository {
                 joined.courtRank = 0
                 camp.players.append(joined)
             }
+        }
+    }
+
+    func updatePlayers(_ players: [Player], campID: Camp.ID) async throws -> Camp {
+        try mutate(campID) { camp in
+            // Keyed once and used for both jobs below. A kid named twice in one batch takes the
+            // last line, which is what a PATCH per row would also do.
+            let patches = Dictionary(players.map { ($0.id, $0) }) { _, last in last }
+
+            // Every id checked before the first field is written, and checked against a set rather
+            // than searched for in the roster one at a time — a forty-row file is one pass over a
+            // hundred children, not forty. `mutate` edits a copy and only stores it once `edit`
+            // has returned, so throwing here leaves the camp exactly as it was: the all-or-nothing
+            // `importPlayers` gets from PostgREST rejecting a whole array, arrived at from the
+            // other side.
+            let enrolled = Set(camp.players.map(\.id))
+            guard patches.keys.allSatisfy(enrolled.contains) else {
+                throw SycamoreError.unknownPlayer
+            }
+
+            for index in camp.players.indices {
+                guard let patch = patches[camp.players[index].id] else { continue }
+                // The six fields a roster file can speak to, and only those. `venueID`, `groupID`,
+                // `overallRank` and `courtRank` are left standing — see the protocol.
+                camp.players[index].firstName = patch.firstName
+                camp.players[index].lastInitial = patch.lastInitial
+                camp.players[index].lastName = patch.lastName
+                camp.players[index].age = patch.age
+                camp.players[index].gender = patch.gender
+                camp.players[index].isReturning = patch.isReturning
+            }
+        }
+    }
+
+    /// Removing from `camp.players` is the whole implementation, and that is worth saying out
+    /// loud. `mutate` ends in `reindex()`, which renumbers `overallRank` 1…N
+    /// (`Models.swift:890-894`), closes the court-rank gaps left behind (`:904-912`) and
+    /// recomputes every court's `playerCount` and `presentCount` (`:914-919`). So nothing here
+    /// touches the ladder: everyone keeps the place they were already in and the numbering closes
+    /// up behind whoever left. `SupabaseRepository.removePlayers` reaches the same answer by
+    /// deriving the ladder at read time — no `writeLadder` call there either.
+    func removePlayers(_ playerIDs: [Player.ID], campID: Camp.ID) async throws -> Camp {
+        try mutate(campID) { camp in
+            // One pass over the roster rather than one per tick, and the same all-or-nothing as
+            // `updatePlayers`: `mutate` stores nothing when `edit` throws.
+            let leaving = Set(playerIDs)
+            guard leaving.isSubset(of: Set(camp.players.map(\.id))) else {
+                throw SycamoreError.unknownPlayer
+            }
+
+            camp.players.removeAll { leaving.contains($0.id) }
+            // What hung off them goes too, which is what Postgres does of its own accord — every
+            // foreign key into `players` cascades. Left behind, an attendance row would be a fact
+            // about nobody and a history entry would belong to a sheet that can no longer be
+            // opened.
+            camp.attendance.removeAll { leaving.contains($0.playerID) }
+            camp.history.removeAll { leaving.contains($0.playerID) }
         }
     }
 
