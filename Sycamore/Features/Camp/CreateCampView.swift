@@ -133,7 +133,7 @@ struct CreateCampView: View {
 
                 IntakeTitle("Shape the camp")
 
-                Text("How many places you run, and how many \(courtNoun)s inside each. Both change any day from Camp settings.")
+                Text("Which days you run, how many places, and how many \(courtNoun)s inside each. All of it changes any day from Camp settings.")
                     .typeStyle(.intakeLead, color: Theme.inkTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 9)
@@ -154,6 +154,11 @@ struct CreateCampView: View {
             VStack(alignment: .leading, spacing: OnboardingMetrics.blockGap) {
                 block("Name") { nameField }
                 block("Sport") { sportChips }
+                // Above the venues rather than below them: the days are a fact about the camp,
+                // like its name and its sport, and the two cards under this one are both about
+                // the places inside it. Splitting "Venues" from "Every venue" to slot the week
+                // between them would have put a camp-wide answer inside the venue block.
+                block("Days") { daysCard }
                 block("Venues") { venuesCard }
                 block("Every venue") { everyVenueCard }
 
@@ -300,6 +305,34 @@ struct CreateCampView: View {
         .sensoryFeedback(.selection, trigger: store.campDraft.sport)
     }
 
+    // MARK: Days
+
+    /// The operating week, and a line under it reading back what has been drawn.
+    ///
+    /// Bound straight to the draft, exactly as the sport chips above it are, and deliberately not
+    /// held on `shape` beside the venues. `CampDraft` has a `days` of its own — one value per
+    /// camp, where a venue's courts are one per venue — so a copy on the shape would be a second
+    /// place for the same answer, reset to Monday-to-Friday every time this screen is entered and
+    /// written back over the real one by `saveTheShape`. Somebody who dropped out of the flow and
+    /// came back would find their Saturday quietly gone.
+    ///
+    /// The re-render that costs is the one `sportChips` already pays: a write to `campDraft`
+    /// invalidates every reader of it. That is the trade the name field two properties up refuses
+    /// — and it refuses it because a name is twenty characters, where a week is four taps.
+    private var daysCard: some View {
+        @Bindable var store = store
+
+        return Card(radius: OnboardingMetrics.cardRadius) {
+            CardRow(horizontalPadding: 13, verticalPadding: Spacing.medium) {
+                CampDaysPicker(days: $store.campDraft.days)
+            }
+            // The right-hand side is where the picker's one refusal is explained: it will not let
+            // the last lit chip go out, and a tap that does nothing is a mystery unless something
+            // on screen says why. `countLine` is that sentence, shared with `8t`'s editor.
+            summaryRow(store.campDraft.days.summaryLine, trailing: store.campDraft.days.countLine)
+        }
+    }
+
     // MARK: Venues
 
     private var venuesCard: some View {
@@ -308,7 +341,8 @@ struct CreateCampView: View {
                 venueRow(venue)
             }
             addVenueRow
-            summaryRow
+            // `2 venues · 10 courts` and, until there is a roster, the honest right-hand side.
+            summaryRow(shape.summaryLine(noun: courtNoun), trailing: "no kids yet")
         }
     }
 
@@ -436,13 +470,17 @@ struct CreateCampView: View {
         .opacity(shape.venues.count >= CampShape.venueRange.upperBound ? 0.45 : 1)
     }
 
-    /// `2 venues · 10 courts` and, until there is a roster, the honest right-hand side of it.
-    private var summaryRow: some View {
+    /// The line a card closes with: what has been drawn, and one quieter thing on the right.
+    ///
+    /// Two cards end this way — `2 venues · 10 courts` and `Mon–Fri · 5 days a week` — and they
+    /// were the same eleven lines twice, down to the two type styles and the warm plate. Taking
+    /// the two strings as arguments is the whole of the difference between them.
+    private func summaryRow(_ lead: String, trailing: String) -> some View {
         CardRow(spacing: 9, horizontalPadding: 13, verticalPadding: Spacing.row) {
-            Text(shape.summaryLine(noun: courtNoun))
+            Text(lead)
                 .typeStyle(.intakeOverline, color: Theme.inkMuted)
             Spacer(minLength: 0)
-            Text("no kids yet")
+            Text(trailing)
                 .typeStyle(.intakeRowMeta, color: Theme.inkFaint)
         }
         // A row inside the card, one step warmer than the white above it.

@@ -42,6 +42,19 @@ extension AppStore {
         }
     }
 
+    /// `8t`'s "Days the camp runs".
+    ///
+    /// One write, where the rename above needs two. The picker's projection is `campName`,
+    /// `campIcon`, `campTint` and a summary of venues and kids (`Membership`, `Models.swift`) —
+    /// there is nowhere in it for the days to be stale, so re-reading the whole membership list
+    /// after this would be seven requests to learn nothing.
+    func setCampDays(_ days: CampDays) async {
+        guard let campID = camp?.id else { return }
+        await perform {
+            self.camp = try await self.repository.setCampDays(days, campID: campID)
+        }
+    }
+
     /// `8t`'s "Roll a new code". No membership refresh: an invite code is not part of the
     /// picker's projection, and the only place it is drawn is the row above the one that rolled
     /// it — which reads it straight off `camp`.

@@ -26,6 +26,35 @@ struct CampRecord: Decodable, Sendable {
     var inviteCode: String
     var icon: String
     var tint: String
+    /// `camps.camp_days` — seven bits, bit 0 Monday. Read through `days` below.
+    ///
+    /// Optional where every other column here is not, and the difference is the column's age:
+    /// this one was added by `20260809030000_camp_days_and_block_assignment.sql` and the rest
+    /// have existed since the schema did. A non-optional would make a client that is one
+    /// migration behind fail to decode the camp at all — which is not a camp with the wrong days,
+    /// it is a camp nobody can open.
+    var campDays: Int?
+}
+
+extension CampRecord {
+
+    /// The operating week, or Monday-to-Friday for a row that cannot say.
+    ///
+    /// The same answer in both directions of "cannot say": a project where the column is missing
+    /// and a row written before it existed both read 31, which is the column's own DEFAULT and
+    /// what every camp created before this week actually meant.
+    ///
+    /// `isValid` is checked as well as decoded. `camp_days` is `check (camp_days > 0 …)`, so a 0
+    /// cannot be written through this app or through the API — but a value that arrives anyway
+    /// would draw a camp with no days on it and a Schedule with no chips, which is a worse way to
+    /// find out than a week that reads as the default.
+    var days: CampDays {
+        // One test rather than two: a missing column reads as 0, and 0 is already the value
+        // `isValid` rejects, so "the row did not say" and "the row said something impossible"
+        // take the same branch and reach the same week.
+        let decoded = CampDays(rawValue: campDays ?? 0)
+        return decoded.isValid ? decoded : .weekdays
+    }
 }
 
 struct ProfileRecord: Decodable, Sendable {
