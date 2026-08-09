@@ -7,7 +7,8 @@
 //  The amber family moved to `Theme` (it is section 8's third severity step and three screens
 //  outside this branch reach for it), so what is left here is genuinely local: two green-greys
 //  that appear once each on `8u`, one grey the palette only names as a rule, the corner radius
-//  section 8 draws its cards at, and the two gaps its scroll views run on.
+//  section 8 draws its cards at, the two gaps its scroll views run on, and the dozen measurements
+//  `8b` draws its "No venues yet" state at.
 //
 //  They live beside the screens rather than in `Theme`/`Radius`/`Spacing` on purpose. This branch
 //  owns five of section 8's twenty-one screens; dropping tokens into the files every feature
@@ -87,6 +88,91 @@ enum OnboardingMetrics {
     /// mounted while `store.camp == nil`. `BlockEditorSheet.swift:31-33` gives the same reasoning
     /// for its own.
     static let venueEditorDetent: Double = 0.90
+
+    // MARK: `8b` — no venues yet
+    //
+    // Transcribed from `design/Sycamore 3a System.dc.html`, the frame captioned "Shape the camp"
+    // and labelled `Shape the camp — empty`. The mark, its glyph, the button and the side padding
+    // are the same four numbers `8f` and `8g` are already built from — `ScheduleMetrics.emptyMark`
+    // / `emptyMarkGlyph` / `emptyCtaHeight` / `emptyPaddingHorizontal` and `GroupsMetrics.lockDisc`
+    // / `lockGlyph` / `lockedActionHeight` / `lockedPaddingHorizontal` are all 52, 24, 50 and 20 —
+    // so the composition is a house style even though each frame sets its own vertical padding and
+    // its own cap on the copy.
+
+    /// `gap:11px` between the three things the empty state is made of. Tighter than the 13
+    /// `blockGap` the answered screen runs on, because these three are one argument rather than
+    /// three separate answers.
+    static let emptyStateGap: CGFloat = 11
+
+    /// `padding:28px 20px 24px` inside the dashed "No venues yet" plate. The horizontal 20 is
+    /// also what the footnote under the card is inset by (`padding:6px 20px 0`) — one measurement
+    /// drawn twice in one state of one screen, rather than two that happen to agree.
+    static let emptyPaddingTop: CGFloat = 28
+    static let emptyPaddingHorizontal: CGFloat = 20
+    static let emptyPaddingBottom: CGFloat = 24
+
+    /// `52` / `24` — the plate the map pin sits on, and the pin.
+    static let emptyMark: CGFloat = 52
+    static let emptyMarkGlyph: CGFloat = 24
+    /// `border-radius:17px` on that plate.
+    ///
+    /// The same number as `Radius.card` and deliberately not that token, because the two are about
+    /// to disagree: this file's own header says the shared radius "still reads 17 from the design
+    /// this app shipped with" and is to be taken to 16 when section 8 lands, since *every card* in
+    /// the section is 16. This is a 52pt tile rather than a card, and the design draws it at 17
+    /// either way — so borrowing the card's corner would move this plate on a day nobody meant to.
+    static let emptyMarkRadius: CGFloat = 17
+
+    /// `margin-top:15px` — the drop from the plate to "No venues yet".
+    static let emptyTitleGap: CGFloat = 15
+    /// `margin-top:8px` — from that heading to the sentence under it.
+    static let emptyBodyGap: CGFloat = 8
+    /// `max-width:272px` — how wide that sentence runs before it wraps. The design caps it well
+    /// short of the plate so it stays a paragraph rather than a banner.
+    static let emptyCopyWidth: CGFloat = 272
+    /// `margin-top:20px` — the drop to "Create your first venue".
+    static let emptyCtaGap: CGFloat = 20
+    /// `height:50px` — two points shorter than the "Save the shape" this state stands in for.
+    static let emptyCtaHeight: CGFloat = 50
+
+    /// `padding:13px 14px 0` around "WHAT A VENUE HOLDS", which is the one section heading on
+    /// this screen the design puts *inside* the card rather than above it.
+    static let holdsHeaderTop: CGFloat = 13
+    static let holdsRowInset: CGFloat = 14
+    /// `font-size:16px` — the grey glyph at the head of each of that card's three rows.
+    static let holdsRowGlyph: CGFloat = 16
+    /// The column that glyph is centred in.
+    ///
+    /// The design's Phosphor glyphs are all exactly one em wide, so its three rows of copy share a
+    /// left edge for free; SF Symbols are not, and `person.3` is half again as wide as
+    /// `square.split.2x2`. Pinning the column is what keeps the three lines aligned — the same fix
+    /// `SettingsRow.swift:81-83` makes, and 24 is what the widest of these three needs at 16.
+    static let holdsRowSlot: CGFloat = 24
+}
+
+extension TypeStyle {
+
+    /// `400 25/1.15 Newsreader`, `-.02em` — "No venues yet".
+    ///
+    /// Section 8 sets its empty-state headings at two sizes and the app only had the smaller.
+    /// `8f`, `8g` and `8h` draw 24 ("Friday is empty.", "Groups open at eight kids.", "All
+    /// clear."), which is `TypeStyle.profileName` and what `ScheduleType.emptyHeading` and
+    /// `GroupsType.lockedHeading` already alias. `8b` and `8c` draw 25 ("No venues yet", "Drop the
+    /// sign-up list"). One point is a real difference in this table — `intakeTitleSm` (32) sits
+    /// beside `title1` (31) for the same reason — so this is a row rather than a rounding.
+    ///
+    /// It belongs in `IntakeTypeStyles.swift` beside its thirty siblings, and being written here
+    /// buys nothing but a smaller merge: a `static` on `TypeStyle` is visible app-wide whichever
+    /// file declares it, so unlike `OnboardingMetrics` this is not *contained* by living in a
+    /// tokens file. It is here because that file is not this branch's to touch and this one is,
+    /// which is a boundary between two files in one folder rather than a design. Move it across
+    /// when section 8 lands; nothing but the file it is typed into has to change.
+    ///
+    /// Deliberately not `OnboardingType.emptyHeading`, the shape `ScheduleType`, `GroupsType` and
+    /// `InboxType` use — that *would* be contained, and it would put a second naming scheme in a
+    /// folder where thirty type styles are already reached as `.intakeSomething`.
+    static let intakeEmptyHeading = TypeStyle(size: 25, weight: .regular, trackingEm: -0.02,
+                                              lineHeightMultiple: 1.15, isSerif: true)
 }
 
 enum OnboardingShadows {

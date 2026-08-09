@@ -4,10 +4,36 @@
 //
 //  `8b` — Shape the camp. The places you run and the courts inside each, before anything else.
 //
-//  The design asks two questions this screen has to ask first: what the camp is called, and
-//  what it plays. Neither can be deferred — a camp is created by name, and the sport decides
-//  whether the rest of the screen says courts, fields or lanes. So they sit above the shape,
-//  in the order you would say them out loud, and the shape below is the design's, unchanged.
+//  ── Two states, and which one a new camp opens in ─────────────────────────────────────────────
+//
+//  `design/Sycamore 3a System.dc.html` draws this screen twice. `8b` — and `9a`, which is the same
+//  frame byte for byte — is labelled `Shape the camp — empty`: a dashed plate reading "No venues
+//  yet", a card saying what a venue holds, and a footnote reading *"One venue is enough to start.
+//  Add the second the day you need it."* `9b` is labelled `Shape the camp — venues` and captioned
+//  "As built: name, sport, venue rows, camp-wide rates".
+//
+//  So the answered screen below is endorsed rather than replaced, and what was missing is the
+//  state in front of it. A new camp now opens on `CampShape.empty` and `VenueEmptyState` is what
+//  it draws. It used to open on `CampShape.initial()` — two venues called Venue 1 and Venue 2 —
+//  which the frame's own footnote is the argument against: the second is a guess the app makes on
+//  somebody's behalf and then carries into Groups, Rank, the venue chip row and the schedule until
+//  they find it and delete it.
+//
+//  Deliberately *not* a wholesale swap. The empty frame draws no name field, no sport chips, no
+//  days and no "Save the shape", and none of those absences is an instruction — it is one state of
+//  a screen, and a state with no venue in it has nothing to apply a camp-wide rate to and nothing
+//  to save. What the empty state replaces is exactly that: the venues card, the "Every venue"
+//  card, the button and its footnote. Name, sport and days stay where they are, because the camp
+//  is still created by name and the sport still decides whether the rest of the screen says
+//  courts, fields or lanes.
+//
+//  The header's own sentence changes with the state, because the drawing's does: the empty frame
+//  reads "Northside Tennis Camp has nowhere to put anyone yet. Start with the place you run."
+//
+//  ── Everything else ──────────────────────────────────────────────────────────────────────────
+//
+//  Name and sport sit above the shape, in the order you would say them out loud. Neither can be
+//  deferred, and `9b` draws both.
 //
 //  Nothing here is a commitment. The header says so, and it is true: venues, courts, both rates
 //  and everything in the venue editor are editable from Camp settings any day of the week. They
@@ -37,7 +63,10 @@ struct CreateCampView: View {
     /// and head-count limits, plus the two camp-wide rates those limits are seeded from.
     /// `CampDraft` can hold none of that (one uniform `groupsPerVenue`, nothing per venue at all),
     /// so it is held here and written into the camp the moment there is one. See `CampShape`.
-    @State private var shape = CampShape.initial()
+    ///
+    /// Starts empty, which is the state `8b` is drawn in — see the file header for why, and
+    /// `CampShape.empty` for what that costs.
+    @State private var shape: CampShape
     @State private var isBringingInTheWeek = false
 
     /// The name as it is being typed, which is deliberately not `store.campDraft.name`.
@@ -61,6 +90,15 @@ struct CreateCampView: View {
     /// Which row is showing its Remove, and which has a finger on it. One value shared by every
     /// row, so only one can be open (`SwipeToDelete.swift:56-64`).
     @State private var swipe = SwipeRevealState<VenueShape.ID>()
+
+    /// - Parameter shape: what the screen opens on. Both callers — `CampPickerView:49` and
+    ///   `FirstRunView:87` — take the default, because a camp being created has no venues yet.
+    ///   The parameter is here so the answered state is still previewable: it is a whole frame of
+    ///   the design (`9b`, "Shape the camp — venues") and no production path reaches it on entry
+    ///   any more.
+    init(shape: CampShape = .empty) {
+        _shape = State(initialValue: shape)
+    }
 
     var body: some View {
         // The whole frame on the phone, where bringing in the week is the whole job and a card
@@ -105,6 +143,38 @@ struct CreateCampView: View {
     /// What a group is called in this sport — "court", "field", "lane".
     private var courtNoun: String { store.campDraft.sport.groupNoun.lowercased() }
 
+    /// The grey line under the title, which the design writes differently in each state.
+    ///
+    /// `leadLine` rather than `lead`, which `summaryRow(_:trailing:)` already takes as a parameter
+    /// name — one word meaning two things in one type is a trap for whoever reads it next.
+    ///
+    /// Empty: *"Northside Tennis Camp has nowhere to put anyone yet. Start with the place you
+    /// run."* — the frame's own sentence, and the only line on this screen that names the camp.
+    /// Answered: what the screen is for, unchanged.
+    ///
+    /// The name comes from the **settled** draft rather than from the field two properties down,
+    /// which is the one place that difference is a feature: this is prose about a camp, not a live
+    /// echo of a text box, and the 250ms settle is exactly the right lag for it.
+    ///
+    /// It also costs nothing, which is the half worth being exact about. `campDraft` is one stored
+    /// property, so reading `trimmedName` registers the same observation key `sportChips` and
+    /// `courtNoun` already register — this widens nothing. And `body` re-runs on every keystroke
+    /// whatever this says, because `name` is `@State` on this view; what the settle buys is that
+    /// the *value* here does not change between characters, so the header's wrapping paragraph is
+    /// value-equal and never re-measured. Reading `name` would have put a text re-measure behind
+    /// every character.
+    ///
+    /// The fallback is for the real case the design does not draw: the name field is on this
+    /// screen, so the camp is very often nameless while the empty state is on screen.
+    private var leadLine: String {
+        guard shape.isCreatable else {
+            let named = store.campDraft.trimmedName
+            let subject = named.isEmpty ? "This camp" : named
+            return "\(subject) has nowhere to put anyone yet. Start with the place you run."
+        }
+        return "Which days you run, how many places, and how many \(courtNoun)s inside each. All of it changes any day from Camp settings."
+    }
+
     private var flow: some View {
         OnboardingFlowView(shape: shape)
             // Sheets and covers are presented outside this view's hierarchy, so the store is
@@ -133,7 +203,7 @@ struct CreateCampView: View {
 
                 IntakeTitle("Shape the camp")
 
-                Text("Which days you run, how many places, and how many \(courtNoun)s inside each. All of it changes any day from Camp settings.")
+                Text(leadLine)
                     .typeStyle(.intakeLead, color: Theme.inkTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 9)
@@ -159,34 +229,25 @@ struct CreateCampView: View {
                 // the places inside it. Splitting "Venues" from "Every venue" to slot the week
                 // between them would have put a camp-wide answer inside the venue block.
                 block("Days") { daysCard }
-                block("Venues") { venuesCard }
-                block("Every venue") { everyVenueCard }
 
-                PrimaryButton(
-                    "Save the shape",
-                    height: OnboardingMetrics.ctaHeight,
-                    radius: OnboardingMetrics.cardRadius,
-                    font: .intakeButton
-                ) {
-                    saveTheShape()
+                // The same predicate the header's sentence turns on, and the same one
+                // `saveTheShape` refuses without — see `CampShape.isCreatable`.
+                if shape.isCreatable {
+                    block("Venues") { venuesCard }
+                    block("Every venue") { everyVenueCard }
+                    saveButton
+                    // No failure line here any more. This screen calls nothing that can fail —
+                    // creating the camp moved to the end of the flow, and the flow carries the
+                    // banner for it.
+                    Text("Next: add kids, then hand out the code.")
+                        .typeStyle(.intakeFootnote, color: Theme.inkGhost)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    // No "VENUES" overline above it: the empty frame draws none, and the plate is
+                    // the whole block rather than a card under a heading.
+                    VenueEmptyState(courtNoun: courtNoun, onCreate: createFirstVenue)
                 }
-                // Gated on what is in the field, not on what has reached the store. The settle
-                // below is 250ms and this button has to light the moment a name is long enough
-                // to be one — a gate that lagged the last character would be a worse trade than
-                // the re-render it was bought with.
-                .opacity(isNameValid ? 1 : 0.45)
-                .disabled(!isNameValid)
-                // `margin:2px 2px 0` — the button is inset a touch from the cards above it.
-                .padding(.horizontal, Spacing.hairGap)
-                .padding(.top, Spacing.hairGap)
-
-                // No failure line here any more. This screen calls nothing that can fail —
-                // creating the camp moved to the end of the flow, and the flow carries the
-                // banner for it.
-                Text("Next: add kids, then hand out the code.")
-                    .typeStyle(.intakeFootnote, color: Theme.inkGhost)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.large)
@@ -217,12 +278,14 @@ struct CreateCampView: View {
                 }
                 editingVenue = nil
             },
-            onRemove: canRemoveVenues
-                ? {
-                    shape.removeVenue(venue.id)
-                    editingVenue = nil
-                }
-                : nil,
+            // Never withheld now. It used to be nil for the last venue in the camp, because one
+            // venue was the fewest a camp could have and the sheet hides a Remove it is not given
+            // — but the empty state is a screen the design draws, so removing the only venue is a
+            // way back to it rather than an action that would have to refuse.
+            onRemove: {
+                shape.removeVenue(venue.id)
+                editingVenue = nil
+            },
             onClose: { editingVenue = nil }
         )
     }
@@ -238,7 +301,66 @@ struct CreateCampView: View {
         }
     }
 
+    /// Drawn only beside a shape that has a venue in it, which is why it carries no "add a venue
+    /// first" of its own.
+    ///
+    /// The empty state hides this rather than dimming it, where the name gate below dims. The two
+    /// are different refusals: a name is a keystroke away and a dimmed button with a filled field
+    /// beside it is a puzzle worth posing, where a camp with no venue is answered by a plate that
+    /// fills half the screen saying "No venues yet" over a green button that says what to do. A
+    /// control that can never be used is not a control, and the design draws no button at all in
+    /// the empty frame.
+    ///
+    /// (That sentence used to cite `VenueShapeSheet`'s Remove, which was hidden for the last venue
+    /// on the same argument. It is not hidden any more — the last venue can go now, because there
+    /// is a state for it to leave behind — so the citation went with it.)
+    private var saveButton: some View {
+        PrimaryButton(
+            "Save the shape",
+            height: OnboardingMetrics.ctaHeight,
+            radius: OnboardingMetrics.cardRadius,
+            font: .intakeButton
+        ) {
+            saveTheShape()
+        }
+        // Gated on what is in the field, not on what has reached the store. The settle in `screen`
+        // is 250ms and this button has to light the moment a name is long enough to be one — a
+        // gate that lagged the last character would be a worse trade than the re-render it was
+        // bought with.
+        .opacity(isNameValid ? 1 : 0.45)
+        .disabled(!isNameValid)
+        // `margin:2px 2px 0` — the button is inset a touch from the cards above it.
+        .padding(.horizontal, Spacing.hairGap)
+        .padding(.top, Spacing.hairGap)
+    }
+
+    /// What "Create your first venue" does — exactly what "Add a venue" does, which is why it is
+    /// `addVenue()` and not a second seeding rule: the row it makes is already named, tinted and
+    /// bounded from the camp-wide rates.
+    ///
+    /// Deliberately does *not* open the editor behind it. "Create your first venue" says create,
+    /// the row it lands on is one tap from `VenueShapeSheet` and says "Tap to name it" in so many
+    /// words, and a sheet arriving unasked over a screen somebody has not finished reading is a
+    /// worse greeting than one more tap.
+    private func createFirstVenue() {
+        shape.addVenue()
+    }
+
     private func saveTheShape() {
+        // The floor `CampDraft.venueRange` states, kept at the last moment this branch can keep it.
+        // Nothing on screen can reach here without a venue — the button is not drawn in the empty
+        // state — so this is a backstop rather than a gate, and it is a backstop in a *view*, which
+        // is one layer too high.
+        //
+        // The rule belongs on `CampDraft.isValid` (`Models.swift:834`), beside the `venueRange` two
+        // lines under it and next to the name rule that was hoisted there for exactly this reason
+        // ("One rule, stated once, next to the SQL it mirrors", `Models.swift:846`). Both
+        // repositories already `guard draft.isValid` at the write boundary, so `OnboardingFlowView`
+        // — which re-applies this shape one statement before `createCamp` and checks nothing —
+        // would inherit the refusal for free. It is not done here because it needs a `Repository`
+        // failure case beside `.campNameRequired` (`Repository.swift:41`), and `Store/` is not this
+        // branch's to change. See the PR body.
+        guard shape.isCreatable else { return }
         isNameFocused = false
         // Nothing may be on screen when the cover goes up. An editor still presented would meet
         // `fullScreenCover` mid-flight and the runtime would refuse the pair — "attempt to present
@@ -346,12 +468,6 @@ struct CreateCampView: View {
         }
     }
 
-    /// One venue is the fewest a camp can have, so the last row keeps both its swipe and its
-    /// editor's Remove switched off rather than offering an action that would refuse.
-    private var canRemoveVenues: Bool {
-        shape.venues.count > CampShape.venueRange.lowerBound
-    }
-
     /// Tile, name, subtitle, caret and a stepper — the design's row, plus the two ways in it
     /// never had.
     ///
@@ -365,12 +481,16 @@ struct CreateCampView: View {
     /// swipe. Both are gone: the six emoji live in the editor, where the design's grid actually
     /// fits, and `SwipeToDelete` puts "Remove" in the VoiceOver actions rotor exactly where the
     /// context menu had it. Keeping both would have offered "Remove Venue 1" in the rotor twice.
+    ///
+    /// Every row swipes, including the last one. That used to be conditional on there being a
+    /// venue to spare; the empty state is now somewhere to land, so it is not — see
+    /// `CampShape.removeVenue`.
     private func venueRow(_ venue: VenueShape) -> some View {
         SwipeToDelete(
             id: venue.id,
             state: $swipe,
             actionLabel: "Remove \(venue.name)",
-            onDelete: canRemoveVenues ? { shape.removeVenue(venue.id) } : nil
+            onDelete: { shape.removeVenue(venue.id) }
         ) {
             CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: Spacing.medium) {
                 Button {
@@ -466,8 +586,10 @@ struct CreateCampView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(shape.venues.count >= CampShape.venueRange.upperBound)
-        .opacity(shape.venues.count >= CampShape.venueRange.upperBound ? 0.45 : 1)
+        // Through `canAddVenue` rather than counting here, which this row did twice: the ceiling
+        // is `addVenue`'s own guard and the row should be dimmed by the same rule that refuses it.
+        .disabled(!shape.canAddVenue)
+        .opacity(shape.canAddVenue ? 1 : 0.45)
     }
 
     /// The line a card closes with: what has been drawn, and one quieter thing on the right.
@@ -551,9 +673,22 @@ struct CreateCampView: View {
 
 // MARK: - Previews
 
-#Preview("Shape the camp") {
+/// `9b` — "As built: name, sport, venue rows, camp-wide rates." No production path opens here any
+/// more, which is why the shape is handed in.
+#Preview("Shape the camp — venues") {
     let store = AppStore.previewCampPicker
     store.campDraft = CampDraft(name: "UCLA Tennis Camp", sport: .tennis, venueCount: 2, groupsPerVenue: 6)
+    return NavigationStack {
+        CreateCampView(shape: .initial())
+            .environment(store)
+    }
+    .showsMockStatusBar()
+}
+
+/// `8b` itself, one tap after "Create a camp": named, and with nowhere to put anyone.
+#Preview("Shape the camp — empty") {
+    let store = AppStore.previewCampPicker
+    store.campDraft = CampDraft(name: "Northside Tennis Camp", sport: .tennis)
     return NavigationStack {
         CreateCampView()
             .environment(store)
@@ -561,7 +696,9 @@ struct CreateCampView: View {
     .showsMockStatusBar()
 }
 
-#Preview("Shape the camp — empty") {
+/// And before a word has been typed, which is the case the design does not draw — the name field
+/// is on this screen, so the header has no camp to name for as long as the field is blank.
+#Preview("Shape the camp — empty and unnamed") {
     NavigationStack {
         CreateCampView()
             .environment(AppStore.previewCampPicker)

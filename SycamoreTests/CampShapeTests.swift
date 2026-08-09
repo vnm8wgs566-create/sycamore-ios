@@ -18,6 +18,12 @@
 //  The second is that a name somebody typed survives a removal, which used to renumber everything
 //  it could reach.
 //
+//  A third has joined them. `8b` is drawn as a "No venues yet" state, so a shape now starts with
+//  nothing in it and the floor of one venue is kept by `isCreatable` at the save gate rather than
+//  by `removeVenue` refusing. That moves a rule out of the one place a screen could demonstrate it
+//  — the last row used to simply not swipe — and into a property, so the suite is where the floor
+//  is now shown to hold at all.
+//
 //  The camp's operating days are pinned here for the first of those reasons and not the second.
 //  Their path is the short one — `8b` writes them straight onto `CampDraft`, which has a field for
 //  them, so they take neither `CampShape` nor the correction pass — but its end is the same:
@@ -362,12 +368,101 @@ struct CampShapeTests {
         #expect(shape.venues[1].maxKids == 48)
     }
 
-    /// The floor holds: one venue is the fewest a camp can have, so the last row refuses to go.
-    @Test("The last row cannot be removed")
-    func keepsTheLastRow() {
+    // MARK: - No venues yet
+
+    /// What "Create a camp" now opens on. `8b` is drawn as an empty state, so nought venues is the
+    /// screen's first state rather than one nothing could reach.
+    @Test("A new camp is shaped with no venues and the two default rates")
+    func aNewShapeIsEmpty() {
+        let shape = CampShape.empty
+
+        #expect(shape.venues.isEmpty)
+        #expect(shape.totalCourts == 0)
+        // The rates survive the emptiness, because the first venue is seeded from them.
+        #expect(shape.kidsPerCourt == CampShape.defaultKidsPerCourt)
+        #expect(shape.coachesPerCourt == CampShape.defaultCoachesPerCourt)
+    }
+
+    /// The floor moved rather than went. A *form* may hold no venues; a *camp* may not, and this is
+    /// the one property that says which — `CreateCampView` draws "Save the shape" only where it
+    /// holds, and `saveTheShape` refuses without it.
+    @Test("A shape with no venues cannot reach a camp; one with a venue can")
+    func theFloorIsKeptByIsCreatable() {
+        let empty = CampShape.empty
+        #expect(!empty.isCreatable)
+
+        var one = CampShape.empty
+        one.addVenue()
+        #expect(one.isCreatable)
+
+        // The ceiling is a separate rule and stays where it was, so a full camp is still creatable.
+        let full = CampShape.initial(venueCount: CampShape.venueRange.upperBound, courts: 6)
+        #expect(full.isCreatable)
+    }
+
+    /// The ceiling, which `addVenue` guards on and `8b`'s "Add a venue" both disables and dims by.
+    /// One property with three readers, so the row can never be live over a mutator that refuses.
+    @Test("The eighth venue is the last one; the row that adds it goes out with the rule")
+    func theCeilingIsOneRuleWithThreeReaders() {
+        var shape = CampShape.initial(venueCount: CampShape.venueRange.upperBound - 1, courts: 6)
+        #expect(shape.canAddVenue)
+
+        shape.addVenue()
+        #expect(shape.venues.count == CampShape.venueRange.upperBound)
+        #expect(!shape.canAddVenue)
+
+        // And the mutator refuses rather than growing past it.
+        shape.addVenue()
+        #expect(shape.venues.count == CampShape.venueRange.upperBound)
+    }
+
+    /// "Create your first venue" is `addVenue()` on an empty shape, and the row it makes has to be
+    /// the row `initial()` would have seeded — same name, same emoji, same courts — or the design's
+    /// footnote ("One venue is enough to start") would be buying a *different* venue from the one
+    /// the app used to hand out.
+    @Test("The first venue created by hand is the venue setup would have seeded")
+    func firstVenueMatchesTheSeed() {
+        var shape = CampShape.empty
+        shape.addVenue()
+
+        let seeded = CampShape.initial(venueCount: 1).venues[0]
+        let created = shape.venues[0]
+
+        #expect(created.name == "Venue 1")
+        #expect(created.icon == seeded.icon)
+        #expect(created.tint == seeded.tint)
+        #expect(created.courts == seeded.courts)
+        #expect(created.maxKids == seeded.maxKids)
+        #expect(created.minCoaches == seeded.minCoaches)
+    }
+
+    /// The way back to the drawn state. This used to refuse — one venue was the fewest a camp could
+    /// have — which was a rule about a camp being kept by a form, and left `8b`'s empty state
+    /// unreachable once a venue existed.
+    @Test("The last row can be removed, and lands back on the empty state")
+    func removingTheLastRowEmptiesTheShape() {
         var shape = CampShape.initial(venueCount: 1, courts: 6)
+
         shape.removeVenue(shape.venues[0].id)
-        #expect(shape.venues.count == 1)
+
+        #expect(shape.venues.isEmpty)
+        #expect(!shape.isCreatable)
+        // And the rates are still standing, so the venue created next is seeded from what was set
+        // before the removal rather than from the defaults.
+        #expect(shape.kidsPerCourt == CampShape.defaultKidsPerCourt)
+    }
+
+    /// A removal that names nobody leaves the shape alone. Reachable now that the guard on the
+    /// count has gone: what stood in front of this was a floor rather than a check on the id.
+    @Test("Removing an id that is not there changes nothing")
+    func removingAStrangerChangesNothing() {
+        var shape = CampShape.initial(venueCount: 2, courts: 6)
+        shape.venues[1].name = "Main Courts"
+        let before = shape
+
+        shape.removeVenue(VenueShape.ID())
+
+        #expect(shape == before)
     }
 
     // MARK: - Days
