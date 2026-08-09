@@ -43,11 +43,11 @@ struct CourtCard: Identifiable, Hashable, Sendable {
     var activity: String?
     var status: CourtStatus
 
-    /// "Court 1 – 8 players", or "Court 4 – Tom is on it" when it is closed.
-    var subtitle: String {
-        if case .closed(let reason) = status { return "\(courtLabel ?? groupName) – \(reason)" }
-        return "\(courtLabel ?? groupName) – \(playersHere) player\(playersHere == 1 ? "" : "s")"
-    }
+    // `subtitle` used to live here — "Court 1 – 8 players", or "Court 4 – Tom is on it" when
+    // closed. It went with the card that read it. `8i` draws the head-count as a measured pair
+    // (`6 of 8`, and a `1 spot` pill) rather than as prose, so the number is `CourtCapacity`'s
+    // now and the closure reason is the `Closed` badge's; a string that glued the two together
+    // could be neither. Its last reader was `CourtCard.overviewSubtitle`, removed with it.
 }
 
 /// The design draws two: an open court, and one taken out of play with a reason ("Net down",
