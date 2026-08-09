@@ -41,10 +41,16 @@ extension TypeStyle {
     static let intakeSubtitleSm = TypeStyle.sheetSubtitle
     /// `400 12.5/1.5` — the copy inside `8e`'s venue note.
     static let intakeNote = TypeStyle.footnote
+    /// `400 12.5/1.55` — the free-standing grey line between `8c`'s drop plate and its action
+    /// card. Half a twentieth of leading more than `intakeNote`, which sounds like nothing and is
+    /// the difference between a plated note and a line of page copy: this one has no card under it
+    /// to hold it together, so the design opens it up.
+    static let intakeFileNote = TypeStyle.footnote.lineHeight(1.55)
     /// `400 13.5/1.55` — a row of `8c`'s "what a file needs" checklist. The same shorthand as
     /// `intakeLead`; two names because they are two roles, one value because the design draws one.
     static let intakeChecklist = intakeLead
-    /// `400 12` — a venue's second line on `8b`, "You become its first admin" on `8u`.
+    /// `400 12` — a venue's second line on `8b`, an action row's second line on `8c`, "You become
+    /// its first admin" on `8u`.
     static let intakeRowMeta = TypeStyle.meta
     /// `400 12.5` — the grey or amber line under a name on `8c`, `8d` and `8u`.
     static let intakeRowDetail = TypeStyle.rowDetail
@@ -59,6 +65,12 @@ extension TypeStyle {
     /// `600 10.5`, `+.15em`, uppercase — a section header. `8c` and `8d` set the same style a
     /// hair tighter at `+.14em`, which is what `overlineSmall` itself carries.
     static let intakeOverline = TypeStyle.overlineSmall.tracking(em: 0.15)
+    /// `600 11`, `+.06em`, uppercase — the XLSX / CSV plates on `8c`'s drop plate.
+    ///
+    /// `venueLabel` at a quarter less tracking. Both are a format-ish word set small and wide, and
+    /// the design tightens this one because two of them sit side by side and want to read as a
+    /// pair, where a venue's label stands alone above a card.
+    static let intakeFormatChip = TypeStyle.venueLabel.tracking(em: 0.06)
     /// `600 10`, `+.14em`, uppercase — `8d`'s NEW / RETURNING / RANKED labels.
     static let intakeStatLabel = TypeStyle.statLabel.tracking(em: 0.14)
     /// `600 10`, `+.12em`, uppercase — the OPEN badge on `8u`.
@@ -69,7 +81,9 @@ extension TypeStyle {
 
 extension TypeStyle {
 
-    /// `600 17`, `-.03em` — `8d`'s counts and `8c`'s import heading.
+    /// `600 17`, `-.03em` — `8d`'s counts. It typed `8c`'s "Import the sign-up list" until that
+    /// heading became the serif "Drop the sign-up list" the frame draws, which is
+    /// `intakeEmptyHeading`.
     static let intakeStatValue = TypeStyle.venueHeading
     /// `600 15.5`, `-.025em` — the camp you are signed in to on `8u`.
     static let intakeCampName = TypeStyle.rowTitle.size(15.5)
@@ -105,8 +119,12 @@ extension TypeStyle {
     /// character by character off a flyer and typed with one thumb, and proportional digits make
     /// `SYC-1181` and `SYC-4821` different widths. Same size, weight and tracking as drawn.
     static let intakeJoinCode = TypeStyle(size: 16, weight: .semibold, trackingEm: 0.18, isMonospaced: true)
-    /// `600 13.5` — `8c`'s two file pills.
-    static let intakePill = TypeStyle.timelineTitle
+    /// `600 13` — "Pull one from email", the bare accent line under `8c`'s call to action.
+    ///
+    /// It replaces `intakePill` (`600 13.5`), which typed the two capsules this screen used to
+    /// draw side by side. The design gives the file one full-width button and demotes the second
+    /// route to a text line under it, so there is no second capsule left to type.
+    static let intakeInlineAction = TypeStyle.chip
     /// `600 12.5` — `8e`'s answer chips, `8u`'s Switch, `8d`'s "See all".
     static let intakeChip = TypeStyle.chipSoft
     /// `600 11.5` — `8d`'s "Fix" chip.

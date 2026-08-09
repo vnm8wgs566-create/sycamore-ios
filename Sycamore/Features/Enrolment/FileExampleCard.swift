@@ -28,14 +28,14 @@
 //  the first real export that fallback met is laid out `Last Name, First Name, Age, Gender`, and a
 //  header-less copy of it would have imported a whole camp with every name the wrong way round —
 //  cleanly, with nothing on `8d` to notice. A requirement is a poor thing to learn by having a
-//  file refused, which is the argument `BringInTheWeekView.swift:94-105` makes for greying a PDF
-//  out rather than accepting one and failing, so the card states it before a file is chosen. The
+//  file refused, which is the argument `RosterFileFormat` makes for greying a PDF out rather than
+//  accepting one and failing, so the card states it before a file is chosen. The
 //  words are the refusal's own (`IntakeRoster.swift:246`), so the card and the error are one
 //  sentence rather than two that nearly agree.
 //
-//  And then the file itself, through `ShareLink`, because the honest answer to "what should I
-//  send?" is a file rather than a paragraph — the office can open it, type over the three rows and
-//  send it back.
+//  The file itself used to end this card, through a `ShareLink`. It is now an action row on `8c`
+//  beside "Add one by hand", which is where the frame puts it and where it reads as a thing to do
+//  rather than as the last line of something to read. See `BringInTheWeekView.templateRow`.
 //
 //  The copy deliberately does not claim more than the parser does. There is no venue column: `8c`
 //  promises "Venue — optional, ask later" and the truth behind that promise is that nothing reads
@@ -54,7 +54,11 @@ struct FileExampleCard: View {
     @ScaledMetric(relativeTo: .footnote) private var bulletSize: CGFloat = 4
 
     var body: some View {
-        Card(radius: OnboardingMetrics.cardRadius) {
+        // 18 rather than `OnboardingMetrics.cardRadius` (16), which is what this drew until `8c`
+        // was transcribed from the frame. That token is 8d's and 8e's corner; `8c` draws *every*
+        // card at 18 — the dashed plate, the action card above this one, and therefore this one,
+        // which the frame does not draw but which sits in the same column as the two it does.
+        Card(radius: Radius.cardLarge) {
             headerRow
 
             column("First name", recognised: "first, given — or one “Name” column")
@@ -64,7 +68,6 @@ struct FileExampleCard: View {
             column("Returning", recognised: "returning", isExpected: false)
 
             tolerances
-            template
         }
     }
 
@@ -180,31 +183,6 @@ struct FileExampleCard: View {
 
             Spacer(minLength: 0)
         }
-    }
-
-    // MARK: The file itself
-
-    private var template: some View {
-        ShareLink(
-            item: RosterTemplate.file,
-            preview: SharePreview(RosterTemplate.fileName)
-        ) {
-            CardRow(spacing: 10, horizontalPadding: 13, verticalPadding: 11) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: glyphSize, weight: .regular))
-                    .foregroundStyle(Theme.accent)
-                    .accessibilityHidden(true)
-
-                Text("Send a blank one to the office")
-                    .typeStyle(.intakeChecklist, color: Theme.accent)
-
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: HitTarget.minimum)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Send a blank one to the office")
-        .accessibilityHint("Shares \(RosterTemplate.fileName)")
     }
 }
 

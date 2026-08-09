@@ -378,10 +378,11 @@ extension TypeStyle {
     // Overlines
     /// `600 11`, `+.08em`, uppercase — "HIGHER LEVEL", a venue's subtitle in the earlier design.
     ///
-    /// **No callers.** Kept rather than deleted because the data behind it exists — `VenueSheet`
-    /// collects the subtitle, prompting "Subtitle, e.g. Higher level" — and nothing has drawn it
-    /// since section 8 re-cut the venue row. It is the row to reach for when something does,
-    /// rather than a style to invent then. Delete it if the subtitle goes.
+    /// **No caller draws it in this role.** Kept rather than deleted because the data behind it
+    /// exists — `VenueSheet` collects the subtitle, prompting "Subtitle, e.g. Higher level" — and
+    /// nothing has drawn it since section 8 re-cut the venue row. It is the row to reach for when
+    /// something does, rather than a style to invent then. Delete it if the subtitle goes — but
+    /// note that `TypeStyle.intakeFormatChip` now derives from it, so the derivation moves too.
     static let venueLabel = TypeStyle(size: 11, weight: .semibold, trackingEm: 0.08, isUppercased: true)
     /// `600 11.5`, `+.06em`, uppercase — a staff row's role, "45 MORE IN SYCAMORE".
     static let overline = TypeStyle(size: 11.5, weight: .semibold, trackingEm: 0.06, isUppercased: true)

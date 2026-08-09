@@ -81,6 +81,27 @@ struct RosterTemplateTests {
         #expect(rows.map(\.age) == [13, nil, 12])
     }
 
+    /// `8c` captions the download "CSV, five columns" (`BringInTheWeekView.templateRow`). That
+    /// sentence is a literal beside the row that draws it, because screen copy belongs with the
+    /// screen — and because "five" cannot be spelled out of an `Int` without dragging a
+    /// locale-aware formatter into a five-word label.
+    ///
+    /// So this is the guard rail instead: add a column and the count moves, this fails, and
+    /// whoever did it is sent to the one line of copy that has to move with it. Deliberately not
+    /// an assertion *about* the sentence — reading English back into a number would be a second
+    /// thing to get wrong, and `#expect(summary == "CSV, five columns")` only ever fails to the
+    /// person already editing that line.
+    ///
+    /// The suffix is asserted in the same breath because it is the other half of the caption, and
+    /// because it is the half a reader meets last: `.csv` is what the office sees on the file after
+    /// the share sheet has closed, which is the worst place to discover a label was wrong.
+    @Test("The template really is the five-column CSV that 8c's caption promises")
+    func matchesTheCaption() {
+        let columnCount = RosterTemplate.csv.prefix { !$0.isNewline }.split(separator: ",").count
+        #expect(columnCount == 5)
+        #expect(RosterTemplate.fileName.hasSuffix(".csv"))
+    }
+
     /// The other half of the same claim: the header is matched by what it says, not where it sits.
     @Test("Shuffling the columns changes nothing, because the header is read rather than counted")
     func anyOrder() throws {
