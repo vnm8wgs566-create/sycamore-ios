@@ -609,6 +609,25 @@ extension SupabaseRepository: SectionEightData {
         return try await inboxItems(forCamp: campID)
     }
 
+    /// One insert, then the camp's rows back — and `created_at` left to Postgres, which is the
+    /// whole point of the method. See the protocol for the divergence it closes.
+    ///
+    /// Deliberately **not** wrapped in `adminWrite`, which every other write in this file is.
+    /// That wrapper renames a 403 to "Only an admin can do that.", and it is only honest where
+    /// the policy answering is an admin gate. `addInboxItem` above earns it because the row it
+    /// writes may be `pinned`, which is the admin-only column. An activity row never is, so the
+    /// only `with check` left to refuse it is the member one — a venue outside your camps, which
+    /// is a bug on this side of the wire rather than something a coach can do. Renaming that
+    /// would tell a coach marking a kid away that they lack a permission they in fact hold, and
+    /// send them looking for an admin over a defect in the app.
+    ///
+    /// So a refusal arrives as `SupabaseError.rejected` and reads "You don't have access to
+    /// that." — which for a venue that genuinely is not yours is the true sentence.
+    func logActivity(_ item: InboxItem, forCamp campID: Camp.ID) async throws -> [InboxItem] {
+        try await db.insert(Relation.inboxItems, [Self.inboxRow(item)])
+        return try await inboxItems(forCamp: campID)
+    }
+
     func setPinned(
         _ pinned: Bool, forItem itemID: InboxItem.ID, forCamp campID: Camp.ID
     ) async throws -> [InboxItem] {
@@ -674,6 +693,16 @@ extension SupabaseRepository: SectionEightData {
             "schedule_block_id": .uuid(item.scheduleBlockID),
             "pinned": .bool(item.pinned),
             "resolved": .bool(item.resolved),
+            // `created_at` is deliberately absent, and this is the one omission worth stating.
+            // The column defaults to `now()`, so a row is stamped by the server rather than by
+            // whichever phone composed it — and `item.createdAt` is discarded on the way past.
+            // `8r` cuts its headings on that value at noon and five (`InboxBucket.swift:31-37`),
+            // so a device an hour out would otherwise file its own morning under everybody
+            // else's afternoon, and two coaches reading one feed would see two different days.
+            // `logActivity` is built on this. The one caller anywhere that means its own
+            // timestamp is `InboxView`'s preview harness seeding a morning through
+            // `addInboxItem(_:campID:)`, and this absent line is where that value goes — which
+            // is why the offline build is allowed to keep it and this one is not.
         ]
     }
 

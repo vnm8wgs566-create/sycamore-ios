@@ -956,10 +956,15 @@ extension AppStore {
 
     func setAway(_ playerID: Player.ID, _ away: Bool) async {
         guard let campID = camp?.id else { return }
+        // Composed *before* the write, because the sentence is about the camp as it stands plus
+        // the change being asked for — and afterwards there is nothing left to compare against.
+        // See `awayActivity` and the extension it sits in.
+        let row = awayActivity(playerID, away: away)
         await perform {
             self.camp = try await self.repository.setAttendance(
                 playerID: playerID, day: self.today, present: !away, campID: campID
             )
+            try await self.log(row, forCamp: campID)
         }
     }
 
@@ -970,10 +975,12 @@ extension AppStore {
 
     func setEarlyPickup(playerID: Player.ID, day: Weekday, at time: TimeOfDay?) async {
         guard let campID = camp?.id else { return }
+        let row = pickupActivity(playerID, day: day, at: time)
         await perform {
             self.camp = try await self.repository.setEarlyPickup(
                 playerID: playerID, day: day, leavesAt: time, campID: campID
             )
+            try await self.log(row, forCamp: campID)
         }
     }
 
@@ -1001,10 +1008,12 @@ extension AppStore {
 
     func movePlayer(_ playerID: Player.ID, toVenue venueID: Venue.ID, group groupID: Group.ID? = nil) async {
         guard let campID = camp?.id else { return }
+        let row = moveActivity(playerID, toVenue: venueID, group: groupID)
         await perform {
             self.camp = try await self.repository.movePlayer(
                 playerID, toVenue: venueID, group: groupID, campID: campID
             )
+            try await self.log(row, forCamp: campID)
         }
     }
 
@@ -1029,6 +1038,239 @@ extension AppStore {
     func evenOut() async {
         guard let campID = camp?.id else { return }
         await perform { self.camp = try await self.repository.evenOut(campID) }
+    }
+}
+
+// MARK: - What the day's work tells the feed
+
+/// The four `.activity` rows the running camp writes into the Inbox.
+///
+/// `8r` had exactly two writers before this — `addBlockNote` and `addPinnedMessage`, both of them
+/// notes — so **every activity row in the app existed only inside a `#Preview`**. The screen was
+/// reported as broken and was not: `InboxBucket` splits today into morning, afternoon and evening
+/// on each row's own `createdAt` and does it correctly, but the section could not appear because
+/// no shipped code path had ever written a row for it to hold. A feed with no writers is a
+/// starved screen, not a broken rule, and the fix belongs on this side.
+///
+/// Composed here in `AppStore`, one method per intent, rather than inside the repository. Two
+/// reasons, and the second is the load-bearing one:
+///
+/// - The sentence needs names. "Austin Zheng → Court 2" is a `Player.displayName` and a
+///   `Group.label`; the repository is handed ids and would have to re-read the graph to spell
+///   either. The store is already holding it.
+/// - Every one of them is written inside the *same* `perform` as the camp write it describes
+///   (see `setAway` above and its three siblings), so the graph and the feed cannot drift apart
+///   in a later edit — the two calls are four lines from each other, and a change to one is in
+///   front of whoever changes the other.
+///
+/// Each returns nil when the tap changed nothing, which is the whole of the answer to "do not
+/// make the feed noisy": a swipe onto a kid who is already away, or a court chip tapped twice,
+/// is not news and writes nothing. That guard earns its keep in the busiest path in the app —
+/// `AttendanceView.answer(_:away:)` calls `setAway` for *every* kid a coach taps through a
+/// register, and a court where everybody turned up would otherwise write eight rows saying
+/// nothing happened.
+///
+/// The row goes second, inside the same `perform`, and a failure to write it raises. The camp
+/// write is what the reader asked for and it stands either way; a feed that quietly lost the row
+/// would be worse than a banner, because `8r` is where the next coach in catches up on what they
+/// missed and there is nothing on screen to show them a line is absent. The two are not
+/// transactional and cannot be from here — the same position `applyRoster` is in, and it settles
+/// it the same way: order the writes so the survivable half fails first.
+///
+/// **Four intents and not fourteen, and the line is drawn at one decision about one person.**
+/// Every method here narrates a thing a coach did to somebody during a session, which is what
+/// `8r`'s feed is a record of. Three other families deliberately write nothing:
+///
+/// - `reorderGroup`, `commitRankOrder`, `partitionCamp` and `evenOut` move the whole ladder at
+///   once. A row each would bury the morning under forty lines nobody asked for, and one row for
+///   the batch is a different feature — the design draws it ("Rank order published · 6 groups")
+///   and nothing writes that either.
+/// - `addPlayer`, `importPlayers`, `updatePlayers` and `removePlayers` are enrolment. A roster
+///   arriving is not a thing that happened during the session, and `8d` is already the screen
+///   for reviewing it.
+/// - `setCourtStatus` closes a court, which genuinely is a moment in the day — but it is drawn
+///   on the court card with its reason still on it and is not stored at all yet
+///   (`SupabaseRepository+SectionEight.swift:91-93`). It should join this list once it is.
+///
+/// The guard reads the *local* `camp`, which a second coach can have moved under it — there is no
+/// realtime sync in this app. That is the right trade at this altitude: the failure is a row
+/// written or skipped against a graph a few seconds stale, and both are recoverable by looking at
+/// the camp. The alternative is asking the server what changed, which is the round trip this
+/// guard exists to avoid.
+///
+/// **Deliberately not `resolved`, and deliberately never expired.** `resolved` moves a row onto
+/// `8h`'s "Cleared today" list, which is the history of *things that were waiting on you and now
+/// are not* — an activity row was never waiting on anybody, has no button and no decision behind
+/// it, so filing it there would misdescribe it and pad a list a reader opens to check what they
+/// dealt with. Ageing is already handled and needs no clock of its own: the feed buckets by day,
+/// so this morning's rows fall under "This morning", drop to "Yesterday" at midnight and to
+/// "12 Mar" a week later, sinking down the screen on their own.
+extension AppStore {
+
+    /// Writes one of the rows below, if there is one to write, and takes the camp's Inbox back.
+    ///
+    /// The nil case is not a failure and is why this swallows it rather than making four call
+    /// sites unwrap: "nothing changed, so there is nothing to say" is the ordinary answer, and
+    /// four copies of the same `if let` around the same two lines is how the fourth one ends up
+    /// spelled differently.
+    ///
+    /// Answers with the whole camp's rows rather than the one just written, which is what every
+    /// other Inbox write already does — so an intent on Groups leaves the Inbox tab correct
+    /// without it having to re-read on appearance.
+    private func log(_ row: InboxItem?, forCamp campID: Camp.ID) async throws {
+        guard let row else { return }
+        inboxItems = try await repository.logActivity(row, forCamp: campID)
+    }
+
+    /// "Jonah Reyes marked away", and its correction.
+    ///
+    /// The correction is written too, which is one more row on a feed asked to stay quiet. The
+    /// alternative is worse: a mis-swipe undone thirty seconds later would leave "marked away"
+    /// standing as the last thing the feed ever said about that kid, and the next coach reading
+    /// it at half nine would go looking for someone who is on court. A feed that cannot take
+    /// something back is not quieter, it is wrong.
+    private func awayActivity(_ playerID: Player.ID, away: Bool) -> InboxItem? {
+        guard isAway(playerID) != away,
+              let player = player(playerID),
+              let venueID = player.venueID ?? readVenueID
+        else { return nil }
+
+        return InboxItem(
+            venueID: venueID,
+            kind: .activity,
+            title: "\(player.displayName) marked \(away ? "away" : "here")",
+            detail: activityDetail([player.groupID.flatMap { group($0)?.label }, byMe]),
+            actorID: myStaffRecord?.id,
+            playerID: playerID,
+            groupID: player.groupID
+        )
+    }
+
+    /// "Serene Chu leaves at 2:30pm", and the row that takes it back off the books.
+    ///
+    /// **Names no actor, on purpose.** `InboxIconTile` reads an activity row carrying a player and
+    /// no actor as "a standing arrangement about that kid rather than something a coach just did"
+    /// and gives it the amber clock, naming early pick-up as the case it means
+    /// (`InboxIconTile.swift:62-64`, `:89-92`). That rule was written for this row before this row
+    /// existed, so filling `actorID` in would swap the design's amber countdown for the grey
+    /// person-removed glyph on the one row the tile was shaped around. The detail line stays
+    /// silent about who set it for the same reason — an attribution in words beside a field left
+    /// empty is two answers to one question.
+    ///
+    /// The day is spelled out rather than written "today". A pick-up can be set for Friday from
+    /// Wednesday, and "today" would be a lie the moment it was written; it also goes stale
+    /// overnight on the row that *was* about today, while the feed's own heading already says
+    /// which day the row was written on.
+    ///
+    /// `TimeOfDay.clockLabel` — "2:30pm" — rather than the design's bare "2:30". That is the
+    /// spelling every other early-pick-up line in the app already uses
+    /// (`AttendanceEntry.swift:31`, `EarlyPickupSheet.swift:121`, `PlayerScreen.swift:198`), and
+    /// a feed row is read hours after the sheet that set it, with no picker beside it to say
+    /// which half of the day was meant.
+    private func pickupActivity(
+        _ playerID: Player.ID, day: Weekday, at time: TimeOfDay?
+    ) -> InboxItem? {
+        guard camp?.leavesAt(playerID, on: day) != time,
+              let player = player(playerID),
+              let venueID = player.venueID ?? readVenueID
+        else { return nil }
+
+        let title = time.map { "\(player.displayName) leaves at \($0.clockLabel)" }
+            ?? "\(player.displayName) staying to the end"
+        return InboxItem(
+            venueID: venueID,
+            kind: .activity,
+            title: title,
+            detail: activityDetail([day.fullName, player.groupID.flatMap { group($0)?.label }]),
+            playerID: playerID,
+            groupID: player.groupID
+        )
+    }
+
+    /// "Austin Zheng → Court 2".
+    ///
+    /// Names the venue instead when there is no court to name. `movePlayer` with a nil group
+    /// lands the kid on the venue's smallest court, chosen inside `Camp.movePlayer` from a graph
+    /// this row is composed before — so "→ LATC" is what is actually known here, and a court name
+    /// would be a guess that a reindex could make wrong.
+    private func moveActivity(
+        _ playerID: Player.ID, toVenue venueID: Venue.ID, group groupID: Group.ID?
+    ) -> InboxItem? {
+        guard let player = player(playerID),
+              player.venueID != venueID || (groupID != nil && player.groupID != groupID)
+        else { return nil }
+
+        let destination = groupID.flatMap { group($0)?.label } ?? venue(venueID)?.name
+        guard let destination else { return nil }
+
+        return InboxItem(
+            venueID: venueID,
+            kind: .activity,
+            title: "\(player.displayName) → \(destination)",
+            // Where they came from, which is the one fact the title cannot carry and the only
+            // thing a reader needs to know whether this move is the one they asked for.
+            detail: activityDetail([
+                player.groupID.flatMap { group($0)?.label }.map { "from \($0)" }, byMe,
+            ]),
+            actorID: myStaffRecord?.id,
+            playerID: playerID,
+            groupID: groupID
+        )
+    }
+
+    /// "Nass → Court 1", and the row for taking them back off it.
+    ///
+    /// `actorID` is the person who made the change, not the person being moved — which is the
+    /// same way round every other row here reads it, and the way `addBlockNote` and
+    /// `addPinnedMessage` already store it. There is no second staff field, so the coach being
+    /// assigned is named in the title, where the design puts them.
+    ///
+    /// **Names whoever is coming off, because one tap moves two people.** `Camp.assignStaff` runs
+    /// one coach per court and bumps the incumbent to no court on its way past
+    /// (`Models.swift:1341-1343`), so putting Dana on Court 1 takes Nass off it. A row reading
+    /// only "Dana → Court 1" would be true and would leave the feed silently wrong about Nass:
+    /// somebody scanning it for why their court has no coach would find nothing. Said in the
+    /// detail line rather than as a second row, because it is one tap and one decision — the same
+    /// shape `moveActivity` uses to carry "from Court 4".
+    private func assignmentActivity(
+        _ staffID: StaffMember.ID, toGroup groupID: Group.ID?
+    ) -> InboxItem? {
+        guard let staff = staffMember(staffID), staff.groupID != groupID else { return nil }
+
+        let court = groupID.flatMap { group($0) }
+        // The court's venue when there is one, the person's own otherwise — an unassignment names
+        // no court and so has no venue of its own to sit at.
+        guard let venueID = court?.venueID ?? staff.venueID ?? readVenueID else { return nil }
+
+        let bumped = groupID.flatMap { coach(forGroup: $0) }
+        return InboxItem(
+            venueID: venueID,
+            kind: .activity,
+            title: court.map { "\(staff.name) → \($0.label)" } ?? "\(staff.name) off court",
+            detail: activityDetail([
+                venue(venueID)?.name, bumped.map { "replaces \($0.name)" }, byMe,
+            ]),
+            actorID: myStaffRecord?.id,
+            groupID: groupID
+        )
+    }
+
+    /// `by Dana` — the attribution every row above shares, or nothing at all when the reader has
+    /// no staff row in this camp to sign with.
+    private var byMe: String? {
+        myStaffRecord.map { "by \($0.name)" }
+    }
+
+    /// The row's second line: the facts first, the person who did it last, `·` between them.
+    ///
+    /// That is how the design writes a detail line everywhere else on the screen — "Skills
+    /// rotation · net on 4 is loose", "Sycamore · 6 groups · by Nass" — and doing it here rather
+    /// than at four call sites is what stops the fourth row from being punctuated differently.
+    /// Nil rather than an empty string when nothing survives: `InboxActivityRow` draws the line
+    /// only when there is one, and an empty `String` is not nothing to a `if let`.
+    private func activityDetail(_ parts: [String?]) -> String? {
+        let kept = parts.compactMap { $0 }
+        return kept.isEmpty ? nil : kept.joined(separator: " · ")
     }
 }
 
@@ -1059,10 +1301,12 @@ extension AppStore {
 
     func assignStaff(_ staffID: StaffMember.ID, toGroup groupID: Group.ID?) async {
         guard let campID = camp?.id else { return }
+        let row = assignmentActivity(staffID, toGroup: groupID)
         await perform {
             self.camp = try await self.repository.assignStaff(
                 staffID, toGroup: groupID, campID: campID
             )
+            try await self.log(row, forCamp: campID)
         }
     }
 
