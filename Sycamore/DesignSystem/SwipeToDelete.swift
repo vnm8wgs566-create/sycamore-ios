@@ -194,8 +194,16 @@ struct SwipeToDelete<ID: Hashable & Sendable, Content: View>: View {
     /// Shared with every sibling row, so only one is ever open.
     @Binding var state: SwipeRevealState<ID>
 
-    /// "Remove Sycamore" — the panel's label and the accessibility action's name.
+    /// "Remove Sycamore" — the accessibility action's name, and what the panel would say if it
+    /// had the room. It rarely does: the design's panel is 130pt (`Flow.dc.html:204`) and was
+    /// drawn around "Mark away", so anything naming the thing being removed truncates to
+    /// "Remove Ven…". `panelLabel` is what is actually drawn; this is what is spoken, and the
+    /// spoken one has to be the specific one — "Remove" alone, read out of a list of eight venue
+    /// rows, does not say which venue.
     let actionLabel: String
+
+    /// The verb on the plate. Short by default because 130pt is short.
+    var panelLabel: String = "Remove"
 
     /// The plate under the row.
     ///
@@ -231,8 +239,15 @@ struct SwipeToDelete<ID: Hashable & Sendable, Content: View>: View {
             actionPanel
             content
                 .background(background)
-                .offset(x: plan.offset)
+                // The catcher goes on **before** the offset, and that order is the whole of it.
+                // `.offset` is a render-time transform: it moves what you see and leaves the
+                // layout frame where it was. An overlay applied after it therefore sits on the
+                // *un-offset* frame — the row's full width, including the strip the panel is now
+                // showing through — so every tap meant for Remove was caught and closed the row
+                // instead. Applied before, the catcher is part of the content and travels with
+                // it, which is what "a tap on the open row closes it" was ever supposed to mean.
                 .overlay { closeCatcher }
+                .offset(x: plan.offset)
         }
         .clipped()
         .gesture(swipe)
@@ -276,7 +291,7 @@ struct SwipeToDelete<ID: Hashable & Sendable, Content: View>: View {
             HStack(spacing: Spacing.small) {
                 Image(systemName: "trash")
                     .font(.system(size: 18, weight: .semibold))
-                Text(actionLabel)
+                Text(panelLabel)
                     .typeStyle(.chipMedium, color: Theme.danger)
                     .lineLimit(1)
             }
