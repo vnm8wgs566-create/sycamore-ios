@@ -91,8 +91,17 @@ struct SectionHeader: View {
 
             if let actionTitle {
                 Button(action: { action?() }) {
+                    // "Add" and "Invite" on Camp settings were a bare `Text` — about 30 × 15pt,
+                    // the smallest target in the app, and both of them the only way to do the
+                    // thing they name. The negative horizontal padding keeps the word itself
+                    // sitting exactly where the design puts it, on the trailing edge, while the
+                    // region a thumb has to find is the full 44.
                     Text(actionTitle)
                         .typeStyle(.chipMedium, color: Theme.accent)
+                        .padding(.horizontal, Spacing.small)
+                        .frame(minHeight: HitTarget.minimum)
+                        .contentShape(.rect)
+                        .padding(.horizontal, -Spacing.small)
                 }
                 .buttonStyle(.plain)
             }
@@ -352,13 +361,31 @@ struct Chip: View {
         .frame(maxWidth: fillsWidth ? .infinity : nil)
         .background(background, in: shape)
         .overlay { shape.strokeBorder(border, lineWidth: BorderWidth.hairline) }
-        .contentShape(shape)
 
         if let action {
-            Button(action: action) { label }
-                .buttonStyle(.plain)
+            Button(action: action) {
+                // The plate is drawn at the size the design draws it — 28pt for a staff filter,
+                // 32 for a venue, 34 for a sport — and then the *target* is grown to 44 around
+                // it. The two are different jobs and were the same expression until a finger
+                // found out: the venue chips on Groups are the most-tapped control in the app,
+                // they sit in a horizontal `ScrollView` that claims any touch with travel in it,
+                // and they were twelve points short of what a thumb is allowed to miss by.
+                //
+                // Order matters and is the whole fix. `.contentShape` before `.frame` pins the
+                // hit region to the drawn plate and the added height is inert — which is what
+                // three call sites had already worked around by hand
+                // (`ScheduleView.swift:139`, `GroupsMove.swift:169`, `EarlyPickupSheet.swift:181`)
+                // and five had not. Growing here rather than at the call site is what makes those
+                // workarounds unnecessary rather than merely redundant.
+                label
+                    .frame(minHeight: HitTarget.minimum)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
         } else {
-            label
+            // Nothing to hit when there is no action: a chip used as a read-only badge keeps the
+            // drawn shape, so it does not claim 44pt of a row it is only labelling.
+            label.contentShape(shape)
         }
     }
 
@@ -478,7 +505,11 @@ struct Pill: View {
                     Capsule(style: .continuous).strokeBorder(border, lineWidth: BorderWidth.hairline)
                 }
             }
-            .contentShape(Capsule(style: .continuous))
+            // Same order, same reason as `Chip`: the capsule is drawn at ~33pt and the target is
+            // grown to 44 around it. `GroupsMove.swift:179` had already tried to grow "Drop here"
+            // from the outside and could not, because the shape was pinned in here.
+            .frame(minHeight: HitTarget.minimum)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
     }

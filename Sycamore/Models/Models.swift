@@ -516,11 +516,30 @@ struct Player: Identifiable, Hashable, Codable, Sendable {
     /// diacritics the way the reader's locale expects, so searching "jose" finds José and
     /// "muller" finds Müller. Lowercasing alone leaves the accent in place and misses both.
     /// It handles the folding itself, so the needle is only trimmed.
+    /// Whether this kid answers to what somebody typed into the Find a player field.
+    ///
+    /// Deliberately **not** `displayName`, which is what this used to search. That is a
+    /// *display* concern and it is expensive: it builds `PersonNameComponents` and runs a
+    /// locale-aware `FormatStyle` (`:455`), so searching by it cost one formatter construction
+    /// and one ICU formatting pass **per kid per keystroke** — a hundred of each, on the main
+    /// actor, between the character landing and the list redrawing. The parts it formats are
+    /// the three stored strings below, so searching them directly answers the same question
+    /// without assembling the sentence first.
+    ///
+    /// The surname is searched in both spellings a camp may hold it in: `lastName` once it has
+    /// been collected, and `lastInitial` for the rows that only ever had one. "Chu" therefore
+    /// finds Serene whether or not anybody has typed her surname in yet, which the old
+    /// `displayName` search did only by accident of what it had glued together.
+    ///
+    /// `localizedStandardContains` stays — it is the one that folds case and diacritics the way
+    /// a reader expects, and search *is* the place a locale belongs, unlike a matching key
+    /// (see `RosterReconciliation.fold`). The caller trims: `term` arrives already trimmed from
+    /// `computeGroupsSections`, so this does not allocate a fresh `String` per kid.
     func matches(search term: String) -> Bool {
-        let needle = term.trimmingCharacters(in: .whitespaces)
-        guard !needle.isEmpty else { return true }
-        return displayName.localizedStandardContains(needle)
-            || firstName.localizedStandardContains(needle)
+        guard !term.isEmpty else { return true }
+        return firstName.localizedStandardContains(term)
+            || (lastName?.localizedStandardContains(term) ?? false)
+            || lastInitial.localizedStandardContains(term)
     }
 }
 
@@ -576,11 +595,11 @@ struct StaffMember: Identifiable, Hashable, Codable, Sendable {
         return role.staffRowLabel
     }
 
-    /// See `Player.matches(search:)` for why this folds through `localizedStandardContains`.
+    /// See `Player.matches(search:)` for why this folds through `localizedStandardContains`,
+    /// and why the caller trims rather than this doing it per candidate.
     func matches(search term: String) -> Bool {
-        let needle = term.trimmingCharacters(in: .whitespaces)
-        guard !needle.isEmpty else { return true }
-        return name.localizedStandardContains(needle)
+        guard !term.isEmpty else { return true }
+        return name.localizedStandardContains(term)
     }
 }
 

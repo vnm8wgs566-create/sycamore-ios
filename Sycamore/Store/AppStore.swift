@@ -1095,7 +1095,12 @@ extension AppStore {
     /// one store start reporting failure differently.
     func perform(_ work: () async throws -> Void) async {
         isWorking = true
-        errorMessage = nil
+        // Guarded. `@Observable` does not compare before it fires, so clearing an
+        // `errorMessage` that was already nil still announces a mutation — and `errorMessage`
+        // is read by `MainTabView.body`, by every sheet and by every pushed screen
+        // (`RootView.swift:100`, `:105`, `:166`). Unguarded, *every* intent in the app
+        // invalidated the whole tab tree before it had done any work at all.
+        if errorMessage != nil { errorMessage = nil }
         defer { isWorking = false }
         do {
             try await work()

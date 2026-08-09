@@ -336,7 +336,13 @@ struct SwipeToDelete<ID: Hashable & Sendable, Content: View>: View {
             .onChanged { value in
                 guard onDelete != nil else { return }
                 guard plan.drag(value.translation) else { return }
-                state.trackingID = id
+                // Guarded, because `@State` does not compare before it writes and this runs at
+                // display rate. `state` is a binding into the screen that owns the list, so an
+                // unguarded assignment re-ran that whole body on every frame of every swipe —
+                // the scroll view, every sibling row, every stepper — for a value that changes
+                // once per gesture. `GroupsView.swift:206` guards its frame writes for exactly
+                // this reason.
+                if state.trackingID != id { state.trackingID = id }
                 if state.openID != nil, state.openID != id { state.openID = nil }
             }
             .onEnded { value in

@@ -35,6 +35,15 @@ struct FloatingTabBar: View {
         .overlay { ring }
         .overlay { innerHighlight }
         .shadow(Shadows.tabBar)
+        // The spring belongs to the capsule sliding between items, and now only reaches it.
+        //
+        // It used to wrap the `selection` write itself, inside the button — and `selection` is
+        // bound to `store.selectedTab`, which `RootView` switches the whole screen on. So a tab
+        // tap built the entire destination *inside* the animation's transaction: Groups' every
+        // card and every row, on the tap's own frame, all of it animating. Scoped here, the
+        // capsule still travels and the screen swap arrives at once, which is what a tab change
+        // should look like anyway.
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: selection)
     }
 
     // MARK: Items
@@ -43,9 +52,7 @@ struct FloatingTabBar: View {
         let isSelected = tab == selection
 
         return Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                selection = tab
-            }
+            selection = tab
         } label: {
             HStack(spacing: 7) {
                 // `selectedSymbol` already names the outline glyph for the two symbols with no

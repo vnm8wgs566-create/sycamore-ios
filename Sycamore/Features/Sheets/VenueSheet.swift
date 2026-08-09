@@ -23,7 +23,7 @@ struct VenueSheet: View {
     let venueID: Venue.ID
 
     /// Edits land here first so typing does not race the store round-trip; every change is
-    /// pushed straight back out again by `onChange` below.
+    /// pushed back out by the `task(id:)` below, once the typing stops.
     @State private var draft: Venue
 
     @MainActor
@@ -38,7 +38,15 @@ struct VenueSheet: View {
             title: draft.name,
             subtitle: store.camp?.sheetSummary(for: venueID),
             detentFraction: ActiveSheet.venue(venueID).detentFraction,
-            onClose: { store.dismissSheet() }
+            onClose: {
+                // The debounce below is cancelled by this view going away, so the last edit has
+                // to be flushed by hand — otherwise closing the sheet within the settle window
+                // silently drops whatever was typed last. Idempotent: `updatePending` compares
+                // against the store first, and `updateVenue` is serialised per camp, so a flush
+                // racing an in-flight write is at worst the same row written twice.
+                flushPendingEdit()
+                store.dismissSheet()
+            }
         ) {
             statusBanner
                 .padding(.bottom, Spacing.large)
@@ -54,9 +62,38 @@ struct VenueSheet: View {
             SheetSectionHeader("Limits")
             limitsCard
         }
-        .onChange(of: draft) { _, updated in
-            Task { await store.updateVenue(updated) }
+        // Settle, then write — not a write per change.
+        //
+        // This screen live-writes because it has no Save button: the design draws a ✕ and
+        // nothing else, so closing *is* the commit and every edit has to have already landed.
+        // That contract is kept. What went is one round trip per **character**.
+        //
+        // Each `updateVenue` is a `perform` → `serialised(campID)` → full `camp(id:)` read →
+        // PATCH → court sync → a second full `camp(id:)` read, and the mutex means character
+        // N+1 queues behind character N's two round trips. Typing "Main Courts" queued eleven
+        // of them, each one reassigning `store.camp` and invalidating every view reading it.
+        // It also surfaced "Another venue already uses that name." at every transiently
+        // colliding prefix, because `updateVenue` maps the unique violation to a 409.
+        //
+        // `task(id:)` cancels and restarts on every keystroke, so the sleep only completes once
+        // the finger stops. `Task.sleep` throwing on cancellation is the mechanism, not an
+        // error path — a superseded edit should write nothing.
+        .task(id: draft) {
+            guard draft != store.venue(venueID) else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(400))
+            } catch {
+                return
+            }
+            await store.updateVenue(draft)
         }
+    }
+
+    /// Writes the draft now, if it still differs from what the store holds.
+    private func flushPendingEdit() {
+        guard draft != store.venue(venueID) else { return }
+        let pending = draft
+        Task { await store.updateVenue(pending) }
     }
 
     // MARK: - Status
