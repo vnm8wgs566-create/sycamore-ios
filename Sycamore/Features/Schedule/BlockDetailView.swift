@@ -195,6 +195,7 @@ struct BlockDetailView: View {
             day: block.day,
             timeLabel: block.timeLabel,
             venueName: store.venue(block.venueID)?.name,
+            courtLine: block.courtLine(in: BlockCourtPicker.courts(on: block, in: store.camp)),
             people: BlockAssigneeList.coaches(on: block, in: store.camp),
             myID: store.myStaffRecord?.id,
             onAssign: assignAction
@@ -248,17 +249,31 @@ struct BlockDetailView: View {
 
     /// `8m`, for every court this block covers.
     ///
-    /// The courts come from the camp graph rather than off the block: `ScheduleBlock.detail` is
-    /// one free-text line ("Courts 1–3 · 22 players") the design composes differently on every
-    /// row, so the venue's own groups are the only answer that cannot drift from it.
+    /// The block's own courts when it has any, and the whole venue when it has not.
+    ///
+    /// This used to be the venue unconditionally, and the reason given was that the only other
+    /// candidate was `ScheduleBlock.detail` — one free-text line reading "Courts 1–3 · 22 players"
+    /// that the design composes differently on every row, "so the venue's own groups are the only
+    /// answer that cannot drift from it". That reasoning was sound and is now spent:
+    /// `ScheduleBlock.courtIDs` is a column set, not a sentence, so a block that says it runs on
+    /// courts 1–3 can be taken at its word — and taking attendance for six courts when three of
+    /// them belong to a different block is the register nobody can fill in.
+    ///
+    /// The fallback is not a fallback so much as the honest answer for a `.regular` block: a lunch
+    /// names no courts because it happens on none of them in particular, and the venue is who is
+    /// there. A `.assigned` block with nothing ticked lands here too, which is right — it has told
+    /// us nothing, so we are back to what we knew before it did.
     ///
     /// `8l` closes on the way. Both screens are covers, and a cover cannot be presented over a
     /// cover — but more than that, `8m` is where this block's work now happens, and stacking the
     /// two would leave a "Take attendance" button live underneath the screen it opened.
     private func openAttendance() {
-        let groupIDs = store.camp?.groups(in: block.venueID).map(\.id) ?? []
+        var courts = BlockCourtPicker.courts(on: block, in: store.camp).map(\.id)
+        if courts.isEmpty {
+            courts = store.camp?.groups(in: block.venueID).map(\.id) ?? []
+        }
         onClose()
-        store.pushedScreen = .attendance(groupIDs, block)
+        store.pushedScreen = .attendance(courts, block)
     }
 
     /// Opens the editor on this block. Reached from the `⋯` and from "Assign" on an uncovered

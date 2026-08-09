@@ -74,11 +74,26 @@ struct BlockEditorSheet: View {
             descriptionField
                 .padding(.top, ScheduleMetrics.editorFieldGap)
 
+            SheetSectionHeader("Type", topPadding: ScheduleMetrics.editorSectionGap)
+            kindPicker
+
             SheetSectionHeader("When", topPadding: ScheduleMetrics.editorSectionGap)
             dayChips
+            closedDayNote
             timeFields
                 .padding(.top, ScheduleMetrics.editorFieldGap)
             endBeforeStartNote
+
+            if draft.kind == .assigned {
+                SheetSectionHeader("Courts", topPadding: ScheduleMetrics.editorSectionGap)
+                BlockCourtPicker(
+                    courts: courtPool,
+                    selection: $draft.courtIDs,
+                    coachNames: courtCoachNames
+                )
+
+                kidsSection
+            }
 
             SheetSectionHeader("Coaches", topPadding: ScheduleMetrics.editorSectionGap)
             BlockCoachPicker(people: coachPool, selection: $draft.coachIDs)
@@ -163,14 +178,43 @@ struct BlockEditorSheet: View {
         #endif
     }
 
+    // MARK: Type
+
+    /// The two kinds, a row each, with the sentence that says what each one means underneath.
+    ///
+    /// Rows in a `Card` rather than the two-chip segment `dayChips` draws below. A segment has to
+    /// put its explanation somewhere, and there is only room for one line under a pair of chips —
+    /// so the reader would see the description of whichever option was already selected, which is
+    /// the one they least need explaining. `ScheduleBlockKind.detail` was written as "the one line
+    /// under each option in the editor's picker" and this is that picker.
+    ///
+    /// `BlockPickRow` is the row, shared with the two multi-select cards below — see that file for
+    /// why single- and multi-select wear the same tick.
+    private var kindPicker: some View {
+        Card(radius: ScheduleMetrics.cardRadius) {
+            ForEach(ScheduleBlockKind.allCases, id: \.self) { kind in
+                BlockPickRow(
+                    title: kind.displayName,
+                    detail: kind.detail,
+                    isOn: draft.kind == kind
+                ) {
+                    draft.kind = kind
+                }
+            }
+        }
+    }
+
     // MARK: When
 
-    /// The five-chip Mon–Fri row, exactly as `ScheduleView.dayChips` draws it: `.day` metrics
+    /// A chip per day the camp runs, exactly as `ScheduleView.dayChips` draws it: `.day` metrics
     /// carry no horizontal padding by design, so the width comes from `fillsWidth`, and the frame
     /// outside the chip carries the tap to 44pt without moving a pixel of what is drawn.
+    ///
+    /// The camp's days rather than all seven — see `BlockEditorDraft.dayOptions(in:)`, which holds
+    /// the rule and the reason a block already sitting on a closed day keeps its chip.
     private var dayChips: some View {
         HStack(spacing: Spacing.tight) {
-            ForEach(Weekday.allCases) { day in
+            ForEach(draft.dayOptions(in: store.camp)) { day in
                 Button {
                     draft.day = day
                 } label: {
@@ -248,6 +292,22 @@ struct BlockEditorSheet: View {
 
     private var endsAtLabel: String { draft.endsAt?.clockLabel ?? "No end time" }
 
+    /// A block left behind when its camp stopped running that day.
+    ///
+    /// Drawn in the same amber, at the same size, in the same place as the note below, because it
+    /// is the same kind of thing: a state the controls cannot design away, explained in words next
+    /// to the control that fixes it. What it must not do is refuse the save — see
+    /// `BlockEditorDraft.dayOptions(in:)` for why moving the block has to stay optional.
+    @ViewBuilder
+    private var closedDayNote: some View {
+        if draft.isOnAClosedDay(in: store.camp) {
+            Text("The camp doesn't run on \(draft.day.fullName) any more, so this block won't show on the schedule. Move it, or leave it here for now.")
+                .typeStyle(ScheduleType.assigneeMeta, color: Theme.warning)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, Spacing.small)
+        }
+    }
+
     /// The one state the menus cannot design away: moving the *start* past an end that was already
     /// chosen. Saying so beats silently rewriting somebody's end time, and beats a disabled button
     /// with no explanation next to it.
@@ -258,6 +318,48 @@ struct BlockEditorSheet: View {
                 .typeStyle(ScheduleType.assigneeMeta, color: Theme.warning)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, Spacing.small)
+        }
+    }
+
+    // MARK: Courts, and the kids on them
+
+    private var courtPool: [CourtGroup] {
+        BlockCourtPicker.pool(in: store.camp, venueID: draft.venueID)
+    }
+
+    private var courtCoachNames: [Group.ID: String] {
+        BlockCourtPicker.coachNames(in: store.camp, venueID: draft.venueID)
+    }
+
+    /// Only once a court has been ticked.
+    ///
+    /// Progressive disclosure rather than three disabled rows: "put every kid on these courts"
+    /// with no courts chosen is not a control waiting to be enabled, it is a sentence with a hole
+    /// in it. The section appears the moment there is somewhere to put them, which also makes the
+    /// order of operations obvious — courts first, then the kids that go on them.
+    @ViewBuilder
+    private var kidsSection: some View {
+        if !draft.courtIDs.isEmpty {
+            SheetSectionHeader("Kids", topPadding: ScheduleMetrics.editorSectionGap)
+            Card(radius: ScheduleMetrics.cardRadius) {
+                ForEach(BlockKidSpread.allCases, id: \.self) { spread in
+                    BlockPickRow(
+                        title: spread.displayName,
+                        detail: spread.detail,
+                        isOn: draft.spread == spread
+                    ) {
+                        draft.spread = spread
+                    }
+                }
+            }
+
+            // Says the one thing the rows cannot: that nothing has happened yet. A tick here looks
+            // exactly like a tick on a court, and a court is stored where this is an instruction.
+            Text("Runs when you save, over the courts you saved.")
+                .typeStyle(ScheduleType.assigneeMeta, color: Theme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, Spacing.small)
+                .padding(.horizontal, ScheduleMetrics.rowInset)
         }
     }
 
@@ -307,10 +409,24 @@ struct BlockEditorSheet: View {
     /// Closes first, then writes. The sheet has nothing left to show once the values are handed
     /// over, and `AppStore.perform` owns the banner — floated by whichever screen presented this
     /// one, not by this one. No spinner goes with it: the capsule that used to is gone.
+    ///
+    /// The kid spread runs after the block, not beside it, because it is about the block's saved
+    /// courts: `block.courtIDs` is the list that was committed, and dealing against the draft's
+    /// ticks would be dealing against a value the server has not agreed to yet.
+    ///
+    /// It is one call, and the reasoning for that lives with the write — see
+    /// `SupabaseRepository.spreadKids`. What is worth saying here is that this view does not
+    /// arrange the deal at all: it hands over the instruction and the courts, and the repository
+    /// runs it as a single mutation of the camp. An earlier version of this method copied
+    /// `store.camp`, dealt it locally and posted the result court by court, which was three things
+    /// wrong — a half-dealt venue if one of those failed, a whole-graph round trip per court, and
+    /// the only untested code in the feature, because nothing can reach a private method on a
+    /// `View`.
     private func commit() {
         guard draft.isValid else { return }
         let block = draft.block()
         let isCreating = draft.isCreating
+        let spread = draft.spread
         onClose()
         Task {
             if isCreating {
@@ -318,6 +434,12 @@ struct BlockEditorSheet: View {
             } else {
                 await store.updateScheduleBlock(block)
             }
+            // Only if the block actually landed. `AppStore.perform` clears `errorMessage` before
+            // it starts and sets it on the way out, so reading it here is asking "did that write
+            // succeed" — and a spread that ran anyway would reseat a whole venue for a block the
+            // server refused, leaving the camp rearranged for a timetable that does not exist.
+            guard store.errorMessage == nil else { return }
+            await store.spreadKids(spread, over: block.courtIDs, atVenue: block.venueID)
         }
     }
 
@@ -363,4 +485,20 @@ private struct BlockEditorPreview: View {
             )[1]
         )
     )
+}
+
+/// The warm-up the whole change exists for: one court, everybody on it. Scroll to the Courts and
+/// Kids sections — they are the two the other previews above deliberately do not draw.
+#Preview("Block editor — courts & coaches") {
+    let camp = SampleData.uclaTennisCamp
+    let courts = camp.groups(in: SampleData.sycamore.id)
+    var draft = BlockEditorDraft(
+        editing: ScheduleSampleDay.blocks(
+            venueID: SampleData.sycamore.id,
+            coachIDs: [SampleData.nass.id]
+        )[1]
+    )
+    draft.kind = .assigned
+    draft.courtIDs = Set(courts.prefix(1).map(\.id))
+    return BlockEditorPreview(draft: draft)
 }

@@ -8,11 +8,11 @@
 //
 //  Schedule used to be a table read almost literally, and is not one any more. A block on `8k`
 //  draws three things that are not columns of `schedule_blocks`: its notes, which are
-//  `inbox_items` rows carrying `schedule_block_id`, and its coaches, which are
-//  `schedule_block_coaches` rows. Both are read in the same wave as the blocks and reach the day
-//  through an embedded inner join rather than through the ids of the blocks just read, so the
-//  three are independent and cost one round trip rather than two. See
-//  `scheduleBlocks(forVenue:day:campID:)`.
+//  `inbox_items` rows carrying `schedule_block_id`; its coaches, which are
+//  `schedule_block_coaches` rows; and its courts, which are `schedule_block_courts` rows. All
+//  three are read in the same wave as the blocks and reach the day through an embedded inner join
+//  rather than through the ids of the blocks just read, so they are independent and cost one round
+//  trip rather than four. See `scheduleBlocks(forVenue:day:campID:)`.
 //
 //  The Inbox is camp-wide, not per-venue — `8r` puts an LATC row in front of a reader standing on
 //  Sycamore — but `inbox_items` only knows its `site_id`. So it reaches its camp through `sites`,
@@ -129,10 +129,10 @@ extension SupabaseRepository: SectionEightData {
 
     // MARK: - Schedule
 
-    /// A day's blocks, with the notes and the coaches on each of them.
+    /// A day's blocks, with the notes, the coaches and the courts on each of them.
     ///
-    /// Four reads in one `async let` wave, the shape `courts(forVenue:campID:)` already uses. The
-    /// two child reads reach the day through an embedded inner join — `schedule_blocks!inner`
+    /// Five reads in one `async let` wave, the shape `courts(forVenue:campID:)` already uses. The
+    /// three child reads reach the day through an embedded inner join — `schedule_blocks!inner`
     /// with the filter on the embedded column, the same shape `inboxItems(forCamp:)` uses to
     /// reach a camp through `sites` — rather than through the ids of the blocks just read. That
     /// is the whole reason there is one wave and not two: an `in.(…)` over ids cannot be built
@@ -149,10 +149,14 @@ extension SupabaseRepository: SectionEightData {
     /// `InboxItemRecord` is reused unchanged for the notes. The embedded `schedule_blocks` key it
     /// does not declare is simply ignored by `Decodable`.
     ///
-    /// The fourth read is the camp's coaches, and it is here for the notes rather than for the
+    /// The last read is the camp's coaches, and it is here for the notes rather than for the
     /// blocks: `BlockNote.authorName` is a name, and names live on `coaches`. It filters
     /// `active` like every other read of that table, which is exactly why `authorName` is
     /// optional — a note outlives the person who wrote it.
+    ///
+    /// The courts need no such read. A block carries their ids and every screen that draws them
+    /// resolves against the camp graph it already holds, so there is no name to fetch here and
+    /// nothing that would go stale if there were.
     func scheduleBlocks(
         forVenue venueID: Venue.ID, day: Weekday, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
@@ -181,11 +185,22 @@ extension SupabaseRepository: SectionEightData {
                 .eq("schedule_blocks.day", dayText)
                 .order("created_at")
         )
+        // The courts, read exactly like the coaches beside them: the same embedded inner join, the
+        // same two filters, the same `created_at` order. A block's courts and its coaches are the
+        // same shape of fact about the same block, and reading them two different ways is how the
+        // two start answering differently.
+        async let courtsTask: [ScheduleBlockCourtRecord] = db.select(
+            Relation.scheduleBlockCourts,
+            .select("block_id,group_id,schedule_blocks!inner(site_id,day)")
+                .eq("schedule_blocks.site_id", venueID)
+                .eq("schedule_blocks.day", dayText)
+                .order("created_at")
+        )
         async let staffTask: [CoachRecord] = db.select(
             Relation.coaches, .select("*").eq("camp_id", campID).isTrue("active")
         )
-        let (blockRecords, noteRecords, coachRecords, staffRecords) =
-            try await (blocksTask, notesTask, coachesTask, staffTask)
+        let (blockRecords, noteRecords, coachRecords, courtRecords, staffRecords) =
+            try await (blocksTask, notesTask, coachesTask, courtsTask, staffTask)
 
         let authorNames = Dictionary(
             staffRecords.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
@@ -220,11 +235,17 @@ extension SupabaseRepository: SectionEightData {
             coachIDsByBlock[record.blockId, default: []].append(record.coachId)
         }
 
+        var courtIDsByBlock: [ScheduleBlock.ID: [Group.ID]] = [:]
+        for record in courtRecords {
+            courtIDsByBlock[record.blockId, default: []].append(record.groupId)
+        }
+
         return blockRecords.compactMap { record in
             ScheduleBlock(
                 record,
                 notes: notesByBlock[record.id] ?? [],
-                coachIDs: coachIDsByBlock[record.id] ?? []
+                coachIDs: coachIDsByBlock[record.id] ?? [],
+                courtIDs: courtIDsByBlock[record.id] ?? []
             )
         }
     }
@@ -232,15 +253,19 @@ extension SupabaseRepository: SectionEightData {
     func addScheduleBlock(_ block: ScheduleBlock, campID: Camp.ID) async throws -> [ScheduleBlock] {
         try await adminWrite {
             try await db.insert(Relation.scheduleBlocks, [Self.scheduleRow(block)])
-            // The block row first, because `schedule_block_coaches.block_id` is a foreign key
-            // into it. `scheduleRow` writes an explicit `id`, so the client already knows what
-            // the join rows point at and does not have to read the insert back to find out.
+            // The block row first, because `schedule_block_coaches.block_id` and
+            // `schedule_block_courts.block_id` are both foreign keys into it. `scheduleRow` writes
+            // an explicit `id`, so the client already knows what the join rows point at and does
+            // not have to read the insert back to find out.
             //
-            // No delete before the insert, unlike `updateScheduleBlock`: the id was minted on
+            // No delete before either insert, unlike `updateScheduleBlock`: the id was minted on
             // this device a moment ago, so there is nothing under it to clear and a delete could
             // only ever be a round trip that matched nothing.
             try await db.insert(
                 Relation.scheduleBlockCoaches, Self.blockCoachRows(block.coachIDs, for: block.id)
+            )
+            try await db.insert(
+                Relation.scheduleBlockCourts, Self.blockCourtRows(block.courtIDs, for: block.id)
             )
         }
         return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
@@ -260,6 +285,7 @@ extension SupabaseRepository: SectionEightData {
                 throw await missingOrRefused(Relation.scheduleBlocks, id: block.id)
             }
             try await setBlockCoaches(block.coachIDs, forBlock: block.id)
+            try await setBlockCourts(block.courtIDs, forBlock: block.id)
         }
         return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
     }
@@ -267,10 +293,11 @@ extension SupabaseRepository: SectionEightData {
     func deleteScheduleBlock(
         _ blockID: ScheduleBlock.ID, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
-        // Nothing to unpick by hand. Both children hang off `schedule_blocks.id` with
+        // Nothing to unpick by hand. All three children hang off `schedule_blocks.id` with
         // `on delete cascade` — `inbox_items_schedule_block_id_fkey` since `section8_model_gaps`,
-        // and `schedule_block_coaches.block_id` since the table was created — so the block's
-        // notes and its coaches go with it in the same statement.
+        // `schedule_block_coaches.block_id` and `schedule_block_courts.block_id` since each table
+        // was created — so the block's notes, its coaches and its courts go with it in the same
+        // statement.
         let deleted: [ScheduleBlockRecord] = try await adminWrite {
             try await db.delete(
                 Relation.scheduleBlocks,
@@ -325,12 +352,22 @@ extension SupabaseRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
     }
 
-    /// Nothing here writes `schedule_block_coaches`, and that is not an omission.
+    /// Nothing here writes `schedule_block_coaches` or `schedule_block_courts`, and that is not an
+    /// omission.
     ///
     /// A shape is a timetable, not a roster: `DayShape.blocks` is `(hour, minute, title, detail)`
-    /// and names nobody, so a shape has no coaches to carry. The old day's coaches need no
-    /// clearing either — the delete below takes its blocks, and `block_id`'s cascade takes the
-    /// join rows with them.
+    /// and names nobody and nowhere, so a shape has no coaches and no courts to carry. Every block
+    /// it writes is `.regular`, which is the column's own default and therefore not stated below.
+    /// The old day's children need no clearing either — the delete below takes its blocks, and
+    /// `block_id`'s cascade takes the join rows with them.
+    ///
+    /// **If a shape is ever given courts, this insert has to change shape first.** It is the one
+    /// write in this file that does not send an explicit `id`: Postgres mints them, and the client
+    /// never learns what they are, so there is nothing to key a child row on. Either add
+    /// `returning: ScheduleBlockRecord.self` and build the join rows from what comes back, or mint
+    /// the ids here the way `scheduleRow` does everywhere else — the second is cheaper and matches
+    /// the rest of the file. Left as it is for now because writing `returning:` against a shape
+    /// that has no children to hang would be ceremony for a case that does not exist.
     func applyDayShape(
         _ shape: DayShape, toVenue venueID: Venue.ID, day: Weekday, campID: Camp.ID
     ) async throws -> [ScheduleBlock] {
@@ -356,11 +393,20 @@ extension SupabaseRepository: SectionEightData {
         return try await scheduleBlocks(forVenue: venueID, day: day, campID: campID)
     }
 
-    /// Copies a day, and copies its coaches with it — explicitly, because nothing else would.
+    /// Copies a day, and copies its coaches and its courts with it — explicitly, because nothing
+    /// else would.
     ///
-    /// Each copy is minted a fresh `UUID()` below, so a `schedule_block_coaches` row keyed on the
-    /// source block's id follows nothing. The join rows are built here against the new ids, in
-    /// one insert for the whole day rather than one per block.
+    /// Each copy is minted a fresh `UUID()` below, so a `schedule_block_coaches` or a
+    /// `schedule_block_courts` row keyed on the source block's id follows nothing. The join rows
+    /// are built here against the new ids, in one insert per table for the whole day rather than
+    /// one per block.
+    ///
+    /// This is the asymmetry `InMemoryRepository.scheduleBlocks(forVenue:day:campID:)` warns
+    /// about — "two builds that disagree about where a thing lives is a bug you can only find by
+    /// running both" — and it is worth naming because it is silent both ways. That build copies
+    /// the whole `ScheduleBlock` struct and gets every child list free; this one copies a *row*,
+    /// and anything hanging off the old id simply is not there afterwards. A fourth child relation
+    /// added to blocks needs a fourth insert here, or a copied Tuesday quietly loses it.
     ///
     /// Notes deliberately do not follow, and the two decisions are the same decision read from
     /// opposite ends. `copy.status` already argues it a few lines down — "a copied day starts
@@ -390,8 +436,40 @@ extension SupabaseRepository: SectionEightData {
                 Relation.scheduleBlockCoaches,
                 copies.flatMap { Self.blockCoachRows($0.coachIDs, for: $0.id) }
             )
+            try await db.insert(
+                Relation.scheduleBlockCourts,
+                copies.flatMap { Self.blockCourtRows($0.courtIDs, for: $0.id) }
+            )
         }
         return try await scheduleBlocks(forVenue: venueID, day: toDay, campID: campID)
+    }
+
+    /// The deal, as one read-modify-write of the camp graph.
+    ///
+    /// `mutateLadder` (`+Graph.swift:125-137`) is "load, let `Camp` decide, send the difference,
+    /// load again", and it is what `partitionCamp` and `evenOut` are one-liners over. Reused here
+    /// rather than rebuilt for three reasons, in the order they matter.
+    ///
+    /// It is **atomic**. The alternative — the editor looping `reorderGroup` once per court — is
+    /// one whole read-modify-write per court, and a failure on the third of five would leave kids
+    /// pulled off the courts they were on and never seated anywhere, with the loop carrying on
+    /// past it because `AppStore.perform` swallows the error into a banner.
+    ///
+    /// It is **one round trip's worth of work** instead of one per court. Each `mutateLadder` is
+    /// two whole-graph loads either side of the diff, so the loop was that many times over; and
+    /// `writePlacements` inside it already groups the moves by destination court and fires them
+    /// concurrently, which is exactly the shape a deal produces.
+    ///
+    /// And it is **one `perform`** on the way back, so the camp is replaced once rather than once
+    /// per court — `@Observable` invalidates the whole tab tree on each of those.
+    func spreadKids(
+        _ spread: BlockKidSpread, overCourts courtIDs: [Group.ID],
+        atVenue venueID: Venue.ID, campID: Camp.ID
+    ) async throws -> Camp {
+        try await mutateLadder(campID) { camp in
+            guard camp.venue(venueID) != nil else { throw SycamoreError.unknownVenue }
+            spread.apply(to: &camp, venueID: venueID, courtIDs: courtIDs)
+        }
     }
 
     /// The block's coaches, written as a cover rather than as a diff: clear what is there, insert
@@ -414,6 +492,22 @@ extension SupabaseRepository: SectionEightData {
         try await db.insert(Relation.scheduleBlockCoaches, Self.blockCoachRows(coachIDs, for: blockID))
     }
 
+    /// The block's courts, covered rather than diffed — see `setBlockCoaches` for the whole
+    /// argument, which applies here word for word and is not restated.
+    ///
+    /// The one thing worth adding is that this runs even for an empty list, and has to. Switching
+    /// a block from `.assigned` back to `.regular` sends no courts, and it is the *delete* that
+    /// carries the change: without it the block would go on running on courts nobody could see it
+    /// claiming, because the editor would no longer be drawing them.
+    private func setBlockCourts(
+        _ courtIDs: [Group.ID], forBlock blockID: ScheduleBlock.ID
+    ) async throws {
+        try await db.delete(
+            Relation.scheduleBlockCourts, where: PostgRESTQuery().eq("block_id", blockID)
+        )
+        try await db.insert(Relation.scheduleBlockCourts, Self.blockCourtRows(courtIDs, for: blockID))
+    }
+
     /// `(block_id, coach_id)` is the table's primary key, so the same coach named twice is a
     /// `23505` rather than a harmless no-op. Deduplicated here, keeping the first mention, because
     /// the order the rows are written in is the order `created_at` gives them back and therefore
@@ -427,9 +521,27 @@ extension SupabaseRepository: SectionEightData {
             .map { ["block_id": .uuid(blockID), "coach_id": .uuid($0)] }
     }
 
-    /// `notes` and `coachIDs` have no columns here and are dropped. Both are relations of their
-    /// own — `inbox_items` and `schedule_block_coaches` — written beside this row rather than
-    /// inside it. See `setBlockCoaches` and `addBlockNote`.
+    /// `(block_id, group_id)` is this table's primary key too, so the same deduplication and for
+    /// the same reason: a court named twice is a `23505`, not a no-op. Order matters less here
+    /// than it does for coaches — the courts are re-sorted into the venue's rank order before they
+    /// are drawn — but writing them in the order they were given still means two reads of an
+    /// unchanged block produce an equal `ScheduleBlock`.
+    private static func blockCourtRows(
+        _ courtIDs: [Group.ID], for blockID: ScheduleBlock.ID
+    ) -> [RowValues] {
+        var seen: Set<Group.ID> = []
+        return courtIDs
+            .filter { seen.insert($0).inserted }
+            .map { ["block_id": .uuid(blockID), "group_id": .uuid($0)] }
+    }
+
+    /// `notes`, `coachIDs` and `courtIDs` have no columns here and are dropped. All three are
+    /// relations of their own — `inbox_items`, `schedule_block_coaches`, `schedule_block_courts` —
+    /// written beside this row rather than inside it. See `setBlockCoaches`, `setBlockCourts` and
+    /// `addBlockNote`.
+    ///
+    /// `kind` *is* a column, and a plain one: `check (kind in ('regular','assigned'))` over the
+    /// enum's own raw values, so the rawValue is the wire format unchanged.
     private static func scheduleRow(_ block: ScheduleBlock) -> RowValues {
         [
             "id": .uuid(block.id),
@@ -440,6 +552,7 @@ extension SupabaseRepository: SectionEightData {
             "title": .text(block.title),
             "detail": .text(block.detail),
             "status": .text(block.status.rawValue),
+            "kind": .text(block.kind.rawValue),
         ]
     }
 

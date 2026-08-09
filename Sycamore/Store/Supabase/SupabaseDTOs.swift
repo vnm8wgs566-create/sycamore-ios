@@ -125,6 +125,15 @@ struct ScheduleBlockRecord: Decodable, Sendable {
     var title: String
     var detail: String?
     var status: String
+    /// `regular` or `assigned` — and optional rather than defaulted, which is a real difference
+    /// and not a stylistic one.
+    ///
+    /// A synthesised `Decodable` does *not* fall back to a property's initial value: it calls
+    /// `decode(_:forKey:)` for every non-optional property and throws `keyNotFound` when the
+    /// column is missing, whatever `= "regular"` would suggest. Optional is the one spelling that
+    /// tolerates a build talking to a database where this migration has not been applied, and the
+    /// alternative is every schedule read failing rather than one field defaulting.
+    var kind: String?
 }
 
 /// One row of `schedule_block_coaches`: this coach is on that block.
@@ -136,6 +145,19 @@ struct ScheduleBlockRecord: Decodable, Sendable {
 struct ScheduleBlockCoachRecord: Decodable, Sendable {
     var blockId: UUID
     var coachId: UUID
+}
+
+/// One row of `schedule_block_courts`: this block runs on that court.
+///
+/// The same two-column shape as its sibling above, and it reads `created_at` the same way — as an
+/// `order` and never as a value. The composite key `(block_id, group_id)` says nothing about
+/// sequence, and although the courts are re-sorted into the venue's own rank order before anybody
+/// sees them (`BlockCourtPicker.courts(on:in:)`), a stable read is what keeps two loads of the
+/// same day from producing two `ScheduleBlock` values that differ only in array order — which
+/// `ScheduleBlock: Equatable` would report as a change.
+struct ScheduleBlockCourtRecord: Decodable, Sendable {
+    var blockId: UUID
+    var groupId: UUID
 }
 
 struct InboxItemRecord: Decodable, Sendable {
@@ -333,20 +355,26 @@ extension Attendance {
 }
 
 extension ScheduleBlock {
-    /// Two of the block's fields are not in its row, and both arrive as arguments.
+    /// Three of the block's fields are not in its row, and all three arrive as arguments.
     ///
     /// `notes` are `inbox_items` of kind `note` carrying this block's `schedule_block_id`;
-    /// `coachIDs` are `schedule_block_coaches`. Neither is something a row-to-value initialiser
-    /// can go and fetch, so the repository reads all three relations in one wave and hands the
-    /// two child lists in — see `scheduleBlocks(forVenue:day:campID:)`, which is where the
-    /// previous version of this comment said the decision belonged.
+    /// `coachIDs` are `schedule_block_coaches`; `courtIDs` are `schedule_block_courts`. None is
+    /// something a row-to-value initialiser can go and fetch, so the repository reads every
+    /// relation in one wave and hands the child lists in — see `scheduleBlocks(forVenue:day:campID:)`,
+    /// which is where the previous version of this comment said the decision belonged.
     ///
-    /// Both keep a default. `deleteScheduleBlock` decodes the row it removed only to learn which
-    /// day to re-read, and a block built to answer that question has no children to supply.
+    /// All three keep a default. `deleteScheduleBlock` decodes the row it removed only to learn
+    /// which day to re-read, and a block built to answer that question has no children to supply.
+    ///
+    /// `kind` falls back to `.regular` twice over — once for a null column and once for a value
+    /// this build does not recognise — which is the rule `PostgresEnum` states for every
+    /// CHECK-constrained text column in the schema: a database that has grown a case the app
+    /// predates should draw the block plainly, not refuse to draw the day.
     init?(
         _ record: ScheduleBlockRecord,
         notes: [BlockNote] = [],
-        coachIDs: [StaffMember.ID] = []
+        coachIDs: [StaffMember.ID] = [],
+        courtIDs: [Group.ID] = []
     ) {
         guard let day = CampWeek.weekday(from: record.day),
               let startsAt = TimeOfDay(postgresTime: record.startsAt)
@@ -361,7 +389,9 @@ extension ScheduleBlock {
             detail: record.detail,
             status: ScheduleBlockStatus(rawValue: record.status) ?? .planned,
             notes: notes,
-            coachIDs: coachIDs
+            coachIDs: coachIDs,
+            kind: record.kind.flatMap(ScheduleBlockKind.init(rawValue:)) ?? .regular,
+            courtIDs: courtIDs
         )
     }
 }

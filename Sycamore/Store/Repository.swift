@@ -645,7 +645,11 @@ actor InMemoryRepository: SycamoreRepository {
 
     // MARK: Plumbing
 
-    private func mutate(_ campID: Camp.ID, _ edit: (inout Camp) throws -> Void) throws -> Camp {
+    /// Internal rather than private, the way `sectionEightBlocks` above it is and for the same
+    /// reason: `SectionEightRepository.swift` holds half of this actor's conformance, and every
+    /// camp-graph write in it needs the one path that reindexes and refreshes the projections.
+    /// `camps` itself stays private — this is the only door.
+    func mutate(_ campID: Camp.ID, _ edit: (inout Camp) throws -> Void) throws -> Camp {
         guard var camp = camps[campID] else { throw SycamoreError.unknownCamp }
         try edit(&camp)
         camp.reindex()

@@ -14,6 +14,11 @@
 //  the design has an established row for a person — avatar, name, role — that it draws in Setup,
 //  in the staff sheet and in the block's own logistics card. A picker would draw a fourth.
 //
+//  The "all coaches / no coaches" pair at the top is `BlockQuickActions`, shared with the court
+//  picker below it — the two cards ask the same question about two kinds of thing, so they answer
+//  the shortcut the same way. See that file for why it is a row of the card rather than a control
+//  beside the heading.
+//
 
 import SwiftUI
 
@@ -24,14 +29,20 @@ struct BlockCoachPicker: View {
     let people: [StaffMember]
     @Binding var selection: Set<StaffMember.ID>
 
-    @ScaledMetric(relativeTo: .body) private var avatarSize = ScheduleMetrics.assigneeAvatar
-    @ScaledMetric(relativeTo: .body) private var checkSize = ScheduleMetrics.pickerCheck
-
     var body: some View {
         Card(radius: ScheduleMetrics.cardRadius) {
             if people.isEmpty {
                 emptyRow
             } else {
+                // Only over a pool worth shortcutting. On the empty card there is nothing to take
+                // all of, and "All coaches" over no coaches is a button that cannot do anything.
+                BlockQuickActions(
+                    allTitle: "All coaches",
+                    noneTitle: "No coaches",
+                    onAll: { selection = Set(people.map(\.id)) },
+                    onNone: { selection = [] }
+                )
+
                 ForEach(people) { member in
                     row(member)
                 }
@@ -39,44 +50,20 @@ struct BlockCoachPicker: View {
         }
     }
 
+    /// The avatar is what makes this row a person's rather than a court's — `BlockPickRow` draws
+    /// one when it is given initials and nothing there when it is not.
     private func row(_ member: StaffMember) -> some View {
         let isOn = selection.contains(member.id)
 
-        return Button {
+        return BlockPickRow(
+            title: member.name,
+            detail: member.detailLine,
+            isOn: isOn,
+            initials: member.initials,
+            hint: isOn ? "Takes them off this block" : "Puts them on this block"
+        ) {
             selection.toggle(member.id)
-        } label: {
-            CardRow(spacing: Spacing.row, verticalPadding: Spacing.row) {
-                InitialsAvatar(member.initials, size: avatarSize)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                    Text(member.name)
-                        .typeStyle(ScheduleType.assigneeName, color: Theme.ink)
-
-                    // Allowed to wrap. "Worker · Sycamore · Court 3" is three segments long and
-                    // truncating the last of them at an accessibility size hides the court, which
-                    // is the part that says whether this is the right person for the block.
-                    Text(member.detailLine)
-                        .typeStyle(ScheduleType.assigneeMeta, color: Theme.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: Spacing.small)
-
-                // An empty circle for the unpicked rows rather than nothing at all: a column of
-                // ticks with gaps in it reads as a list where some rows have a state and others
-                // do not, which is the opposite of what a multi-select is saying.
-                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: checkSize, weight: .regular))
-                    .foregroundStyle(isOn ? Theme.accent : Theme.chevron)
-                    .accessibilityHidden(true)
-            }
-            .frame(minHeight: HitTarget.minimum)
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
-        .accessibilityHint(isOn ? "Takes them off this block" : "Puts them on this block")
     }
 
     /// A venue with nobody posted to it. Drawn rather than left blank, because an empty card under

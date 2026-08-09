@@ -129,6 +129,28 @@ extension AppStore {
         }
     }
 
+    /// The block editor's "put every kid on these courts" / "divide them evenly".
+    ///
+    /// Assigns `camp` rather than `scheduleBlocks`, and is the only intent in this file that does.
+    /// Nothing about the *block* changes — its courts were written a moment ago by the save that
+    /// preceded this — what moves is where the kids stand, which is the camp graph.
+    ///
+    /// The two no-op cases are refused here rather than in the repository, so a spread nobody
+    /// asked for does not cost a whole-graph round trip to discover it had nothing to do. Both are
+    /// ordinary: `.leaveThem` is the editor's default, and a block with no courts is what every
+    /// `.regular` one saves.
+    ///
+    /// Here rather than in `AppStore.swift` for the reason this file's header gives — that one is
+    /// the file every feature edits, and this is Schedule's.
+    func spreadKids(_ spread: BlockKidSpread, over courtIDs: [Group.ID], atVenue venueID: Venue.ID) async {
+        guard let campID = camp?.id, spread != .leaveThem, !courtIDs.isEmpty else { return }
+        await perform {
+            self.camp = try await self.repository.spreadKids(
+                spread, overCourts: courtIDs, atVenue: venueID, campID: campID
+            )
+        }
+    }
+
     /// Writes a note against a block, then re-reads the Inbox.
     ///
     /// The second read has a precedent and a rule: `resolveInboxItem` re-reads Overview because
