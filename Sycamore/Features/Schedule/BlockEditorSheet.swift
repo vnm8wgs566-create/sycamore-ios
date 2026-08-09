@@ -83,6 +83,7 @@ struct BlockEditorSheet: View {
             timeFields
                 .padding(.top, ScheduleMetrics.editorFieldGap)
             endBeforeStartNote
+            overlapNote
 
             if draft.kind == .assigned {
                 SheetSectionHeader("Courts", topPadding: ScheduleMetrics.editorSectionGap)
@@ -301,11 +302,25 @@ struct BlockEditorSheet: View {
     @ViewBuilder
     private var closedDayNote: some View {
         if draft.isOnAClosedDay(in: store.camp) {
-            Text("The camp doesn't run on \(draft.day.fullName) any more, so this block won't show on the schedule. Move it, or leave it here for now.")
-                .typeStyle(ScheduleType.assigneeMeta, color: Theme.warning)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, Spacing.small)
+            warningNote("The camp doesn't run on \(draft.day.fullName) any more, so this block won't show on the schedule. Move it, or leave it here for now.")
         }
+    }
+
+    /// The sheet's one spelling of an amber line under a field.
+    ///
+    /// Three of them now — a closed day, an end before a start, and a clash — and the third is
+    /// what made this worth having. Two copies of a three-modifier chain is a coincidence; three
+    /// is three places to miss the day the design moves the gap or the weight. Each caller keeps
+    /// its own words and its own condition, which are the parts that differ; this is only how
+    /// they read.
+    ///
+    /// `.fixedSize(horizontal: false, vertical: true)` on all three, because every one of them is
+    /// a sentence rather than a label and a warning that truncates is a warning nobody can act on.
+    private func warningNote(_ copy: String) -> some View {
+        Text(copy)
+            .typeStyle(ScheduleType.assigneeMeta, color: Theme.warning)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, Spacing.small)
     }
 
     /// The one state the menus cannot design away: moving the *start* past an end that was already
@@ -314,11 +329,69 @@ struct BlockEditorSheet: View {
     @ViewBuilder
     private var endBeforeStartNote: some View {
         if !BlockRules.endsAfterStart(startsAt: draft.startsAt, endsAt: draft.endsAt) {
-            Text("A block has to end after it starts. Pick a later end, or no end time.")
-                .typeStyle(ScheduleType.assigneeMeta, color: Theme.warning)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, Spacing.small)
+            warningNote("A block has to end after it starts. Pick a later end, or no end time.")
         }
+    }
+
+    /// The other thing the two menus can produce that somebody should know about: a block laid on
+    /// top of one that is already on the morning.
+    ///
+    /// Words rather than a shorter menu, which is a deliberate break from the line directly above
+    /// this one. `BlockClock.endOptions(after:)` omits every end the `ends_after_starts` CHECK
+    /// would refuse instead of offering it — "a menu that lists 8:00 under a block starting at
+    /// 9:00 is a menu with a wrong answer in it" — and stopping the end menu at the clash was the
+    /// obvious first answer here too.
+    ///
+    /// It was rejected twice over. A menu cannot say *why*: the end rule's reason is two inches to
+    /// the left, in the start field, so a menu that stops at it explains itself, where this one's
+    /// reason is a different block somewhere else on the day and a menu silently stopping at 10:45
+    /// would leave somebody guessing which of the morning's eight cards they had run into. And a
+    /// missing option is a refusal wearing a disguise — the whole of this change is that a camp
+    /// may double-book and be told, not stopped.
+    ///
+    /// So the block is named, the minute is offered, and the button below saves either way.
+    @ViewBuilder
+    private var overlapNote: some View {
+        // Only once the two menus say something coherent. A draft whose end is before its start is
+        // not a span yet, and the rule will still cheerfully report what its inverted minutes run
+        // into — a second amber sentence stacked under the first, about a block nobody has managed
+        // to place. The note above is the one to fix first.
+        if BlockRules.endsAfterStart(startsAt: draft.startsAt, endsAt: draft.endsAt),
+           let clash = draft.overlap(in: store.scheduleBlocks) {
+            warningNote(overlapAdvice(clash))
+        }
+    }
+
+    /// Which half of the block is in the wrong place, and the way out of it.
+    ///
+    /// `clash` is the *earliest-starting* collision (`BlockRules.overlap(with:in:)`), so one that
+    /// starts after this block means nothing before this block collides at all — and the only half
+    /// that can be moved is the end.
+    ///
+    /// The opening clause is `ScheduleBlock.clashLine`, which is the same sentence the card on
+    /// `8k` draws. Only the way out is this screen's, because only this screen has the controls.
+    ///
+    /// The minute quoted is `BlockRules.latestEnd`'s. On this branch it is the same number as
+    /// `clash.startsAt` — anything sharing space and starting between the two would itself be an
+    /// earlier clash — and it is asked for by name anyway, because the sentence means "the latest
+    /// end that runs into nothing" and that is the function that says so. The fallback is what the
+    /// compiler needs rather than a value that is ever reached.
+    ///
+    /// The other branch offers no minute, deliberately. The symmetric advice would be "start it
+    /// when that one ends", and that can be advice nobody can take: a clash that *contains* this
+    /// block ends after this block does, so following it would push the start past the end and
+    /// trip the note directly above. "Start it later" is vaguer and is always true.
+    ///
+    /// "Save it anyway, or …" is `closedDayNote`'s cadence ("Move it, or leave it here for now.")
+    /// and is doing the same work: the note has to say that this is allowed, because an amber line
+    /// under a field reads as a refusal until it says otherwise.
+    private func overlapAdvice(_ clash: ScheduleBlock) -> String {
+        if clash.startsAt > draft.startsAt {
+            let ceiling = BlockRules.latestEnd(for: draft.block(), in: store.scheduleBlocks)
+                ?? clash.startsAt
+            return "\(clash.clashLine). Save it anyway, or end it by \(ceiling.clockLabel)."
+        }
+        return "\(clash.clashLine). Save it anyway, or start it later."
     }
 
     // MARK: Courts, and the kids on them
@@ -374,6 +447,13 @@ struct BlockEditorSheet: View {
     /// Disabled until every CHECK the insert will apply already passes — refusing before the tap
     /// rather than after it, which is the rule `SetupView`'s rename row states: the alternative is
     /// a banner over a sheet that has already been dismissed.
+    ///
+    /// `draft.isValid` and deliberately not `draft.overlap(in:)`. Every rule this button holds is
+    /// a rule the *write* holds, so a save it lets through is a save that lands; an overlap is a
+    /// row Postgres is perfectly happy to hold, and disabling the button on one would be the app
+    /// inventing a lock — stranding somebody who opened this sheet to fix a typo in the title of a
+    /// block that has been double-booked since seven. `overlapNote` above is the whole of what
+    /// happens instead.
     private var commitButton: some View {
         PrimaryButton(
             draft.isCreating ? "Add block" : "Save changes",

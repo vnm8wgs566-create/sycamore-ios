@@ -2,8 +2,14 @@
 //  BlockEditorDraft.swift
 //  Sycamore
 //
-//  What the block editor holds while somebody is typing, and the four rules the columns behind it
-//  will enforce whether or not this file states them.
+//  What the block editor holds while somebody is typing, the four rules the columns behind it will
+//  enforce whether or not this file states them, and one rule no column holds at all.
+//
+//  The four CHECKs are mirrors: the write refuses them, and stating them here is what keeps the
+//  refusal from arriving after the sheet has closed. The fifth — whether two blocks are asking for
+//  the same court at the same time — has no column behind it and never will, and is a *warning*
+//  rather than a refusal. `BlockRules.overlap(with:in:)` says why, at length, because the obvious
+//  alternative was built once already and is the wrong shape for this app.
 //
 //  Here rather than in `Models.swift` or `SectionEight.swift`. `SectionEight.swift:8-10` gives the
 //  reason for the split it made — `Models.swift` "is the one place every feature touches; adding
@@ -20,15 +26,20 @@ import Foundation
 
 // MARK: - The CHECKs, in Swift
 
-/// The four constraints `schedule_blocks` (and, for a note, `inbox_items`) will apply at `insert`.
+/// The four constraints `schedule_blocks` (and, for a note, `inbox_items`) will apply at `insert`,
+/// and the one rule about a block's neighbours that nothing but this file states.
 ///
-/// Mirrored on this side of the wire for the reason `CampName` gives: a value that fails a CHECK
-/// fails *at the write*, which on a create is after the sheet has been dismissed and the draft
-/// thrown away. Refusing before the tap costs one disabled button; refusing after it costs the
-/// whole draft and produces a banner pointing at no field in particular.
+/// The four are mirrored on this side of the wire for the reason `CampName` gives: a value that
+/// fails a CHECK fails *at the write*, which on a create is after the sheet has been dismissed and
+/// the draft thrown away. Refusing before the tap costs one disabled button; refusing after it
+/// costs the whole draft and produces a banner pointing at no field in particular.
 ///
 /// Every count goes through `CharLength`, which counts the way Postgres does rather than the way
 /// Swift reads a string. The bounds stay here, beside the SQL each one cites.
+///
+/// The fifth is a different kind of thing and is grouped apart below. It is answerable only with
+/// the whole day in hand, no column enforces it, and it refuses nothing — see
+/// `overlap(with:in:)`, which is where the reasoning for all three of those lives.
 enum BlockRules {
 
     /// `check (char_length(title) between 1 and 80)` — `20260805074039:30`.
@@ -71,6 +82,143 @@ enum BlockRules {
     static func endsAfterStart(startsAt: TimeOfDay, endsAt: TimeOfDay?) -> Bool {
         guard let endsAt else { return true }
         return endsAt > startsAt
+    }
+
+    // MARK: The rule that is about the day and not about the row
+
+    /// The block `block` clashes with, or nil when it clashes with nothing.
+    ///
+    /// **A clash is an overlap in time *and* a claim on the same space.** Two blocks whose minutes
+    /// overlap are only a problem if they are also asking for the same courts — which is why this
+    /// takes the day rather than a pair of times, and why it is the one rule here that cannot be
+    /// answered from one row. See `sharesSpace(_:_:)` for the four cases that produces.
+    ///
+    /// ── WHY THIS IS A WARNING AND NOT A REFUSAL ───────────────────────────────────────────────
+    ///
+    /// Recorded at length rather than left to be rediscovered. This was built once as a refusal,
+    /// in the only place a refusal is airtight — a Postgres constraint:
+    ///
+    ///     exclude using gist (site_id with =, tsrange(day + starts_at, day + ends_at) with &&)
+    ///       where (ends_at is not null)
+    ///
+    /// with `23P01` mapped to a sentence and the editor's commit button disabled behind it. The
+    /// construction is right for the rule it states — a CHECK cannot see another row, and a
+    /// trigger races two concurrent writes where an index does not — so anybody reaching for this
+    /// problem will reach for it again. It was never committed, and the reasons are these.
+    ///
+    /// **It states the wrong rule.** An EXCLUDE keyed on `site_id` says "two blocks at one venue
+    /// may not claim the same minute", and `ScheduleBlockKind.assigned` with `courtIDs`
+    /// (`SectionEight.swift:110-121`) exists precisely so that they may. "Warm-up 9:00–9:15 on
+    /// Court 1" beside "Free play 9:00–9:15 on Courts 2–4" is a morning the schedule is now meant
+    /// to be able to write down, and a venue-wide constraint makes it unsayable **at the
+    /// database** — the one layer the app cannot work around.
+    ///
+    /// **A court-aware EXCLUDE is not the repair.** The courts live in `schedule_block_courts`, a
+    /// table of their own, so an overlap keyed on courts spans two rows in two tables. That is a
+    /// trigger again, which is the construction the EXCLUDE was chosen over.
+    ///
+    /// **And a camp may legitimately double-book.** Two coaches on one court for ten minutes of
+    /// handover is a thing that happens, and somebody wants to *see* it rather than be stopped
+    /// from writing it down at seven in the morning with a car park filling up. So this answers a
+    /// question and the screens draw a flag; nothing anywhere refuses a save, and
+    /// `ScheduleResize.swift` records the same decision for the finger on a card's bottom edge.
+    ///
+    /// ── WHICH ONE IT REPORTS ──────────────────────────────────────────────────────────────────
+    ///
+    /// The **earliest-starting** clash rather than whichever the array holds first. `8k`'s list is
+    /// only sorted by convention — `scheduleBlocks(forVenue:day:campID:)` returns whatever order
+    /// the query gives — and `BlockEditorSheet` writes a different sentence depending on which
+    /// side of the block the clash is on, so the side has to be the same answer whichever order
+    /// the day arrives in. Two clashes starting at the same minute are on the same side and get
+    /// the same sentence, so the tie between them is left to the array; only the name in it moves.
+    static func overlap(with block: ScheduleBlock, in day: [ScheduleBlock]) -> ScheduleBlock? {
+        day.filter { $0.id != block.id && overlaps($0, block) }
+            .min { $0.startsAt < $1.startsAt }
+    }
+
+    /// Same space, and two half-open spans that meet.
+    ///
+    /// Half-open, so a block that ends exactly when the next begins is an ordinary camp morning
+    /// and one that ends a minute later is two blocks claiming the same minute.
+    ///
+    /// **A block with no stated end clashes with nothing, in either direction.** `ends_at` is
+    /// nullable by design — `20260805074039:27-28` says the design's 8:30 "Drop-off · done" has no
+    /// stated end and "inventing one would put a time on screen that nobody entered" — and reading
+    /// it as running until midnight would put a warning on every block after it. Every block
+    /// `DayShape` writes is open-ended (`SupabaseRepository.applyDayShape` sends no `ends_at` at
+    /// all), so that reading would flag the whole of every day built from a shape. A flag that
+    /// fires on the app's own output is a flag nobody reads.
+    private static func overlaps(_ a: ScheduleBlock, _ b: ScheduleBlock) -> Bool {
+        guard let aEnd = a.endsAt, let bEnd = b.endsAt else { return false }
+        // Minutes before courts, and the order is not arbitrary: `sharesSpace` builds up to two
+        // sets and the comparisons either side of it are two integer compares. On a day that is
+        // simply in order — which is most days — no set is ever built.
+        return a.startsAt < bEnd && b.startsAt < aEnd && sharesSpace(a, b)
+    }
+
+    /// Whether two blocks are asking for the same space — the half of a clash that is not about
+    /// time at all.
+    ///
+    /// One rule: **two blocks share space unless both name courts and the two lists are
+    /// disjoint.** The four cases the app can produce fall out of it.
+    ///
+    ///   - Both `.regular`. Neither says where it runs, so both claim the venue: they contend.
+    ///   - One of each. The regular one claims the venue, which contains the other's courts.
+    ///   - Both `.assigned` with a court in common. They contend over that court.
+    ///   - Both `.assigned` with disjoint courts. **Not a clash**, however much their minutes
+    ///     overlap. This is the case the whole change turns on.
+    ///
+    /// An `.assigned` block with no courts ticked yet claims the venue too, and that is deliberate
+    /// rather than an oversight about empty sets: the rule is about what a block has *said*, and
+    /// that one has not finished saying it. Treating "no courts" as "no claim" would make an
+    /// unfinished block silently compatible with everything, which is the reverse of what somebody
+    /// mid-edit needs. `block()` already guarantees the other direction — a `.regular` block is
+    /// written with no courts whatever is ticked — so the two kinds cannot disagree on the wire.
+    ///
+    /// Venue and day first, because `AppStore.scheduleBlocks` holds one of each and a block moved
+    /// off them must be compared against nothing rather than wrongly.
+    private static func sharesSpace(_ a: ScheduleBlock, _ b: ScheduleBlock) -> Bool {
+        guard a.venueID == b.venueID, a.day == b.day else { return false }
+        guard let aCourts = claim(of: a), let bCourts = claim(of: b) else { return true }
+        return !aCourts.isDisjoint(with: bCourts)
+    }
+
+    /// The courts a block claims, or nil for "the whole venue".
+    private static func claim(of block: ScheduleBlock) -> Set<CourtGroup.ID>? {
+        guard block.kind == .assigned, !block.courtIDs.isEmpty else { return nil }
+        return Set(block.courtIDs)
+    }
+
+    /// The latest end `block` could be given before it runs into something it shares space with,
+    /// or nil when nothing after it shares space with it.
+    ///
+    /// The minute `BlockEditorSheet` offers back under its two time menus — "end it by 10:30" —
+    /// and nothing else. It is **advice and not a wall**: it used to be `ScheduleResizePlan`'s
+    /// ceiling, and that clamp is gone for the reason `overlap(with:in:)` gives above and
+    /// `ScheduleResize.swift`'s header restates.
+    ///
+    /// Exactly as strict as `overlap(with:in:)` and not a step stricter, which is a change from
+    /// the version of this that walled a drag. Both filters are `sharesSpace`, and both skip a
+    /// neighbour with no stated end — so the minute this offers is the minute at which the clash
+    /// the sheet has just *named* begins, rather than some tighter number belonging to a block the
+    /// sentence never mentions. A wall could afford to be stricter than the rule; a sentence
+    /// cannot, because a reader can check it.
+    ///
+    /// Finished blocks count. A `.done` drop-off draws as one grey line rather than as a card, but
+    /// it still occupies its courts from eight-thirty to nine.
+    ///
+    /// Two blocks sharing a start do not follow each other, so neither is the other's ceiling.
+    /// They already overlap, and `overlap(with:in:)` is what sees those.
+    static func latestEnd(for block: ScheduleBlock, in day: [ScheduleBlock]) -> TimeOfDay? {
+        // Same ordering as `overlaps`, and for the same reason: the two cheap comparisons rule out
+        // everything before this block before a set is built for anything after it.
+        day.lazy
+            .filter {
+                $0.startsAt > block.startsAt && $0.id != block.id && $0.endsAt != nil
+                    && sharesSpace($0, block)
+            }
+            .map(\.startsAt)
+            .min()
     }
 }
 
@@ -217,10 +365,31 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
     /// `day` is deliberately not among them, even though the editor can now show a day the camp
     /// has stopped running. See `dayOptions(in:)` — that is a warning, not a refusal, and there is
     /// no column to mirror.
+    ///
+    /// Nor is the overlap, and for the same reason twice over: no column holds it either, and it
+    /// is a warning by decision rather than by accident. See `overlap(in:)`.
     var isValid: Bool {
         BlockRules.isValidTitle(trimmedTitle)
             && BlockRules.isValidDetail(trimmedDetail)
             && BlockRules.endsAfterStart(startsAt: startsAt, endsAt: endsAt)
+    }
+
+    /// The block on `day` this draft clashes with, if any — asked of the values the write will
+    /// carry, so ticking a court the other block does not use makes it go away.
+    ///
+    /// Warned about rather than refused, which is the same call `dayOptions(in:)` makes for a
+    /// closed day and for a related reason: neither is a row the database objects to, so refusing
+    /// either would be the app inventing a lock and stranding somebody fixing a typo. The longer
+    /// argument — including the constraint that was written and dropped — is on
+    /// `BlockRules.overlap(with:in:)`.
+    ///
+    /// Nothing at all when the draft has been moved to a day other than the one the store is
+    /// holding. `AppStore.scheduleBlocks` is one venue and one day at a time
+    /// (`AppStore+SectionEight.swift:87`), so a block dragged onto Wednesday is asked about
+    /// Tuesday's list, and the venue-and-day filter inside `BlockRules.sharesSpace(_:_:)` is what
+    /// makes that a quiet "nothing" rather than a confident wrong answer.
+    func overlap(in day: [ScheduleBlock]) -> ScheduleBlock? {
+        BlockRules.overlap(with: block(), in: day)
     }
 
     /// The days this block may be moved to: the ones the camp actually runs, plus — when it is not

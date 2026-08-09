@@ -32,6 +32,33 @@ extension ScheduleBlock {
         status == .needsCoach ? "Needs a coach" : detail
     }
 
+    /// `Water break · 8:30am – 10:00am` — this block named, and when it runs.
+    ///
+    /// `·` rather than a comma or a bracket, because that is how this screen already joins a thing
+    /// to a fact about it — "Drop-off · done", "8 players · rotate at 10:30am", "1 note · shade
+    /// tent is up".
+    var titledSpan: String { "\(title) · \(timeLabel)" }
+
+    /// `Clashes with Water break · 8:30am – 10:00am` — how a clash reads, in the words of the
+    /// block that is being run into.
+    ///
+    /// A property of the block being *named* rather than of the one wearing the flag, because the
+    /// sentence is made entirely of the named one. It reads at the call site as the line this
+    /// clash produces: `Text(conflict.clashLine)`.
+    ///
+    /// Naming the other block is the whole point of drawing it. "Overlaps" on its own tells a
+    /// coach holding a ball cart that something is wrong and not what; the name and the span
+    /// together are enough to go and look at the other card, which is the only thing anybody can
+    /// do about it.
+    ///
+    /// One spelling, two places: `ScheduleBlockCard` draws it and stops, and `BlockEditorSheet`
+    /// continues it with the way out. A second spelling in the sheet is what this replaced.
+    ///
+    /// It does not say *which court* they share. Court names live on the camp graph and this
+    /// extension is handed a block, so saying so would mean threading the venue's groups down to
+    /// every card to add three words to a line that is already the second-longest on it.
+    var clashLine: String { "Clashes with \(titledSpan)" }
+
     /// How many notes are hiding behind the one the card shows. Renders as the design's `+2`.
     var additionalNoteCount: Int { max(0, notes.count - 1) }
 
@@ -56,13 +83,18 @@ extension ScheduleBlock {
 
     /// What VoiceOver reads for one card on `8k`.
     ///
-    /// The card is a stack of five or six runs — a time, a title, a grey line, a rule, a glyph,
-    /// a note, a count — and read one at a time they arrive as a list of fragments with the
-    /// glyphs interleaved. Combined into a single sentence they arrive as the row a sighted
-    /// reader sees in one glance: when it is, what it is, and what is wrong with it.
-    func accessibilityLine(isCurrent: Bool) -> String {
+    /// The card is a stack of five or six runs — a time, a title, a grey line, an amber line, a
+    /// rule, a glyph, a note, a count — and read one at a time they arrive as a list of fragments
+    /// with the glyphs interleaved. Combined into a single sentence they arrive as the row a
+    /// sighted reader sees in one glance: when it is, what it is, and what is wrong with it.
+    ///
+    /// - Parameter conflict: the block this one clashes with, so the flag is spoken rather than
+    ///   only coloured. Amber is the whole of the warning on screen, and a colour is not available
+    ///   to somebody listening.
+    func accessibilityLine(isCurrent: Bool, conflict: ScheduleBlock?) -> String {
         var parts = [startsAt.clockLabel, title]
         if let subtitle { parts.append(subtitle) }
+        if let conflict { parts.append(conflict.clashLine) }
         if isCurrent { parts.append("on now") }
         if !notes.isEmpty {
             parts.append("\(notes.count) note\(notes.count == 1 ? "" : "s")")

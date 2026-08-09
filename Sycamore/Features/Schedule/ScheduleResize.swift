@@ -16,12 +16,30 @@
 //  travel to minutes is therefore a chosen ratio rather than a geometric one, and the ratio is
 //  `ScheduleMetrics.resizeTravel`, which argues for its own number.
 //
-//  There is no overlap validation anywhere. Not in Swift, and not in Postgres: the only time CHECK
-//  on `schedule_blocks` is `schedule_blocks_ends_after_starts` (`20260805074039:38-39`), which
-//  says nothing at all about the *next* block. A resize dragged past its neighbour would be
-//  accepted by every layer and simply be wrong — one block silently swallowing the start of
-//  another on a screen whose whole job is saying what happens when. `ceiling` is where that is
-//  stopped, and here is the only place it is stopped.
+//  ── THE NEIGHBOUR IS NO LONGER A WALL ─────────────────────────────────────────────────────────
+//
+//  `ceiling` used to be clamped at the next block's start, and this header used to say that here
+//  was the only place an overlap was stopped. It is not stopped anywhere now, and that is the
+//  decision rather than a regression.
+//
+//  An overlap is a *flag*: `BlockRules.overlap(with:in:)` holds the rule and argues the case, and
+//  `ScheduleBlockCard` draws an amber line naming what a block runs into. The editor's two time
+//  menus will take an overlapping end and save it. A drag that refused one would be the second
+//  answer to a question that now has one — and the day the two disagreed, the disagreement would
+//  be invisible, because a wall does not announce itself.
+//
+//  There is a stronger reason than consistency, and it is the same one that sank the constraint.
+//  The wall was keyed on the *day*: the earliest start after this block's own, whatever that block
+//  was doing. With `ScheduleBlockKind.assigned` and `courtIDs`, "Warm-up on Court 1" and "Free
+//  play on Courts 2–4" may share a morning, so a finger on Court 1's bottom edge would have been
+//  stopped by a block on courts it never touches. A court-aware wall was the obvious repair and is
+//  worse than none: the minute a drag stopped at would depend on which courts were ticked inside
+//  a sheet that is not open, so the same gesture on two cards would stop in different places for
+//  reasons nothing on screen could explain.
+//
+//  What is left is the arithmetic of the *grid* — a step, a floor at the shortest block the CHECK
+//  allows, and a ceiling at the end of the camp day. Those are all still walls, and all three are
+//  about what this app can express rather than about what else is on the morning.
 //
 
 import Foundation
@@ -37,7 +55,7 @@ struct ScheduleResizePlan: Equatable, Sendable {
 
     /// The grid every end time lands on, in minutes.
     ///
-    /// Fifteen, which is `BlockClock.options`' own spacing (`BlockEditorDraft.swift:89`) rather
+    /// Fifteen, which is `BlockClock.options`' own spacing (`BlockEditorDraft.swift:229`) rather
     /// than a second opinion about it: the editor's two time menus offer quarter-hours, so a
     /// resize snapping to anything else would write a time its own editor could not read back.
     ///
@@ -105,14 +123,13 @@ struct ScheduleResizePlan: Equatable, Sendable {
     ///   - endsAt: not optional, deliberately. `ScheduleBlock.endsAt` is — a block may run
     ///     open-ended — but a block with no end has no bottom edge to drag and no span to draw,
     ///     so the card does not offer a handle at all rather than this type inventing one.
-    ///   - nextStart: the block that starts next, or nil when this is the day's last. See
-    ///     `nextStart(after:in:)`.
     ///   - dayEnd: injected so a test can ask what happens at the end of the grid without
     ///     building an evening.
+    ///
+    /// It takes no neighbour. It used to, and the header says at length why it no longer does.
     init(
         startsAt: TimeOfDay,
         endsAt: TimeOfDay,
-        nextStart: TimeOfDay?,
         dayEnd: TimeOfDay = ScheduleResizePlan.dayEnd,
         travelPerStep: CGFloat = ScheduleResizePlan.travel
     ) {
@@ -123,7 +140,7 @@ struct ScheduleResizePlan: Equatable, Sendable {
 
         // The shortest block the grid can express: the first grid line strictly after the start.
         // Strictly, because `check (ends_at is null or ends_at > starts_at)` is strict — a block
-        // that ends when it starts is not a block (`BlockEditorDraft.swift:62-74`).
+        // that ends when it starts is not a block (`BlockEditorDraft.swift:73-85`).
         let shortest = Self.step * (startsAt.id / Self.step + 1)
         // …but never longer than the block already is. A block already shorter than one grid step
         // is data this app cannot produce and Postgres will happily hold, and a plan whose floor
@@ -131,14 +148,14 @@ struct ScheduleResizePlan: Equatable, Sendable {
         // handle — before any travel at all.
         self.floor = min(endsAt.id, shortest)
 
-        // Clamped at the next block's start, because nothing else clamps it. Abutting is allowed
-        // and overlapping is not: a block that ends exactly when the next begins is an ordinary
-        // camp morning, and one that ends a minute later is two blocks claiming the same minute.
-        let wall = min(nextStart?.id ?? dayEnd.id, dayEnd.id)
-        // …and again never shorter than the block already is. A day that already overlaps — or a
-        // block that already runs past eight — can be shortened out of it, but touching the
-        // handle must not shorten it on its own.
-        self.ceiling = max(endsAt.id, wall)
+        // The end of the camp day, and nothing about the neighbours. A block dragged over the one
+        // after it is a morning the camp is allowed to have and the card is about to flag; the
+        // grid's own last line is where the *editor* stops offering ends, so a drag past it would
+        // write a time its own menu cannot read back.
+        //
+        // …and never shorter than the block already is. A block that already runs past eight can
+        // be shortened out of it, but touching the handle must not shorten it on its own.
+        self.ceiling = max(endsAt.id, dayEnd.id)
     }
 
     // MARK: What the drag produces
@@ -175,9 +192,12 @@ struct ScheduleResizePlan: Equatable, Sendable {
     /// Onto the grid, then inside the walls — in that order, and the order is load-bearing.
     ///
     /// Snapping a value that has already been clamped would push it straight back out of the wall
-    /// it was just held at: a neighbour starting at 10:20 would round to 10:15 and leave the block
-    /// five minutes short of a gap it is allowed to fill. Clamping second means the walls win, and
-    /// a block may end exactly when its neighbour begins even when that moment is off-grid.
+    /// it was just held at. The floor is where that shows now: a 9:00–9:05 block has a floor of
+    /// 9:05, and snapping *after* clamping would round that to 9:00 — an end equal to its start,
+    /// which is the one thing `ends_after_starts` forbids. Clamping second means the walls win,
+    /// and a block may sit exactly on one even when that moment is off-grid.
+    ///
+    /// The neighbour used to be the example this paragraph gave, and it is gone with the clamp.
     ///
     /// Rounds to the nearest step rather than towards zero, so the edge lands on the grid line
     /// nearest the finger. Truncating instead would make the first half of every step inert and
@@ -195,24 +215,10 @@ struct ScheduleResizePlan: Equatable, Sendable {
     }
 }
 
-// MARK: - The neighbour
-
-extension ScheduleResizePlan {
-
-    /// The start of the block after this one, which is as far as this one's end may be dragged.
-    ///
-    /// Read off the day rather than off an index, because `8k`'s list is only sorted by
-    /// convention: `scheduleBlocks(forVenue:day:campID:)` returns whatever order the query gives
-    /// and nothing in Swift re-sorts it. The smallest start strictly after this block's own is the
-    /// answer whichever order the array arrives in.
-    ///
-    /// Finished blocks count. A `.done` drop-off draws as one grey line rather than as a card, but
-    /// it still occupies eight-thirty to nine, and a block allowed to grow over it would be wrong
-    /// in exactly the way a block allowed to grow over a planned one is.
-    ///
-    /// Two blocks sharing a start neither follow nor clamp each other — they already overlap, and
-    /// this is a wall against making an overlap, not a repair for one that is already there.
-    static func nextStart(after block: ScheduleBlock, in blocks: [ScheduleBlock]) -> TimeOfDay? {
-        blocks.map(\.startsAt).filter { $0 > block.startsAt }.min()
-    }
-}
+// `ScheduleResizePlan.nextStart(after:in:)` used to be here: four lines finding the smallest start
+// after this block's own, so `init` could clamp against it. Both are gone, and what replaced the
+// answer is `BlockRules.latestEnd(for:in:)` — the same shape of question asked court-aware, which
+// the block editor quotes in words rather than enforcing in a gesture.
+//
+// A forwarding shim was considered and is worse than either: it would keep a name that means
+// "wall" alive in a file that no longer has one.
