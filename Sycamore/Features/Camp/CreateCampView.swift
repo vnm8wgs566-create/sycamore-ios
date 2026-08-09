@@ -238,8 +238,10 @@ struct CreateCampView: View {
 
     // MARK: Sport
 
+    /// The shared `FlowLayout`, same as `SetupView.sportChips` (`:632`): at 402pt the five sport
+    /// chips do not fit on one line, and the design lets them break rather than shrink.
     private var sportChips: some View {
-        WrappingRow(spacing: 7) {
+        FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
             ForEach(Sport.selectable, id: \.self) { sport in
                 let isSelected = store.campDraft.sport.matchesChip(sport)
                 Chip(sport.chipTitle, isSelected: isSelected, metrics: .sport) {
@@ -461,66 +463,6 @@ struct CreateCampView: View {
 
             IntakeStepper(value: value, range: range, label: title, valueWidth: 34)
         }
-    }
-}
-
-// MARK: - Wrapping row
-
-/// `flex-wrap: wrap` for a row of chips. At 402pt the five sport chips do not fit on one
-/// line, and the design lets them break rather than shrink. File-private so it cannot
-/// collide with a sibling feature's own flow layout.
-private struct WrappingRow: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        let width = proposal.replacingUnspecifiedDimensions().width
-        let rows = rows(of: subviews, in: width)
-        guard !rows.isEmpty else { return CGSize(width: width, height: 0) }
-        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(rows.count - 1)
-        return CGSize(width: width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        var y = bounds.minY
-        for row in rows(of: subviews, in: bounds.width) {
-            var x = bounds.minX
-            for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(
-                    at: CGPoint(x: x, y: y),
-                    anchor: .topLeading,
-                    proposal: ProposedViewSize(size)
-                )
-                x += size.width + spacing
-            }
-            y += row.height + spacing
-        }
-    }
-
-    private struct Row {
-        var indices: [Int] = []
-        var height: CGFloat = 0
-    }
-
-    private func rows(of subviews: Subviews, in width: CGFloat) -> [Row] {
-        var rows: [Row] = []
-        var current = Row()
-        var x: CGFloat = 0
-
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            if !current.indices.isEmpty, x + size.width > width {
-                rows.append(current)
-                current = Row()
-                x = 0
-            }
-            current.indices.append(index)
-            current.height = max(current.height, size.height)
-            x += size.width + spacing
-        }
-
-        if !current.indices.isEmpty { rows.append(current) }
-        return rows
     }
 }
 
