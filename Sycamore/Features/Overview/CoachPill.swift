@@ -2,57 +2,62 @@
 //  CoachPill.swift
 //  Sycamore
 //
-//  Who has this court: a 30pt disc and a first name on a `fill` capsule.
+//  Who is on something: a 30pt disc and a first name on a `fill` capsule.
 //
 //  The design draws a photo here. The app has never had one — every face in it is an
 //  `InitialsAvatar` — so this is the same disc every other screen uses at the size the design
 //  draws it.
 //
-//  A court nobody has draws the design's "Needs a coach". Which was, until now, the whole of what
-//  the app did about it: an inert grey capsule with an em dash where the face goes, on the one
-//  screen an admin is looking at when they notice. The pill knows the court is short and the write
-//  that fixes it has existed since Setup was built, so the empty pill is now the way to it — see
-//  `plusDisc`, and `CourtCoachPicker` for what it opens.
+//  ── Two readers, and neither of them is a court card ─────────────────────────────────────────
+//
+//  `RunningBlockCard` wraps a row of these in a `FlowLayout` — a block can name three people — and
+//  the court screen's header draws one, where `CourtHeader.swift:70-79` gives the reason that pill
+//  has nowhere to go.
+//
+//  A court card on Overview no longer does. `8i` draws its coach with no plate at all: a 26pt disc
+//  and a name, on their own line under the activity. That is `CourtCoachLine`, and the invitation
+//  that used to live here — a `+` in place of the face, opening `CourtCoachPicker` — went with it,
+//  because the card was the only caller that ever asked for it. Two differently worded, differently
+//  plated ways to fill a court, one of them unreachable, is how a screen ends up with two answers
+//  to one gesture; `MoreRow`'s own header records where that ends.
+//
+//  What is left is the flat capsule the design draws, and "Needs a coach" on something nobody is
+//  on. A report, not a control: both remaining readers are places that say who is on a thing, and
+//  neither is a place the app can do anything about it.
 //
 
 import SwiftUI
 
 struct CoachPill: View {
 
-    /// Nil is a court nobody has yet.
+    /// The app's spelling of a thing nobody is on.
     ///
-    /// What it draws depends on whether there is anything to do about it. With an `action` the pill
-    /// is a control: a `+` in place of the face, the design's "Needs a coach" beside it, and the
-    /// accent to say it is the one pill on the screen that wants pressing. Without one it is the
-    /// flat capsule the design draws — which is what the court screen's header wants, and
-    /// `CourtHeader.swift:70-79` gives the reason that pill has nowhere to go.
+    /// Here rather than on each of the three views that say it — this pill, `CourtCoachLine`'s
+    /// inert state and `8j`'s condensed rows — because it is one claim about a court and three
+    /// literals is three chances for one of them to become "No coach". This pill is the oldest of
+    /// the three and the one reached from outside the folder, so it owns the words.
+    ///
+    /// `CourtCoachLine.addACoach` is deliberately *not* this string. That one is a control and
+    /// wants a verb; see its own doc.
+    ///
+    /// `nonisolated` because a `View` is `@MainActor` by inference under Swift 6 and its statics
+    /// come with it, which makes a plain string unreadable from `CondensedCourtRow.Trailing` — a
+    /// nested enum that has no reason to be on an actor. A `String` is `Sendable`; there is nothing
+    /// here for the isolation to protect.
+    nonisolated static let needsACoach = "Needs a coach"
+
+    /// Nil is a block or a court nobody is on.
     let name: String?
-    /// What a tap does. With a name it opens their staff card; with none it opens the picker that
-    /// fills the court. Omitted leaves the pill inert.
+    /// What a tap does: opens their staff card. Omitted leaves the pill inert, which is what a
+    /// nameless pill always is — there is nobody to open.
     var action: (() -> Void)?
 
-    private var label: String { name ?? "Needs a coach" }
+    private var label: String { name ?? Self.needsACoach }
     private var initials: String { name.map { Initials.make(from: $0) } ?? "—" }
-    /// Only an empty pill that can be filled in draws the `+`. An empty pill with nowhere to go
-    /// keeps the em dash, because a `+` on it would be a control that is not one.
-    ///
-    /// Inferred from the two arguments rather than declared by a third, and that is a decision.
-    /// A `kind:` parameter would say it out loud, but it would also be a parameter every caller has
-    /// to keep in step with the other two — and the four combinations of (name, action) already
-    /// exhaust the states this pill has, each with exactly one sensible reading: a name and a tap
-    /// opens them, no name and a tap fills the court, and no tap is the design's flat capsule
-    /// either way. A caller passing an action for a nameless pill means "let them fix it"; there is
-    /// nothing else it could mean. The one thing the inference pins that a caller might want to
-    /// vary is the VoiceOver hint, which is why it is worded about the *court* and not about
-    /// whichever screen is asking.
-    private var isInvitation: Bool { name == nil && action != nil }
 
     /// The disc grows with the reader's type size, or the initials inside it outgrow the circle
     /// and spill over the edge. `.footnote` is the ramp the 12pt initials ride.
     @ScaledMetric(relativeTo: .footnote) private var avatarSize = OverviewTheme.coachAvatar
-    /// The `+` rides the same ramp as the initials it replaces, so the two states of the disc grow
-    /// at one rate and the pill keeps its height whichever it is drawing.
-    @ScaledMetric(relativeTo: .footnote) private var plusSize = OverviewTheme.coachPlusGlyph
 
     var body: some View {
         if let action {
@@ -66,9 +71,7 @@ struct CoachPill: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(name.map { "Coach \($0)" } ?? label)
-            .accessibilityHint(
-                isInvitation ? "Chooses who has this court" : "Opens their staff card"
-            )
+            .accessibilityHint("Opens their staff card")
         } else {
             // The disc says nothing a reader can use and the name is already in the label, so
             // the pill is one element with one line rather than a disc and a word.
@@ -80,60 +83,25 @@ struct CoachPill: View {
 
     private var pill: some View {
         HStack(spacing: Spacing.small) {
-            if isInvitation {
-                plusDisc
-            } else {
-                // The type is pinned to the disc's *drawn* size rather than to the grown one, so
-                // `initials(forAvatarSize:)` cannot cross one of its weight buckets as the disc
-                // scales and hand a coach bolder initials than the design draws.
-                InitialsAvatar(
-                    initials,
-                    size: avatarSize,
-                    font: .initials(forAvatarSize: OverviewTheme.coachAvatar)
-                )
-            }
+            // The type is pinned to the disc's *drawn* size rather than to the grown one, so
+            // `initials(forAvatarSize:)` cannot cross one of its weight buckets as the disc
+            // scales and hand a coach bolder initials than the design draws.
+            InitialsAvatar(
+                initials,
+                size: avatarSize,
+                font: .initials(forAvatarSize: OverviewTheme.coachAvatar)
+            )
 
+            // `inkWarm` for a name and `inkFaint` for nobody. Faint grey would read as disabled on
+            // a control; this pill is not one, which is exactly what makes it the right colour.
             Text(label)
-                .typeStyle(.chipSoft, color: labelColour)
+                .typeStyle(.chipSoft, color: name == nil ? Theme.inkFaint : Theme.inkWarm)
                 .lineLimit(1)
         }
         .padding(.leading, OverviewTheme.coachPillInset)
         .padding(.trailing, OverviewTheme.coachPillTrailing)
         .padding(.vertical, OverviewTheme.coachPillInset)
         .background(OverviewTheme.coachPillFill, in: Capsule(style: .continuous))
-    }
-
-    /// The `+` an empty, fillable pill wears where a face would go.
-    ///
-    /// `AvatarTone.tinted`'s pair — an `accentTint` disc with an `accent` mark — rather than a
-    /// fourth tone or a bare glyph. It is the tone the app already spends on the one person in a
-    /// list who is different, it sits on the same `hairlineFaint` capsule without a border to hold
-    /// it, and it keeps the disc a disc: a pill that dropped the circle when the coach was missing
-    /// would change shape as well as colour, and the row of pills down the screen would stop
-    /// lining up.
-    ///
-    /// Deliberately not `AccentDisc`, which carries a ring and is the app's empty-state *mark* —
-    /// 52pt above a headline. Half an inch of it inside a capsule would read as a second, smaller
-    /// empty state sitting on a card.
-    private var plusDisc: some View {
-        Circle()
-            .fill(Theme.accentTint)
-            .frame(width: avatarSize, height: avatarSize)
-            .overlay {
-                Image(systemName: "plus")
-                    .font(.system(size: plusSize, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-            }
-            .accessibilityHidden(true)
-    }
-
-    /// `inkWarm` for a name, `inkFaint` for a court nobody has — and the accent once that pill is
-    /// something to press. Faint grey on a control reads as disabled, which is the reading
-    /// `OverviewCourtCard.overflowRow` records about the `+N more` line it inherited from the
-    /// design for the same reason: it was right while the line was a label.
-    private var labelColour: Color {
-        if isInvitation { return Theme.accentDark }
-        return name == nil ? Theme.inkFaint : Theme.inkWarm
     }
 }
 
@@ -143,9 +111,8 @@ struct CoachPill: View {
     VStack(alignment: .leading, spacing: Spacing.medium) {
         CoachPill(name: "Nass") {}
         CoachPill(name: "You") {}
-        // The two empty states, which are two different claims: a court that can be filled in from
-        // here, and one that cannot.
-        CoachPill(name: nil) {}
+        // Nobody on it, which this pill only ever reports. `CourtCoachLine` is the one that
+        // offers to fix it.
         CoachPill(name: nil)
     }
     .padding(Spacing.bar)
@@ -153,12 +120,11 @@ struct CoachPill: View {
     .background(Theme.surface)
 }
 
-/// The size the app caps Dynamic Type at. The disc and the `+` inside it ride one ramp, so the
-/// two pills either side of the empty one should still be the same height as it.
+/// The size the app caps Dynamic Type at. The disc rides the initials in it, so the empty pill
+/// should still be exactly as tall as the named one beside it.
 #Preview("Coach pill — accessibility1") {
     VStack(alignment: .leading, spacing: Spacing.medium) {
         CoachPill(name: "Nass") {}
-        CoachPill(name: nil) {}
         CoachPill(name: nil)
     }
     .padding(Spacing.bar)

@@ -12,23 +12,38 @@
 //  then everything else under "Other courts". An admin has no court of their own, so the two
 //  headings fall away and the list is simply every court in rank order — which is `8i`, exactly.
 //
-//  Every card lists its kids. The design draws exactly one detailed card per frame and this
-//  screen took that literally: it named a single "detailed" court and handed every other card
+//  ── The two frames are two shapes, not one shape twice ───────────────────────────────────────
+//
+//  This is the difference the screen was missing. `8j`'s caption is "Your court first, the rest
+//  quiet", and *quiet* is drawn: your own court is a full card with its roster, and the others are
+//  three one-line rows inside a single card — a label, an activity, a face and a caret, no kids.
+//  The screen drew a full card for every court in both frames, which made "yours" a border colour
+//  rather than a difference in what you are being shown.
+//
+//  So there are two branches over the same list of courts, and which one runs is `myCourt`:
+//
+//      admin, no court of their own   ->  `8i`   every court as an `OverviewCourtCard`
+//      standing on a court            ->  `8j`   yours as a card, the rest as `CondensedCourtRow`
+//
+//  Every full card lists its kids. The design draws exactly one detailed card per frame and this
+//  screen once took that literally: it named a single "detailed" court and handed every other card
 //  `.none`, so on a twelve-court morning eleven of them said how many kids were there and not
 //  one name. Which court a child is on is the question Overview exists to answer. Each card
-//  carries its own list now, folded to `OverviewTheme.rosterPreview` names with a `+N more` that
-//  opens it in place — the design's frames survive as the folded state of a screen that can now
-//  also be opened.
+//  carries its own list, folded to `OverviewTheme.rosterPreview` names with a `+N more` that opens
+//  it in place — the design's frames survive as the folded state of a screen that can now also be
+//  opened.
 //
 //  ── The two writes this screen offers ────────────────────────────────────────────────────────
 //
 //  It had none, and was a read of a morning nobody could act on. It has two now, and they are the
 //  two states it was already drawing and could not fix: a court with no coach (`CourtCoachPicker`,
-//  behind the `+` on an empty pill) and a day with no blocks (`BlockEditorSheet`, behind the call
-//  to action). Deliberately no more than that. Every other gap on this screen already belongs to a
-//  screen that owns it — a court's status to the court screen, a block's coaches to the editor on
-//  Schedule — and turning each of them into an entrance is how a screen you read becomes a screen
-//  you administer.
+//  behind the design's own "Add a coach") and a day with no blocks (`BlockEditorSheet`, behind the
+//  call to action). Deliberately no more than that. Every other gap on this screen already belongs
+//  to a screen that owns it — a court's status to the court screen, a block's coaches to the editor
+//  on Schedule, a spare place on a court to Groups — and turning each of them into an entrance is
+//  how a screen you read becomes a screen you administer. `CourtCapacityBadge` records the closest
+//  call: the design draws its "2 spots" with the same dashed `+` that fills the coach slot, and it
+//  is a reading all the same.
 //
 
 import SwiftUI
@@ -81,11 +96,29 @@ struct OverviewScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // Once per pass, for every court at the venue. See `TodayCourts.rosters(in:day:)` for
-        // why this is built here and handed down rather than asked for inside each card.
-        let rosters = store.camp.map {
-            TodayCourts.rosters(in: $0, day: store.today, venueID: store.readVenueID)
+        // Which court is yours, and therefore which frame this pass is drawing. Bound rather than
+        // read as computed properties: `otherCourts` was a computed property read twice on the
+        // `8j` path — once to ask whether the heading has anything under it and once by the card
+        // itself — and each read filtered the venue's whole court list and re-sorted it against
+        // the running block. It is also what decides how much of the work below is needed at all.
+        let mine = myCourt
+        let rest = otherCourts(besides: mine)
+
+        // Once per pass, for every card that will draw one, and read out of the camp exactly once
+        // between them. See `TodayCourts.rosters(in:day:venueID:courts:)` and
+        // `capacities(in:venueID:)` for why both are built here and handed down rather than asked
+        // for inside each card.
+        //
+        // On `8j` only your own court draws a list — the rest are `CondensedCourtRow`s — so the
+        // walk is narrowed to it. On `8i` every card draws one and `nil` takes the venue.
+        let camp = store.camp
+        let venueID = store.readVenueID
+        let rosters = camp.map {
+            TodayCourts.rosters(
+                in: $0, day: store.today, venueID: venueID, courts: mine.map { [$0.id] }
+            )
         } ?? [:]
+        let capacities = camp.map { TodayCourts.capacities(in: $0, venueID: venueID) } ?? [:]
 
         return VStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -120,18 +153,28 @@ struct OverviewScreen: View {
 
                     theBlock
 
-                    if let myCourt {
-                        card(for: myCourt, isMine: true, from: rosters)
+                    if let mine {
+                        // `8j`. Yours in full, everything else condensed into one card of rows.
+                        card(
+                            for: mine, isMine: true,
+                            from: rosters, capacities: capacities
+                        )
                         // Only when there are some. A venue with one court, and it is yours, used
                         // to draw "OTHER COURTS" over nothing at all — a heading VoiceOver
                         // announces as a landmark leading to an empty region.
-                        if !otherCourts.isEmpty {
+                        if !rest.isEmpty {
                             otherCourtsHeading
+                            otherCourtsCard(rest)
                         }
-                    }
-
-                    ForEach(otherCourts) { court in
-                        card(for: court, isMine: false, from: rosters)
+                    } else {
+                        // `8i`. No court is yours, so there is no "rest" to keep quiet — every
+                        // court is one an admin is responsible for and gets the full card.
+                        ForEach(rest) { court in
+                            card(
+                                for: court, isMine: false,
+                                from: rosters, capacities: capacities
+                            )
+                        }
                     }
 
                     if courts.isEmpty {
@@ -211,8 +254,12 @@ struct OverviewScreen: View {
     /// `preferring` is a sort and not a filter; see `OverviewNow`. On the blocks the app writes
     /// today `courtIDs` is always empty and this is the identity, which is exactly what it should
     /// be until the editor that populates the column lands.
-    private var otherCourts: [CourtCard] {
-        let rest = myCourt.map { mine in courts.filter { $0.id != mine.id } } ?? courts
+    ///
+    /// Takes `mine` rather than reading `myCourt` itself, so `body` can resolve the pair once and
+    /// hand both down — the two questions are one decision, and asking them separately is what let
+    /// this get evaluated twice a pass.
+    private func otherCourts(besides mine: CourtCard?) -> [CourtCard] {
+        let rest = mine.map { mine in courts.filter { $0.id != mine.id } } ?? courts
         return now?.preferring(rest) ?? rest
     }
 
@@ -220,7 +267,10 @@ struct OverviewScreen: View {
 
     /// One card, with its court's list already cut to what the card should draw.
     private func card(
-        for court: CourtCard, isMine: Bool, from rosters: [Group.ID: CourtRoster]
+        for court: CourtCard,
+        isMine: Bool,
+        from rosters: [Group.ID: CourtRoster],
+        capacities: [Group.ID: Int]
     ) -> some View {
         let isExpanded = expandedCourtIDs.contains(court.id)
         let roster = TodayCourts.roster(
@@ -233,6 +283,10 @@ struct OverviewScreen: View {
         return OverviewCourtCard(
             card: court,
             isMine: isMine,
+            // Nil on a closed court and on one the camp graph has no group for, which draws no
+            // reading at all rather than "0 of 0". `CourtCapacity.reading(for:capacity:)` owns
+            // that rule so the card does not have to restate it.
+            capacity: CourtCapacity.reading(for: court, capacity: capacities[court.id]),
             roster: roster,
             isRosterExpanded: isExpanded,
             onOpenCoach: coachAction(for: court),
@@ -258,12 +312,32 @@ struct OverviewScreen: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    /// What the coach pill does, which is now two different things.
+    /// `8j`'s second half: every court that is not yours, one line each, in one card.
     ///
-    /// A court with a coach opens their staff card, as before. A court with **nobody** opens the
-    /// picker that puts somebody on it — the pill draws itself as a `+` when it is handed an action
-    /// with no name, so this closure is the whole of the difference between an inert grey capsule
-    /// and the way to fix what it is complaining about.
+    /// A `Card` of rows rather than a card each, which is what the frame draws and what makes the
+    /// section read as "the rest" instead of as four more things competing with yours. `Card`
+    /// divides its children by default, so the `border-top:1px solid #F2F3F6` the design puts
+    /// between the rows arrives for free and never above the first.
+    ///
+    /// No roster on these, deliberately, and it is the one place this screen *stops* showing kids.
+    /// The argument for every card listing its own is that a coach cannot otherwise find a child
+    /// without leaving Overview; on your own screen that reasoning points the other way, because
+    /// the card that has your kids on it is right above and the caret on each row opens the court
+    /// whose kids you are after.
+    private func otherCourtsCard(_ rest: [CourtCard]) -> some View {
+        Card(radius: OverviewTheme.cardRadius) {
+            ForEach(rest) { court in
+                CondensedCourtRow(card: court) { store.pushedScreen = .court(court.id) }
+            }
+        }
+    }
+
+    /// What the coach line does, which is two different things.
+    ///
+    /// A court with a coach opens their staff card. A court with **nobody** opens the picker that
+    /// puts somebody on it — `CourtCoachLine` draws itself as a dashed `+` and the design's own
+    /// "Add a coach" when it is handed an action with no name, so this closure is the whole of the
+    /// difference between a line that reports a hole and one that fills it.
     ///
     /// A card carrying a coach id the camp cannot resolve still gets nothing, which is the rule
     /// that was already here and it survives for a sharper reason than before: a stale name has
@@ -271,12 +345,12 @@ struct OverviewScreen: View {
     /// take it off whoever the read thinks is on it.
     ///
     /// **The court's standing coach wins over the block's, deliberately.** `OverviewNow` reads
-    /// `block.coachIDs` and draws it a few cards up; this pill reads `coaches.group_id`, and when
-    /// they disagree the pill keeps saying what the court says. They answer different questions —
+    /// `block.coachIDs` and draws it a few cards up; this line reads `coaches.group_id`, and when
+    /// they disagree the line keeps saying what the court says. They answer different questions —
     /// who has this court all day, against who is running this one block, which can be two people
-    /// on a block that spans three courts — and the deciding argument is that this pill is now a
+    /// on a block that spans three courts — and the deciding argument is that this line is a
     /// control over exactly one of them. Let the block's coaches win here and the `+` would write
-    /// `coaches.group_id`, the pill would go on reading `schedule_block_coaches`, and assigning
+    /// `coaches.group_id`, the line would go on reading `schedule_block_coaches`, and assigning
     /// somebody would appear to do nothing at all.
     private func coachAction(for court: CourtCard) -> (() -> Void)? {
         if let coachID = court.coachID {
