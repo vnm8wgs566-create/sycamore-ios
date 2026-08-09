@@ -53,6 +53,19 @@ struct OnboardingFlowView: View {
     /// Where a walk-in lands — the first venue, which is where the design puts the under-11s.
     private var venueName: String { shape.venues.first?.name ?? "the camp" }
 
+    /// What `8c`'s grey line names, off the draft rather than off the shape.
+    ///
+    /// `CampShape` carries the venues and the two rates; the name is `CampDraft`'s, and the draft
+    /// is the store's because it survives the two screens that collect it. Falling back to the
+    /// venue keeps the line honest in the one state that can reach here without a name — a preview
+    /// that seeds a shape and no draft. Nothing in the flow itself can: `8b`'s "Save the shape" is
+    /// disabled until the camp is named (`CampDraft.isCreatable`), which is what puts a real name
+    /// in the draft before this screen is ever built.
+    private var campName: String {
+        let named = store.campDraft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return named.isEmpty ? venueName : named
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             BringInTheWeekView(
@@ -60,9 +73,17 @@ struct OnboardingFlowView: View {
                 // Composed here rather than inside the screen: `8c` counts kids that are not
                 // written anywhere yet, and the same screen from inside a camp counts a roster.
                 // Only the caller knows which of those it is.
+                //
+                // The **camp** rather than the venue, which is what the frame names — "Nobody added
+                // yet · Northside Tennis Camp", where the same design calls a venue plainly
+                // "Northside". It read `venueName` here and that was the weaker of the two at
+                // exactly this moment in the flow: `8b` does not make anybody name a venue, so the
+                // line said "Nobody added yet · Venue 1" to a person who had just typed the camp's
+                // name two screens ago. `EnrolmentFlowView` still names the venue, because from
+                // inside a camp you arrive from one venue's chip and that is the question you asked.
                 subtitle: handAdded.isEmpty
-                    ? "Nobody added yet · \(venueName)"
-                    : "\(handAdded.count) added by hand · \(venueName)",
+                    ? "Nobody added yet · \(campName)"
+                    : "\(handAdded.count) added by hand · \(campName)",
                 exit: .openCamp,
                 onImported: { imported in
                     file = imported

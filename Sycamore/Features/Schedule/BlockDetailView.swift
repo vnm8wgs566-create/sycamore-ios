@@ -343,11 +343,11 @@ private struct BlockDetailPreview: View {
         let blocks = ScheduleSampleDay.blocks(venueID: SampleData.sycamore.id, coachIDs: coachIDs)
         // The design's clock, so "On now · 41 min left" reads as `8l` draws it whatever the
         // time is on the machine running the preview.
-        let currentID = ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41))?.id
+        let currentIDs = Set(ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41)).map(\.id))
 
         BlockDetailView(
             block: blocks[index],
-            isCurrent: blocks[index].id == currentID,
+            isCurrent: currentIDs.contains(blocks[index].id),
             onClose: {}
         )
         .environment(store)

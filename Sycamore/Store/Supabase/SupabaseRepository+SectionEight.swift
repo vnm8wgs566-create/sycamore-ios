@@ -58,11 +58,41 @@ extension SupabaseRepository: SectionEightData {
                 .eq("day", CampWeek.dateString(for: .today))
                 .order("starts_at")
         )
+        // The courts each block runs on, read exactly as `scheduleBlocks(forVenue:day:campID:)`
+        // reads them — same embedded inner join, same two filters. It is a fifth read in a wave
+        // that already had four, and it is what makes the activity a fact about *this* court: the
+        // block's courts live in `schedule_block_courts`, so a query that stops at
+        // `schedule_blocks` can only ever answer for the venue as a whole.
+        async let blockCourtsTask: [ScheduleBlockCourtRecord] = db.select(
+            Relation.scheduleBlockCourts,
+            .select("block_id,group_id,schedule_blocks!inner(site_id,day)")
+                .eq("schedule_blocks.site_id", venueID)
+                .eq("schedule_blocks.day", CampWeek.dateString(for: .today))
+                .order("created_at")
+        )
         async let awayTask: Set<Player.ID> = awayPlayerIDs(inSites: [venueID], on: .today)
-        let (courtRecords, coachRecords, playerRecords, blockRecords, away) =
-            try await (courtsTask, coachesTask, playersTask, scheduleTask, awayTask)
+        let (courtRecords, coachRecords, playerRecords, blockRecords, blockCourtRecords, away) =
+            try await (
+                courtsTask, coachesTask, playersTask, scheduleTask, blockCourtsTask, awayTask
+            )
 
-        let activity = Self.runningBlock(in: blockRecords)?.title
+        // Records assembled into blocks so the day can be handed to the model's own rule. This
+        // file used to hold a second spelling of "what is running" that walked the records
+        // directly — `runningBlock(in:)`, now deleted — and `ScheduleBlock.running`'s own header
+        // names it as one of the three answers this app once had to one question. The notes and
+        // the coaches are left off deliberately: nothing here reads them, and fetching them to
+        // throw them away would be two more round trips for a title.
+        var courtIDsByBlock: [ScheduleBlock.ID: [Group.ID]] = [:]
+        for record in blockCourtRecords {
+            courtIDsByBlock[record.blockId, default: []].append(record.groupId)
+        }
+        let day = blockRecords.compactMap {
+            ScheduleBlock($0, courtIDs: courtIDsByBlock[$0.id] ?? [])
+        }
+        // One clock reading for the whole venue. Asking per court would let two cards be built
+        // either side of a minute boundary and disagree about which block they are in.
+        let now = TimeOfDay.now()
+
         let coachesByGroup = Dictionary(
             coachRecords.compactMap { record in record.groupId.map { ($0, record) } },
             uniquingKeysWith: { first, _ in first }
@@ -82,7 +112,7 @@ extension SupabaseRepository: SectionEightData {
                 coachID: coach?.id,
                 coachName: coach?.name,
                 playersHere: playersByGroup[record.id]?.count ?? 0,
-                activity: activity,
+                activity: ScheduleBlock.running(on: record.id, in: day, at: now)?.title,
                 status: closedCourts[record.id].map { .closed(reason: $0) } ?? .open
             )
         }
@@ -106,26 +136,17 @@ extension SupabaseRepository: SectionEightData {
         return try await courts(forVenue: court.siteId, campID: campID)
     }
 
-    /// What is on right now: the latest block that has started and has not ended. Blocks arrive
-    /// in time order, so the last match is the current one. A block with no stated end runs until
-    /// the next one starts — which is what "Drop-off" with no end time means on the design's own
-    /// card.
-    private static func runningBlock(in records: [ScheduleBlockRecord]) -> ScheduleBlockRecord? {
-        let parts = Calendar.current.dateComponents([.hour, .minute], from: .now)
-        let clock = TimeOfDay(parts.hour ?? 0, parts.minute ?? 0)
-
-        // The latest block to have started, and then whether it is over. Asking both questions of
-        // every block instead would let an earlier open-ended one match again once the current
-        // block ends — and 8:30 "Drop-off" would be the activity on every court all afternoon.
-        guard let started = records.last(where: { record in
-            TimeOfDay(postgresTime: record.startsAt).map { $0 <= clock } ?? false
-        }) else { return nil }
-
-        guard let endsAt = started.endsAt, let ends = TimeOfDay(postgresTime: endsAt) else {
-            return started
-        }
-        return ends <= clock ? nil : started
-    }
+    // `runningBlock(in:)` was here — a second statement of "what is on right now", walking
+    // `ScheduleBlockRecord`s and reading `Calendar` itself. It is `ScheduleBlock.running(on:in:at:)`
+    // now, called above against blocks assembled from the same records.
+    //
+    // It is not simply that two copies could drift; this one had already drifted, and in the way
+    // the model's header describes. Blocks arrive ordered by `starts_at` and it took `last`, so
+    // between two blocks tied on that minute it silently trusted whatever order Postgres returned
+    // rows within the sort key — and where the tie was a short block beside a long one, "and then
+    // whether it is over" answered *nothing running* for the whole venue while a session was on.
+    // The rule it wanted to state, and the one it did get right, survives on `hasFinished`: a
+    // block with no stated end runs until the next thing in its space starts.
 
     // MARK: - Schedule
 

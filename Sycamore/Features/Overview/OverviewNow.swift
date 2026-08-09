@@ -83,15 +83,40 @@ struct OverviewNow: Hashable, Sendable {
 
 extension OverviewNow {
 
-    /// The block the camp is in the middle of, with its coaches looked up.
+    /// The block the reader is in the middle of, with its coaches looked up.
     ///
     /// `at:` is passed in rather than read off the clock here, so the caller decides what "now"
     /// means — `AppStore.timeOfDay` in the app, a fixed time in a test. `ScheduleBlock.running`
     /// makes the same choice for the same reason, and this is the only place the two are composed.
+    ///
+    /// **`onCourt:` is who is asking.** A venue can now be running two blocks at once — a warm-up
+    /// on Court 1 beside free play on Courts 2–4 — so "the block" is a question with a reader in
+    /// it, and `RunningBlockCard` sits at the top of a screen that already knows whose court it is
+    /// drawing. A coach gets what is on their court and nothing else: nil where they are between
+    /// blocks, even while the rest of the venue is mid-session. Telling somebody on Court 3 that
+    /// the Court 1 warm-up is on is telling them to go and run it.
+    ///
+    /// Nil court is the admin, who is standing on all of them, and gets the first running block in
+    /// the order `running(in:at:)` fixed — the earliest to have started. That is a genuine choice
+    /// and worth naming as one: an admin looking at a venue running two blocks sees one card. The
+    /// alternative is a card that stacks them, which is a design `8i` does not draw and a decision
+    /// for whoever draws it; picking the earliest at least means the card does not change under
+    /// them when a second block starts. `BlockRules.overlap(with:in:)` reports the earliest of its
+    /// clashes for the same want of a better reason, and it is better than array order, which is
+    /// what the venue-wide rule this replaced was quietly using.
     static func resolve(
-        in blocks: [ScheduleBlock], at time: TimeOfDay, staff: [StaffMember]
+        in blocks: [ScheduleBlock], at time: TimeOfDay, staff: [StaffMember],
+        onCourt court: Group.ID? = nil
     ) -> OverviewNow? {
-        guard let block = ScheduleBlock.running(in: blocks, at: time) else { return nil }
+        // One branch runs, so the day is walked once either way — and the court case goes through
+        // the model's own `running(on:in:at:)` rather than re-spelling "which of these claims my
+        // court" here, which is the copy this whole change exists to avoid making.
+        let found = if let court {
+            ScheduleBlock.running(on: court, in: blocks, at: time)
+        } else {
+            ScheduleBlock.running(in: blocks, at: time).first
+        }
+        guard let block = found else { return nil }
 
         // Indexed rather than searched per id: `coachIDs` is short but `staff` need not be, and
         // this runs on every tick of the clock. `uniquingKeysWith` because a duplicate id in

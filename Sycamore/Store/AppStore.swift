@@ -477,6 +477,23 @@ extension AppStore {
 
     var todayAssignment: TodayAssignment? { selectedMembership?.todayAssignment }
 
+    /// The court the person reading is standing on. Nil for an admin, and for a coach nobody has
+    /// given a court to.
+    ///
+    /// Their staff row first and today's assignment second, which is the order `OverviewScreen`
+    /// established when it was the only place asking: the camp graph is the fuller record, and the
+    /// membership's assignment is what a person carries when they are working a camp their staff
+    /// row has not caught up with.
+    ///
+    /// Hoisted here because it has a second reader. `OverviewScreen` uses it to decide whose card
+    /// goes under "Your court"; `OverviewView` now needs the same court to ask
+    /// `ScheduleBlock.running(on:in:at:)` which block that card is about — and the one thing worse
+    /// than duplicating the fallback would be duplicating it and having the two disagree, which
+    /// would put a coach's own court at the top of the screen under somebody else's block.
+    var myCourtID: Group.ID? {
+        myStaffRecord?.groupID ?? todayAssignment?.groupID
+    }
+
     /// `2 camps on this account`
     var switchCampDetail: String {
         "\(memberships.count) camp\(memberships.count == 1 ? "" : "s") on this account"

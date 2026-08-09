@@ -121,8 +121,32 @@ struct OverviewView: View {
     /// `store.timeOfDay`, not `TimeOfDay.now()`. The static reads the wall clock inside itself and
     /// nothing observes it; the store's reads `AppClock`, which is `@Observable` and ticks on the
     /// minute — which is what makes this card change over on its own.
+    ///
+    /// `onCourt:` is what makes the card the reader's rather than the venue's, now that a venue
+    /// can be running two blocks at once. See `OverviewNow.resolve`.
     private func runningBlock(in blocks: [ScheduleBlock]) -> OverviewNow? {
-        OverviewNow.resolve(in: blocks, at: store.timeOfDay, staff: store.camp?.staff ?? [])
+        OverviewNow.resolve(
+            in: blocks, at: store.timeOfDay, staff: store.camp?.staff ?? [], onCourt: viewerCourtID
+        )
+    }
+
+    /// The reader's own court — but only when it is one of the courts this screen is drawing.
+    ///
+    /// The venue on screen is `store.readVenueID`, which an admin can switch from any tab, and a
+    /// coach's assignment belongs to whichever venue gave it to them. Passed through unchecked, a
+    /// coach assigned to Court 1 at the swim club would filter the tennis club's blocks by a court
+    /// that is not in them — matching every `.regular` block (they claim their whole venue, and
+    /// `BlockRules.claims` cannot know it is the wrong one) and no `.assigned` block at all. That
+    /// is not a wrong card so much as an arbitrary one.
+    ///
+    /// So the same gate `OverviewScreen` already applies to draw "Your court": a court this venue
+    /// does not have is nobody's court here, and the screen falls back to the admin's reading of
+    /// the morning, which is the one it is drawing anyway.
+    private var viewerCourtID: Group.ID? {
+        guard let mine = store.myCourtID, store.courts.contains(where: { $0.id == mine }) else {
+            return nil
+        }
+        return mine
     }
 
     // What the call to action turns on is `blocks?.isEmpty == true` at the call site above:

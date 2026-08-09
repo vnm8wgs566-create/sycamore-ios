@@ -6,15 +6,16 @@
 //
 //  The amber family moved to `Theme` (it is section 8's third severity step and three screens
 //  outside this branch reach for it), so what is left here is genuinely local: two green-greys
-//  that appear once each on `8u`, one grey the palette only names as a rule, the corner radius
-//  section 8 draws its cards at, the two gaps its scroll views run on, and the dozen measurements
-//  `8b` draws its "No venues yet" state at.
+//  that appear once each on `8u`, two greys the palette only names as a rule, the corner radius
+//  most of section 8 draws its cards at, the two gaps its scroll views run on, the dozen
+//  measurements `8b` draws its "No venues yet" state at, and the four `8c` needs on top of them.
 //
 //  They live beside the screens rather than in `Theme`/`Radius`/`Spacing` on purpose. This branch
 //  owns five of section 8's twenty-one screens; dropping tokens into the files every feature
 //  reads makes them the merge conflict for the whole section. Hoist them once section 8 lands —
-//  the radius especially, because *every* card in the section is 16 and the shared `Radius.card`
-//  still reads 17 from the design this app shipped with.
+//  the radius especially, because most of the section draws its cards at 16 while the shared
+//  `Radius.card` still reads 17 from the design this app shipped with. (`8c` is the exception and
+//  draws 18; see `cardRadius`.)
 //
 //  Light values are the design's, unchanged. Dark values are derived the way `Theme` derives its
 //  own: the hue holds and the text end brightens far enough to clear 4.5:1 on a near-black card.
@@ -41,18 +42,44 @@ enum OnboardingTheme {
     /// where it means a list rule. Naming the role here keeps the feature hex-free and makes the
     /// collision visible — if the two ever need to move apart, this is the line that splits.
     static let iconPlate = Theme.hairlineFaint
+
+    /// `#F4F5F7` — the plate under XLSX and CSV on `8c`'s drop plate.
+    ///
+    /// The same grey as `iconPlate`, twelve points further up the same screen, and a second name
+    /// for it rather than a second caller of that one. `iconPlate` is a tile a glyph is centred on;
+    /// this is a chip a word sits in. The two agreeing today is the design drawing one neutral, not
+    /// a rule that they must move together — and a chip that wanted to go a shade cooler should not
+    /// have to take the by-hand row's tile with it.
+    ///
+    /// Deliberately not `Theme.fill`, whose own doc names "inert chips" as one of its roles and
+    /// which is what `SetupView`'s read-only court chip uses. That is the right *role* and the
+    /// wrong colour: `fill` is `#F1F2F5` and the design draws this plate `#F4F5F7`. A three-value
+    /// difference is still a difference the design made on purpose, and borrowing the nearer name
+    /// would be choosing the label over the drawing.
+    static let formatChip = Theme.hairlineFaint
 }
 
 enum OnboardingMetrics {
 
-    /// `border-radius:16px` — every card in section 8. `Radius.card` is 17, from the design this
-    /// app shipped with, and `Radius.button` is 16 by coincidence of role rather than of intent.
+    /// `border-radius:16px` — the card corner across most of section 8. `Radius.card` is 17, from
+    /// the design this app shipped with, and `Radius.button` is 16 by coincidence of role rather
+    /// than of intent.
+    ///
+    /// It read "every card in section 8" until `8c` was drawn from the file. That frame carries no
+    /// 16 at all: its dashed plate, its action card and therefore the card under them are 18, which
+    /// is `Radius.cardLarge`. `8d` and `8e` are 16 throughout and `8b` draws one of each, so this
+    /// is the majority corner rather than the universal one.
     static let cardRadius: CGFloat = 16
 
     /// The `gap:13px` between blocks in `8b`'s and `8u`'s scroll views.
     static let blockGap: CGFloat = 13
 
-    /// The `gap:9px` between cards in `8c`'s, `8d`'s and `8e`'s.
+    /// The `gap:9px` between cards in `8d`'s and `8e`'s scroll views.
+    ///
+    /// It named `8c` too until that frame was drawn from the file rather than from memory. `8c`
+    /// runs at `gap:12px` and opens at `padding:18px` where its two siblings open at 14 — it holds
+    /// three blocks where they hold six or more, so the design lets it breathe. `Spacing.medium`
+    /// is that 12; there is no `8c` constant here because the shared table already had the number.
     static let cardGap: CGFloat = 9
 
     /// The 10pt `8b` and `8u` leave under the last thing in the column, on top of whatever the
@@ -148,6 +175,43 @@ enum OnboardingMetrics {
     /// `square.split.2x2`. Pinning the column is what keeps the three lines aligned — the same fix
     /// `SettingsRow.swift:81-83` makes, and 24 is what the widest of these three needs at 16.
     static let holdsRowSlot: CGFloat = 24
+
+    // MARK: `8c` — the drop plate
+    //
+    // Almost nothing, because `8c`'s dashed plate and `8b`'s "No venues yet" plate are the *same
+    // drawn object*: 52pt mark, 24pt glyph, radius 17, `padding:28px 20px 24px`, 15 down to the
+    // serif heading, 8 to the sentence, 20 to a 50pt call to action. Eleven numbers, eleven
+    // matches. So `8c` calls the `empty*` constants below rather than restating them, and the two
+    // frames move together, which is what a house style is for.
+    //
+    // Those constants read "empty" at `8c`'s call site and `8c` is not an empty state. That is a
+    // name landing before its second caller did, not a disagreement — `8b` was built first. Rename
+    // the group to what it draws (a `plate*` family) when section 8 lands and `VenueEmptyState` is
+    // in reach; it is out of this unit's hands today.
+
+    /// `max-width:270px` — how wide "We read names, ages and genders" runs before it wraps.
+    ///
+    /// The one measurement of the plate the two frames do *not* share: `8b` caps its sentence at
+    /// 272. Two points is nothing to look at and everything to transcribe honestly — a design that
+    /// draws two numbers gets two constants, and collapsing them here would quietly decide that
+    /// one of the frames was a typo.
+    static let dropCopyWidth: CGFloat = 270
+
+    /// `margin-top:15px` from the sentence down to the format chips.
+    ///
+    /// The same 15 as `emptyTitleGap` and not that constant: this is copy dropping to a row of
+    /// labels, where that one is a mark dropping to a heading. The design drawing one number for
+    /// both is where the plate's rhythm comes from, not a rule that they move together.
+    static let dropChipsGap: CGFloat = 15
+
+    /// `padding:5px 11px` on the XLSX / CSV chips.
+    ///
+    /// Deliberately not grown to the 44pt minimum, and deliberately not a `Chip`: nothing here is
+    /// tappable. They are a label on the plate saying what the picker will let through, sitting
+    /// where the design puts the answer to "will it take mine?" — above the button rather than
+    /// after it.
+    static let formatChipPaddingVertical: CGFloat = 5
+    static let formatChipPaddingHorizontal: CGFloat = 11
 }
 
 extension TypeStyle {

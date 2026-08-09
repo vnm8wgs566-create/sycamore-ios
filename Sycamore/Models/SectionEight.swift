@@ -12,6 +12,20 @@
 //  Each maps onto exactly one relation in Postgres — `today_courts`, `schedule_blocks`,
 //  `inbox_items` — and the field names are the column names so the decoding stays boring.
 //
+//  ── One reach upwards, deliberately ──────────────────────────────────────────────────────────
+//
+//  `ScheduleBlock.running(in:at:)` calls `BlockRules` (`Features/Schedule/BlockEditorDraft.swift`),
+//  which is a file in a feature. That is the wrong way round for `Models/` and it is the lesser of
+//  the two wrongs: the alternative is a second copy of "do these two blocks contend for the same
+//  courts", and the whole reason `running` lives in the model is that three screens each having
+//  their own answer to a question is how the tabs came to disagree in the first place.
+//
+//  The repair is the one PR #53 wrote down as a follow-up when it put the rule where it did:
+//  `BlockRules` holds four mirrors of SQL CHECKs and one rule that is not a mirror of anything,
+//  and the clash half belongs here beside `running` rather than beside the editor's validation.
+//  It is a move, not a rewrite, and it wants its own change — `Features/Schedule/**` is a good
+//  deal of surface to disturb for a call that compiles perfectly well today.
+//
 
 import Foundation
 
@@ -39,7 +53,26 @@ struct CourtCard: Identifiable, Hashable, Sendable {
     /// `groups.activity` when the court has one, and the running block's title when it has not.
     /// Both, in that order, because `8i` draws a header reading "Skills rotation · until 10:30"
     /// over four cards of which only one agrees with it: an activity that could only come from the
-    /// schedule can title exactly one of those cards correctly.
+    /// schedule can title exactly one of those cards correctly. `CourtScreen` is where the two are
+    /// composed; a repository supplies the second.
+    ///
+    /// **The block half is `ScheduleBlock.running(on:in:at:)` — per court, and it was not.** Both
+    /// repositories resolved one running block for the venue and stamped its title onto every card
+    /// in the list, which is the header's sentence written four times over: the exact reading the
+    /// paragraph above says the field exists to avoid. A warm-up on Court 1 has nothing to say
+    /// about Courts 2–4, and titling them with it is the card claiming a session that court is not
+    /// in.
+    ///
+    /// `today_courts` (`20260805141707:161`) carries the same assumption by omission — it selects
+    /// the coach, the label, the rank and the head-count, and no activity at all, so anything
+    /// reading it has to fetch the schedule separately and is left to decide for itself how widely
+    /// the answer applies. That is exactly where the venue-wide stamp came from. The view is
+    /// granted (`20260805152045:30`) but unused: `SupabaseRepository.courts(forVenue:campID:)`
+    /// assembles the card from `groups`, `coaches`, `players` and `attendance` instead, and says
+    /// why. **No migration here.** Adding a column to a view nothing reads would be schema written
+    /// against a hypothesis; the note belongs with whoever moves the app back onto it, and this is
+    /// it — a court's activity is a per-court question, and a single-activity view cannot answer
+    /// it whatever the grants say.
     var activity: String?
     var status: CourtStatus
 
@@ -205,7 +238,7 @@ struct BlockNote: Identifiable, Hashable, Sendable, Codable {
 
 extension ScheduleBlock {
 
-    /// The block a camp is in the middle of: the last one that has started, unless it has ended.
+    /// Every block the camp is in the middle of, earliest first.
     ///
     /// One rule, in the model, because there were three — Overview asked the clock, the Postgres
     /// repository asked the clock again in its own words, and Schedule asked block *status*
@@ -214,14 +247,117 @@ extension ScheduleBlock {
     ///
     /// It is a fact about a list of blocks, not a drawing decision, which is why it lives here
     /// rather than in whichever screen needed it first.
-    static func running(in blocks: [ScheduleBlock], at time: TimeOfDay) -> ScheduleBlock? {
+    ///
+    /// ── WHY IT IS A LIST ──────────────────────────────────────────────────────────────────────
+    ///
+    /// This returned one block, and said so: *the last one that has started, unless it has ended*.
+    /// That sentence was true while a venue could only be doing one thing at a time, and
+    /// `ScheduleBlockKind.assigned` with `courtIDs` (`SectionEight.swift:143-154`) is exactly the
+    /// pair that stopped it being true. "Warm-up 9:00–9:15 on Court 1" beside "Free play
+    /// 9:00–10:00 on Courts 2–4" is a morning the schedule is now meant to be able to write down —
+    /// `BlockRules.sharesSpace(_:_:)` is where that is stated — and no single block is the answer
+    /// to what is running at ten past nine.
+    ///
+    /// Asked for one anyway, it did not merely pick a side; it could answer **nothing at all**.
+    /// The two blocks tie on `startsAt`, `max(by:)` keeps whichever the array holds first, and if
+    /// that was the short one the "unless it has ended" then threw the pair away — so at 9:20 the
+    /// app reported an empty morning while twenty-two children were on Courts 2–4. Which of the
+    /// two won depended on array order, and `scheduleBlocks(forVenue:day:campID:)` orders by
+    /// `starts_at` and nothing else. Overview's `RunningBlockCard` vanished and `8k`'s "On now"
+    /// went out mid-session, on some days and not others.
+    ///
+    /// ── WHAT ENDS A BLOCK ─────────────────────────────────────────────────────────────────────
+    ///
+    /// Three clauses now, and the middle one is where the old rule hid an assumption:
+    ///
+    ///   - it has **started** — `startsAt <= time`;
+    ///   - it has not **finished** — see `hasFinished(_:by:amongst:)`;
+    ///   - and that is all. There is no "latest one wins" left, because that was never a fact
+    ///     about a block. It was a proxy for *blocks do not overlap*, which was true only while
+    ///     the app refused an overlap — and PR #53 is the change that stopped refusing them.
+    ///
+    /// The proxy is not merely redundant now, it is wrong: "Warm-up 9:00–10:00" interrupted by
+    /// "Handover 9:30–9:40" on the same court left `max(by:)` holding the handover, which by 9:45
+    /// has ended — and the warm-up, which has twenty minutes left on it, was reported as over.
+    /// Same bug, different arrangement. A stated end is now the only thing that ends a block that
+    /// stated one.
+    ///
+    /// ── ORDER ─────────────────────────────────────────────────────────────────────────────────
+    ///
+    /// Sorted, because the input is not. The caller's array order was the deciding vote in the bug
+    /// above and must not be the deciding vote in anything again — so this sorts by start and
+    /// breaks the tie on `id.uuidString`, the same arbitrary-but-fixed tie-break
+    /// `BlockEditorDraft.block()` uses on `coachIDs` and `courtIDs`. Two blocks that genuinely
+    /// start at the same minute on the same court are a clash the schedule flags
+    /// (`BlockRules.overlap(with:in:)`); what matters here is only that they do not swap places
+    /// between one read and the next.
+    static func running(in blocks: [ScheduleBlock], at time: TimeOfDay) -> [ScheduleBlock] {
         blocks
-            .filter { $0.startsAt <= time }
-            .max { $0.startsAt < $1.startsAt }
-            .flatMap { block in
-                guard let ends = block.endsAt, ends <= time else { return block }
-                return nil
-            }
+            .filter { $0.startsAt <= time && !hasFinished($0, by: time, amongst: blocks) }
+            .sorted { ($0.startsAt, $0.id.uuidString) < ($1.startsAt, $1.id.uuidString) }
+    }
+
+    /// What is running on one court: the block the person standing on it is in the middle of.
+    ///
+    /// The question every screen scoped to a court actually has — Overview's card is about *your*
+    /// court, and `CourtCard.activity` is a column on one court rather than a banner over the
+    /// venue. Nil is an ordinary answer and the one the old venue-wide rule could not give: a
+    /// coach on Court 3 during a warm-up on Courts 1–2 is between blocks, and telling them the
+    /// warm-up is on would be telling them to go and run it.
+    ///
+    /// **One court can have more than one block on it, and this returns the earliest-started.**
+    /// Two blocks that both claim this court share space by definition, so an open-ended one is
+    /// finished by whichever starts next — but a block that *stated* an end keeps it, so "Warm-up
+    /// 9:00–10:00" and "Handover 9:30–9:40" on the same court are both genuinely running at 9:35.
+    /// That is a clash, and the schedule flags it as one (`BlockRules.overlap(with:in:)`); it is
+    /// not this rule's job to pick a winner and pretend there was never a question.
+    ///
+    /// Earliest rather than most-recently-started, which is the tempting alternative — the
+    /// handover is arguably the more specific answer. It is a card that does not change under
+    /// somebody: the warm-up is what a coach was told is on, and swapping it for a ten-minute
+    /// handover and back again is the screen flickering through a conflict rather than reporting
+    /// one. It also keeps this the same choice `OverviewNow.resolve` makes for an admin and
+    /// `BlockRules.overlap` makes for a clash, so the three cannot name different blocks.
+    static func running(
+        on court: CourtGroup.ID, in blocks: [ScheduleBlock], at time: TimeOfDay
+    ) -> ScheduleBlock? {
+        running(in: blocks, at: time).first { BlockRules.claims($0, court: court) }
+    }
+
+    /// Whether `block` is behind us by `time`.
+    ///
+    /// **A stated end is an end.** A block that says it runs until 10:00 is running at 9:45,
+    /// whatever else the morning has started and finished in the meantime.
+    ///
+    /// **An unstated end is implied by the next thing in the same space.** `ends_at` is nullable
+    /// by design — `20260805074039:27-28` records that the design's 8:30 "Drop-off · done" has no
+    /// stated end and "inventing one would put a time on screen that nobody entered" — so
+    /// something has to close it, and the honest candidate is whatever starts next where it was
+    /// standing. Read any other way, 8:30 "Drop-off" is the activity on every court all afternoon;
+    /// that exact sentence is what `SupabaseRepository+SectionEight.swift` warned about when it
+    /// kept its own copy of this rule, and it is the one thing the old spelling got right.
+    ///
+    /// The superseding block need only have **started**, not still be running. Once the nine
+    /// o'clock huddle has begun, the drop-off is over — and stays over after the huddle ends,
+    /// rather than springing back to life because nothing newer has taken the venue. An
+    /// open-ended block that resumed at the end of every later block is the "all afternoon" bug
+    /// again, arriving in instalments.
+    ///
+    /// `sharesSpace` and not a court comparison written out here: the four cases it settles —
+    /// two regulars, one of each, assigned blocks that share a court, assigned blocks that do not
+    /// — are the same four cases whether the question is *is this a clash* or *is this over*, and
+    /// they belong in one place. It is also what makes the venue and day guards apply: a block on
+    /// Tuesday cannot end one on Wednesday, however the caller assembled the list.
+    private static func hasFinished(
+        _ block: ScheduleBlock, by time: TimeOfDay, amongst day: [ScheduleBlock]
+    ) -> Bool {
+        if let ends = block.endsAt { return ends <= time }
+        // Two integer compares before the set-building one, the ordering
+        // `BlockRules.overlaps(_:_:)` states and for the same reason: on a day that is simply in
+        // order — which is most days — no set is ever built.
+        return day.contains {
+            $0.startsAt > block.startsAt && $0.startsAt <= time && BlockRules.sharesSpace($0, block)
+        }
     }
 }
 

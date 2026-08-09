@@ -235,9 +235,12 @@ struct OverviewScreen: View {
 
     /// The court the person reading this is standing on. Nil for an admin, which is what turns
     /// `8j` back into `8i`.
-    private var myCourtID: Group.ID? {
-        store.myStaffRecord?.groupID ?? store.todayAssignment?.groupID
-    }
+    ///
+    /// `AppStore.myCourtID` rather than the two-way fallback spelled out here, which is where it
+    /// used to live. `OverviewView` needs the same court to resolve `now`, and a screen whose card
+    /// and whose "Your court" heading each worked out whose court it was would be one edit away
+    /// from drawing a coach's own court above a block that is not on it.
+    private var myCourtID: Group.ID? { store.myCourtID }
 
     private var myCourt: CourtCard? {
         guard let myCourtID else { return nil }

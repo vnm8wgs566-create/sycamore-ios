@@ -24,7 +24,9 @@ import SwiftUI
 struct ScheduleBlockCard: View {
 
     let block: ScheduleBlock
-    /// The block the camp is in the middle of. See `ScheduleBlock.running(in:at:)`.
+    /// Whether the camp is in the middle of this block. See `ScheduleBlock.running(in:at:)` — a
+    /// venue can be in the middle of several at once, on courts that do not overlap, so this is
+    /// one card's share of that answer rather than a comparison against a single current block.
     let isCurrent: Bool
 
     /// The block with a finger on its handle, shared with the screen so the list can stop
@@ -461,7 +463,7 @@ private struct ScheduleBlockCardPreviewHarness: View {
     var body: some View {
         // The design's clock, so the preview marks the block `8k` marks rather than whichever one
         // the machine's afternoon happens to land in.
-        let currentID = ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41))?.id
+        let currentIDs = Set(ScheduleBlock.running(in: blocks, at: TimeOfDay(9, 41)).map(\.id))
         // Rebuilt on every pass here, unlike on the screen, and that is the right trade in a
         // preview: there is no clock ticking behind it, and a flag that appeared only after a
         // reload would be the one thing this harness exists to show.
@@ -472,7 +474,7 @@ private struct ScheduleBlockCardPreviewHarness: View {
                 ForEach(blocks) { block in
                     ScheduleBlockCard(
                         block: block,
-                        isCurrent: block.id == currentID,
+                        isCurrent: currentIDs.contains(block.id),
                         resizingID: $resizingID,
                         conflict: conflicts[block.id],
                         onOpen: {},

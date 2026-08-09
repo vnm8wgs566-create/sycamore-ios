@@ -127,7 +127,7 @@ struct BlockEndsAfterStartsTests {
 /// One venue and three courts, and one way to build a block on them.
 ///
 /// File scope so the two suites below share it, which is `OverviewNowTests`' arrangement and has a
-/// sharper reason here: `SectionEight.swift:104-121` records that `ScheduleBlock`'s memberwise
+/// sharper reason here: `SectionEight.swift:137-154` records that `ScheduleBlock`'s memberwise
 /// initialiser is called positionally in three files and that the type only ever grows at the
 /// tail. A second factory is a second place to fix the day a property is added, and two sets of
 /// defaults are two suites that can quietly disagree about what a block *is* while testing one

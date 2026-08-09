@@ -28,6 +28,46 @@
 //  longer than it was — an `.xlsx` is now a file this reads, through `XLSXReader` — and it grew
 //  for both flows at once precisely because there is only one of it.
 //
+//  ---------------------------------------------------------------------------------------------
+//  DRAWN FROM THE FRAME, AND THE THREE PLACES IT IS NOT
+//  ---------------------------------------------------------------------------------------------
+//
+//  The screen above is now transcribed from `design/Sycamore 3a System.dc.html`, the frame badged
+//  `8c` and captioned "Bring in the week". Four things moved: the heading is "Drop the sign-up
+//  list", the two capsules became one full-width button with a text line under it, the accepted
+//  formats are stated as chips before the button rather than in a sentence, and the template
+//  download came out of `FileExampleCard` into an action row beside "Add one by hand" — which is
+//  where the frame puts it, and which is also the only place it reads as an *action* rather than
+//  as the last line of a reference card.
+//
+//  Three things in the frame are deliberately not drawn, each because the app knows something the
+//  drawing does not:
+//
+//  1. **No `PDF` chip.** The frame offers `XLSX · CSV · PDF`. The picker below accepts the first
+//     two and greys out a PDF, for the reason stated at the `.fileImporter` — the text has to come
+//     out server-side and there is no server. A chip is a promise read *before* the tap, so a
+//     third one would be the one lie this screen tells, and it would be found by the person whose
+//     office only sends PDFs, at the moment the picker refuses their file. Two chips, both true.
+//  2. **The header keeps its trailing button.** The frame draws none, because a frame is a
+//     picture and does not have to leave. This tap is what writes the camp in onboarding and what
+//     closes the sheet from inside one; see `Exit`.
+//  3. **"venue" is out of the note.** The frame's line reads "Gender and venue are optional — we
+//     will ask for what is missing", which would advertise a Venue column. Nothing reads one:
+//     `Columns.init?(header:)` has no venue case, so a file carrying one would be silently ignored
+//     and every kid would land in the same place anyway. `FileExampleCard.swift:40-42` refused the
+//     same promise on the card below for the same reason, and this is that decision reaching the
+//     line above it.
+//
+//  What survives underneath is "What a good file looks like". The frame does not draw it — the
+//  frame is one screen tall with `overflow:hidden`, and it spends its height on the on-ramp — but
+//  the card is the only place the **header-row requirement** is stated before a file is chosen,
+//  and that requirement is load-bearing: a header-less file is refused (`IntakeRoster.swift:321`)
+//  rather than read by position, because the first real export it met is laid out
+//  `Last Name, First Name, …` and a positional read would have imported a whole camp backwards.
+//  Taking the frame literally would have deleted the one sentence that stops somebody meeting that
+//  rule by being refused. It is now a scroll below the fold rather than the second thing on the
+//  screen, which is the demotion the frame does argue for, and no further.
+//
 
 import SwiftUI
 import UniformTypeIdentifiers
@@ -79,6 +119,13 @@ struct BringInTheWeekView: View {
     /// that is right there.
     @State private var readError: String?
 
+    /// The cap on the sentence inside the plate, scaled for the reason `VenueEmptyState:55-57`
+    /// gives for its own — a fixed 270 forces four words to the line at the largest sizes.
+    @ScaledMetric(relativeTo: .body) private var copyWidth = OnboardingMetrics.dropCopyWidth
+    @ScaledMetric(relativeTo: .body) private var ctaHeight = OnboardingMetrics.emptyCtaHeight
+    /// The design's `font-size:15px` info glyph, grown with the copy it sits beside.
+    @ScaledMetric(relativeTo: .body) private var noteGlyph: CGFloat = 15
+
     var body: some View {
         VStack(spacing: 0) {
             StatusBarMock()
@@ -91,21 +138,17 @@ struct BringInTheWeekView: View {
         // Cross-platform: `fileImporter` is the SwiftUI wrapper over the document browser and
         // exists on macOS too, so the whole intake path builds for both without a shim.
         //
-        // Separated text and Excel. The list is what the app can actually read, which is what a
-        // picker's `allowedContentTypes` is for: a greyed-out file is the truth told before the
-        // tap, where a file accepted and then refused is the same news delivered worse.
+        // The list is what the app can actually read, which is what a picker's
+        // `allowedContentTypes` is for: a greyed-out file is the truth told before the tap, where a
+        // file accepted and then refused is the same news delivered worse.
         //
-        // `.xlsx` was the missing one and it is the file most offices actually send — this screen
-        // greyed out the only export a camp had, with nothing on screen to say why. It is the
-        // narrow `UTType.xlsx` rather than the broad `.spreadsheet`; see that token for why.
-        //
-        // Deliberately no PDF. Its text needs extracting server-side and there is no server yet,
-        // so the type stays out and the picker greys those files rather than accepting one and
-        // failing. The card above no longer offers one either — it did, and an offer the picker
-        // refuses is a worse way to learn this than a greyed-out file.
+        // Read off `RosterFileFormat` rather than written out, and so are the chips on the plate
+        // above. The two used to be one claim made in two places that agreed because a comment
+        // asked them to; they are now two readings of one list, which is the guarantee this
+        // particular pair needs. That type is also where the absent PDF is argued.
         .fileImporter(
             isPresented: $isChoosingFile,
-            allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .xlsx]
+            allowedContentTypes: RosterFileFormat.allowedContentTypes
         ) { result in
             read(result)
         }
@@ -131,10 +174,19 @@ struct BringInTheWeekView: View {
 
     // MARK: Content
 
+    /// `padding:18px 12px` with `gap:12px`. The gap is wider than the 9 `8d` and `8e` run on — see
+    /// `OnboardingMetrics.cardGap`, which used to claim this screen.
+    ///
+    /// The frame's `padding-bottom` is 96 and is not transcribed. It is clearance under a column
+    /// that cannot scroll — the frame is a fixed 848 with `overflow:hidden`, so the designer's
+    /// bottom padding is the space the last card needs to not touch the bezel. This scrolls, and
+    /// `8d`'s and `8e`'s 88 is `OnboardingMetrics.ctaClearance`, which exists because those two
+    /// float a call to action over the column. Nothing floats here, so the 24 below is the plain
+    /// breathing room and the safe area does the rest.
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: OnboardingMetrics.cardGap) {
-                importCard
+            VStack(alignment: .leading, spacing: Spacing.medium) {
+                dropPlate
 
                 if let readError {
                     Text(readError)
@@ -143,9 +195,10 @@ struct BringInTheWeekView: View {
                         .padding(.horizontal, 4)
                 }
 
-                addByHandRow
+                fileNote
+                actionsCard
 
-                // The 9pt gap this column already runs on is the space under the header, so it
+                // The 12pt gap this column already runs on is the space under the header, so it
                 // carries none of its own.
                 IntakeSectionHeader(
                     "What a good file looks like",
@@ -158,61 +211,69 @@ struct BringInTheWeekView: View {
                 FileExampleCard()
             }
             .padding(.horizontal, Spacing.gutter)
-            .padding(.top, Spacing.gutterWide)
+            .padding(.top, Spacing.sheet)
             .padding(.bottom, Spacing.hero)
         }
     }
 
     // MARK: The file
 
-    private var importCard: some View {
-        let shape = RoundedRectangle(cornerRadius: OnboardingMetrics.cardRadius, style: .continuous)
+    /// `background:#fff;border:1.5px dashed #C3DFCF;border-radius:18px;padding:28px 20px 24px`.
+    ///
+    /// Hand-drawn rather than `Card`, which strokes a solid border — the same call
+    /// `VenueEmptyState:76-134` makes, and for the same plate: `8b`'s "No venues yet" and this are
+    /// eleven measurements that agree, which is why the `OnboardingMetrics.empty*` constants are
+    /// read here under names that say "empty". See the `8c` section of that file.
+    private var dropPlate: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous)
 
         return VStack(spacing: 0) {
-            // Decoration above a heading that already says what this is.
+            // `ph-file-arrow-up` at 24 on a 52pt `accentSurface` tile. Decoration above a heading
+            // that already says what this is.
             IntakeIconTile(
                 "arrow.up.doc",
-                size: 48,
-                glyphSize: 22,
-                radius: OnboardingMetrics.cardRadius,
+                size: OnboardingMetrics.emptyMark,
+                glyphSize: OnboardingMetrics.emptyMarkGlyph,
+                radius: OnboardingMetrics.emptyMarkRadius,
                 fill: Theme.accentSurface,
                 border: Theme.accentSurfaceBorder,
                 glyphColor: Theme.accent
             )
 
-            Text("Import the sign-up list")
-                .typeStyle(.intakeStatValue, color: Theme.ink)
-                .padding(.top, Spacing.gutterWide)
+            IntakeTitle("Drop the sign-up list", style: .intakeEmptyHeading)
+                .multilineTextAlignment(.center)
+                .padding(.top, OnboardingMetrics.emptyTitleGap)
 
-            // The header row is named here rather than only in the failure. It is the one hard
-            // requirement an import has — everything else about the file is tolerated — and
-            // learning it by being refused is exactly what greying out a PDF avoids.
-            Text("A CSV or an Excel file from the office, with a first row naming the columns. Nobody is ranked yet.")
-                .typeStyle(.intakeLead, color: Theme.inkMuted)
+            // The sentence is the design's, and it is shorter than the one it replaces by exactly
+            // the clause naming the header row. That clause is not gone — it is the first row of
+            // `FileExampleCard`, in the words the refusal itself uses. See this file's header for
+            // why it was allowed to move down rather than being kept here as well.
+            Text("We read names, ages and genders. Everyone lands unranked.")
+                .typeStyle(.emptyBody, color: Theme.inkTertiary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 260)
-                .padding(.top, 7)
+                .frame(maxWidth: copyWidth)
+                .padding(.top, OnboardingMetrics.emptyBodyGap)
 
-            HStack(spacing: Spacing.small) {
-                IntakePillButton(title: "Choose a file", isProminent: true) {
-                    readError = nil
-                    isChoosingFile = true
-                }
-                // Same picker, on purpose. A list forwarded by the office arrives as a mail
-                // attachment, and every mail attachment is reachable through the document
-                // browser — so this is the honest version of "from email" until there is a
-                // camp address to forward it to.
-                IntakePillButton(title: "From email") {
-                    readError = nil
-                    isChoosingFile = true
-                }
-            }
-            .padding(.top, Spacing.large)
+            formatChips
+                .padding(.top, OnboardingMetrics.dropChipsGap)
+
+            PrimaryButton(
+                "Choose a file",
+                height: ctaHeight,
+                radius: Radius.input,
+                font: .intakeButton,
+                action: chooseFile
+            )
+            .padding(.top, OnboardingMetrics.emptyCtaGap)
+
+            pullFromEmail
+                .padding(.top, Spacing.gutterWide)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, Spacing.sheet)
+        .padding(.horizontal, OnboardingMetrics.emptyPaddingHorizontal)
+        .padding(.top, OnboardingMetrics.emptyPaddingTop)
+        .padding(.bottom, OnboardingMetrics.emptyPaddingBottom)
         .background(Theme.surface, in: shape)
         .overlay {
             // CSS draws a dashed 1.5px border at roughly three times its width per dash and gap.
@@ -221,6 +282,103 @@ struct BringInTheWeekView: View {
                 style: StrokeStyle(lineWidth: BorderWidth.input, dash: [4.5, 4.5])
             )
         }
+    }
+
+    /// What the picker will let through, said before the tap rather than discovered during it.
+    ///
+    /// Read off `RosterFileFormat` — the same list the `.fileImporter` below is handed — so a chip
+    /// cannot come to promise a format the picker greys out. That is why the type exists; the
+    /// missing `PDF` the design draws is argued there rather than here.
+    ///
+    /// `Text` on a capsule rather than `Chip`. Not because `Chip` insists on being a button — it
+    /// has an action-less branch that draws a read-only badge (`Components.swift:385-389`) — but
+    /// because reaching it would mean adding both a `ChipMetrics` preset (nothing in that table is
+    /// `600 11` uppercase at `5/11`) and a `ChipTone` case (nothing there is a plain grey fill with
+    /// no border; `.outline` is white with a grey stroke). Two additions to a shared control, so
+    /// that one screen can draw two words. `SetupView.swift:486-493` hand-draws its inert chip for
+    /// the same reason. `IntakeChoiceChip` is a button outright and never fitted.
+    ///
+    /// Nothing here is tappable, so nothing here grows to 44pt either.
+    private var formatChips: some View {
+        HStack(spacing: Spacing.tight) {
+            ForEach(RosterFileFormat.allCases, id: \.self) { format in
+                formatChip(format.label)
+            }
+        }
+        // Left to itself this reads as two stray words between a sentence and a button. One
+        // element saying what it means, spelled the way it is said rather than the way it is
+        // written — "X L S X" is not how anybody asks whether their file will open.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Reads \(RosterFileFormat.spokenNames) files")
+    }
+
+    private func formatChip(_ name: String) -> some View {
+        Text(name)
+            .typeStyle(.intakeFormatChip, color: Theme.inkTertiary)
+            .padding(.vertical, OnboardingMetrics.formatChipPaddingVertical)
+            .padding(.horizontal, OnboardingMetrics.formatChipPaddingHorizontal)
+            .background(OnboardingTheme.formatChip, in: Capsule(style: .continuous))
+    }
+
+    /// `600 13` accent copy under the button, `margin-top:14px`.
+    ///
+    /// The same picker, on purpose, which is why it is a line of text rather than the second
+    /// capsule this screen used to draw beside the first. A list forwarded by the office arrives
+    /// as a mail attachment, and every mail attachment is reachable through the document browser —
+    /// so this is the honest version of "from email" until there is a camp address to forward one
+    /// to, and the design is right that an alias for the button above should not look like a
+    /// second choice.
+    private var pullFromEmail: some View {
+        Button(action: chooseFile) {
+            Text("Pull one from email")
+                .typeStyle(.intakeInlineAction, color: Theme.accent)
+                // A 13pt line draws about 17pt tall; 14 either side clears 44. Also exactly the
+                // gap above, so the grown target meets the button's bottom edge without taking
+                // a strip of it — `intakeTouchTarget` widens what is hit, not what is drawn, and
+                // this one is drawn last of the two.
+                .intakeTouchTarget(inset: Spacing.gutterWide)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the same file picker — a forwarded list is a mail attachment")
+    }
+
+    /// `gap:9px;padding:0 6px` — a bare line on the page background.
+    ///
+    /// Not `IntakeNote`, which is `8e`'s green-tinted box: this one has no plate, no border and a
+    /// grey glyph, because it is a caption under the plate rather than a note inside a card.
+    ///
+    /// The design's sentence ends "Gender and venue are optional". `venue` is dropped, because
+    /// there is no venue column — `Columns.init?(header:)` has no case for one, so a file that
+    /// carried it would be read as though it had not and every kid would land in the same place
+    /// regardless. Advertising a column that is silently ignored is the failure this whole screen
+    /// is arranged to avoid; `FileExampleCard.swift:40-42` refused the identical promise.
+    private var fileNote: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "info.circle")
+                .font(.system(size: noteGlyph, weight: .regular))
+                .foregroundStyle(Theme.inkFaint)
+                // The glyph sits on the first line's cap height rather than centred on two lines.
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+
+            Text("Needs a first name, last name and age per row. Gender is optional — we will ask for what is missing.")
+                .typeStyle(.intakeFileNote, color: Theme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Spacing.tight)
+    }
+
+    /// Both routes into the picker, which are the same route.
+    ///
+    /// Named rather than written twice inline: clearing the last failure is half of what "choose a
+    /// file" means, and the copy of this that lived under the second button is exactly the kind of
+    /// pair that comes apart — one of them gains a line, the other does not, and the stale error
+    /// sits under the plate through the next attempt.
+    private func chooseFile() {
+        readError = nil
+        isChoosingFile = true
     }
 
     /// Gets at the bytes and hands them over.
@@ -251,35 +409,79 @@ struct BringInTheWeekView: View {
         }
     }
 
-    // MARK: By hand
+    // MARK: The two ways that are not a file
 
-    private var addByHandRow: some View {
-        Card(radius: OnboardingMetrics.cardRadius) {
+    /// The one card `8c` ends on: a walk-in, and a blank file to send the office.
+    ///
+    /// The template row came out of `FileExampleCard`, where it was the last line of a reference
+    /// card, and the move is the design's. It belongs beside "Add one by hand" because the two are
+    /// the same kind of thing — something to *do* when the file in front of you is not the file
+    /// this screen wants — where the card below is something to read.
+    private var actionsCard: some View {
+        Card(radius: Radius.cardLarge) {
             Button(action: onAddByHand) {
-                CardRow(spacing: Spacing.row, horizontalPadding: Spacing.gutterWide, verticalPadding: 13) {
-                    IntakeIconTile(
-                        "person.badge.plus",
-                        size: 34,
-                        glyphSize: 17,
-                        radius: Radius.control,
-                        fill: OnboardingTheme.iconPlate
-                    )
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Add a player by hand")
-                            .typeStyle(.intakeRowTitle, color: Theme.ink)
-                        Text("Walk-ins and under-11s at \(venueName)")
-                            .typeStyle(.intakeRowDetail, color: Theme.inkMuted)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    DisclosureChevron(size: 15)
-                        .accessibilityHidden(true)
-                }
+                actionRow(
+                    "person.badge.plus",
+                    title: "Add one by hand",
+                    // The design writes "Walk-ins and under-11s" flat, drawing a camp with one
+                    // venue. Kept named, because the second entry point reaches this screen from a
+                    // *chosen* venue's chip in Groups and the kid lands in that one — with several
+                    // venues on the camp, "at Sycamore" is the whole answer to where they go.
+                    detail: "Walk-ins and under-11s at \(venueName)"
+                )
             }
             .buttonStyle(.plain)
+
+            templateRow
         }
+    }
+
+    /// `ShareLink` rather than a `fileExporter`: the office is at the other end of whatever the
+    /// reader already uses to talk to it, and the share sheet holds Save to Files as well, which is
+    /// the "download" the design's title means.
+    ///
+    /// The caption reads `CSV, five columns` where the frame reads `XLSX, four columns`. The app
+    /// hands over a CSV of five columns and says so; the whole argument, including why an `.xlsx`
+    /// writer was considered and not built, is at the head of `RosterTemplate.swift`, and
+    /// `RosterTemplateTests` fails if the file stops matching these words.
+    private var templateRow: some View {
+        let caption = "CSV, five columns"
+
+        return ShareLink(item: RosterTemplate.file, preview: SharePreview(RosterTemplate.fileName)) {
+            actionRow("square.and.arrow.down", title: "Download the template", detail: caption)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Download the template")
+        .accessibilityHint("Shares \(RosterTemplate.fileName) — \(caption)")
+    }
+
+    /// `padding:13px 14px`, an 11pt gap, a 34pt tile at radius 11, and a caret.
+    ///
+    /// One function rather than two rows written out, because the second row exists to look like
+    /// the first: they are the card's two children and a reader should not be able to tell which
+    /// was drawn first.
+    private func actionRow(_ symbol: String, title: String, detail: String) -> some View {
+        CardRow(spacing: Spacing.row, horizontalPadding: Spacing.gutterWide, verticalPadding: 13) {
+            IntakeIconTile(symbol, size: 34, glyphSize: 16, radius: Radius.control, fill: OnboardingTheme.iconPlate)
+
+            VStack(alignment: .leading, spacing: Spacing.hairGap) {
+                Text(title)
+                    .typeStyle(.intakeRowTitle, color: Theme.ink)
+                Text(detail)
+                    .typeStyle(.intakeRowMeta, color: Theme.inkFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            DisclosureChevron(size: 15)
+                .accessibilityHidden(true)
+        }
+        // Both rows draw past 44 on their own, so this changes nothing today. It is here in this
+        // order — grow, then shape — because the reverse pins the hit region to the drawn plate,
+        // and `CardRow` has already taken its own content shape by the time this runs.
+        .frame(minHeight: HitTarget.minimum)
+        .contentShape(.rect)
     }
 }
 

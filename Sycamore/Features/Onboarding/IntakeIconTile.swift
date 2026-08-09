@@ -2,8 +2,8 @@
 //  IntakeIconTile.swift
 //  Sycamore
 //
-//  The rounded plate an icon sits on — 40pt beside a venue on `8b`, 48 above `8c`'s import copy,
-//  34 beside its by-hand row, 42 under `8u`'s "Start a camp".
+//  The rounded plate an icon sits on — 40pt beside a venue on `8b`, 52 above `8c`'s "Drop the
+//  sign-up list", 34 beside its two action rows, 42 under `8u`'s "Start a camp".
 //
 //  What sits on it is either an SF Symbol or an emoji. The design draws both: a `plus` on the
 //  dashed "Add a venue" plate, and a venue's own emoji on a venue's plate everywhere a venue is
@@ -133,13 +133,14 @@ struct IntakeIconTile: View {
             glyphColor: Theme.accent
         )
         IntakeIconTile(
-            "arrow.up.doc", size: 48, glyphSize: 22,
-            radius: OnboardingMetrics.cardRadius,
+            "arrow.up.doc", size: OnboardingMetrics.emptyMark,
+            glyphSize: OnboardingMetrics.emptyMarkGlyph,
+            radius: OnboardingMetrics.emptyMarkRadius,
             fill: Theme.accentSurface, border: Theme.accentSurfaceBorder,
             glyphColor: Theme.accent
         )
         IntakeIconTile(
-            "person.badge.plus", size: 34, glyphSize: 17,
+            "person.badge.plus", size: 34, glyphSize: 16,
             radius: Radius.control, fill: OnboardingTheme.iconPlate
         )
     }

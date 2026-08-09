@@ -43,6 +43,12 @@ private func block(
         title: title,
         notes: notes,
         coachIDs: coaches,
+        // Naming courts is what makes a block assigned — `BlockEditorDraft.block()` drops them off
+        // a regular one, so a `.regular` block holding court ids is a value the app cannot write.
+        // It matters here because `BlockRules.claims` reads the kind before the list: left
+        // `.regular`, a block "on Court 1" would claim the whole venue and the per-court tests
+        // would pass for the wrong reason.
+        kind: courts.isEmpty ? .regular : .assigned,
         courtIDs: courts
     )
 }
@@ -86,7 +92,9 @@ struct OverviewNowResolveTests {
 
         let now = OverviewNow.resolve(in: blocks, at: time, staff: [])
 
-        #expect(now?.block == ScheduleBlock.running(in: blocks, at: time))
+        // `.first`, because the model answers with every block running at once now. An admin —
+        // which is what `onCourt: nil` means — reads the earliest of them; see `OverviewNow.resolve`.
+        #expect(now?.block == ScheduleBlock.running(in: blocks, at: time).first)
         #expect(now?.title == "Skills rotation")
     }
 
@@ -136,6 +144,57 @@ struct OverviewNowResolveTests {
         let now = OverviewNow.resolve(in: [running], at: TimeOfDay(12, 15), staff: [coach("Nass")])
 
         #expect(now?.coaches.isEmpty == true)
+    }
+
+    /// The card sits at the top of a screen that already knows whose court it is drawing, and a
+    /// venue can now be running two blocks at once. `ScheduleBlock.running(on:in:at:)` is where
+    /// this is pinned properly; here it is only that `resolve` asks it with the right court.
+    @Test("The card is about the reader's own court")
+    func theCardFollowsTheReader() {
+        let court1 = Group.ID()
+        let court2 = Group.ID()
+        let day = [
+            block("Warm-up", from: TimeOfDay(9, 0), to: TimeOfDay(9, 15), courts: [court1]),
+            block("Free play", from: TimeOfDay(9, 0), to: TimeOfDay(10, 0), courts: [court2]),
+        ]
+
+        let onOne = OverviewNow.resolve(in: day, at: TimeOfDay(9, 10), staff: [], onCourt: court1)
+        let onTwo = OverviewNow.resolve(in: day, at: TimeOfDay(9, 10), staff: [], onCourt: court2)
+
+        #expect(onOne?.title == "Warm-up")
+        #expect(onTwo?.title == "Free play")
+    }
+
+    /// Nil rather than the other court's block. A coach whose warm-up has finished is between
+    /// blocks even while the rest of the venue is mid-session, and the card has to be absent for
+    /// that — which is the state the venue-wide rule could not express.
+    @Test("A reader whose own court is between blocks gets no card")
+    func nothingOnMyCourt() {
+        let court1 = Group.ID()
+        let court2 = Group.ID()
+        let day = [
+            block("Warm-up", from: TimeOfDay(9, 0), to: TimeOfDay(9, 15), courts: [court1]),
+            block("Free play", from: TimeOfDay(9, 0), to: TimeOfDay(10, 0), courts: [court2]),
+        ]
+
+        #expect(OverviewNow.resolve(in: day, at: TimeOfDay(9, 20), staff: [], onCourt: court1) == nil)
+        #expect(
+            OverviewNow.resolve(in: day, at: TimeOfDay(9, 20), staff: [], onCourt: court2)?.title
+                == "Free play"
+        )
+    }
+
+    /// An admin is standing on all of them. One card, and the earliest-started of the running
+    /// blocks fills it — see `resolve` for why that is a choice rather than an obvious answer.
+    @Test("An admin, who has no court, gets the earliest block running")
+    func anAdminGetsTheEarliest() {
+        let warmUp = block("Warm-up", from: TimeOfDay(9, 0), to: TimeOfDay(11, 0), courts: [Group.ID()])
+        let later = block("Free play", from: TimeOfDay(9, 30), to: TimeOfDay(11, 0), courts: [Group.ID()])
+
+        // Handed the later one first, so a `first` that trusted the array would answer "Free play".
+        let now = OverviewNow.resolve(in: [later, warmUp], at: TimeOfDay(10, 0), staff: [])
+
+        #expect(now?.title == "Warm-up")
     }
 
     @Test("The instruction and every note come through, not just the first")
