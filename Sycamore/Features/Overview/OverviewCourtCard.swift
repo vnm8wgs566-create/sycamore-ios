@@ -36,6 +36,25 @@
 //  to `OverviewTheme.rosterPreview` names with a `+N more` that opens it in place — the design's
 //  frame survives as the folded state of a screen that can now also be opened.
 //
+//  ── And every name on it opens the kid ───────────────────────────────────────────────────────
+//
+//  Overview was the last list of kids in the app you could not tap. The court screen opens `8q`
+//  from a row (`CourtScreen.swift:286-301`), both of Groups' lists do, Rank does; this card drew
+//  the same names and did nothing with them, so a coach who found a child here had to go and find
+//  them again somewhere else to read anything about them. Each row is a button now, wrapping the
+//  same `CourtRosterRow` the same way the court screen wraps it, because it is the same act on
+//  the same line.
+//
+//  The row itself is untouched and stays gesture-free — a list you can open is a property of the
+//  screen drawing it, which is the arrangement that row's own header records. What it costs is
+//  height: a tap in a column of adjacent taps has to be `HitTarget.minimum` tall or a finger
+//  reaching for one kid lands on the one above, which is what `GroupCard` says about its own 27pt
+//  row and settles here too. So a folded card's three names stand 44pt apart rather than the
+//  design's 7. The coach line above them and the `+N more` below them have both been that tall
+//  since they became controls, so this is the card's own rhythm rather than a new one — but it
+//  does mean `OverviewTheme.rosterRowGap`'s note about adding up to `gap:7px` now describes only
+//  the space between two rows that are already at their minimum.
+//
 //  ── The header caret is navigation, and the frames draw a fold ───────────────────────────────
 //
 //  Stated because it is the one place this card knowingly diverges. `8i` closes Court 1's header
@@ -85,6 +104,20 @@ struct OverviewCourtCard: View {
     /// Opens the court's own screen — the header caret's destination. Nil draws no caret at all;
     /// see `header`.
     var onOpenCourt: (() -> Void)?
+    /// Opens one of the kids in the list — `8q`, for the name tapped.
+    ///
+    /// **Required, where the three above are optional**, and the difference is not an oversight.
+    /// Each of those has a nil that *draws* something: no caret, an inert coach line, no fold
+    /// control. There is no such state here — every row this card draws is a child with a screen
+    /// behind them, and a closed court draws no rows at all — so an optional would encode a card
+    /// whose names are dead, which is precisely the defect this closure exists to remove. The
+    /// compiler asking every caller where a name goes is the point.
+    ///
+    /// Two precedents, and the second is the closer one: `CondensedCourtRow.swift:42-44` makes the
+    /// same call about its own `onOpen` on the same grounds, and `GroupCard.swift:38` — the app's
+    /// other card with a roster on it — already declares this exact closure under this exact name,
+    /// non-optional.
+    let onOpenPlayer: (Player.ID) -> Void
 
     /// Kept in step with `CourtRosterRow`'s own scaled column so "+3 more" stays lined up
     /// with the names above it at every type size.
@@ -173,12 +206,21 @@ struct OverviewCourtCard: View {
             // Your own court still has no caret. You are already standing on it, and the screen
             // behind the caret would tell you what is in front of you.
             //
-            // Deliberately the caret alone and not the whole card. The card holds three other
-            // controls — the coach line, the `+N more` row and, on `8j`, the pinned banner above
-            // it — and a tap target wrapped round all of them has to win an ambiguity contest with
-            // each on every tap. It is also the wrong shape for VoiceOver: a card that is one
-            // button reads its title, its head-count, its coach and five children's names as a
-            // single label, and swiping through the kids stops being possible at all.
+            // Deliberately the caret alone and not the whole card, and the argument has only got
+            // stronger. The card holds a control on nearly every line of it now — the coach line,
+            // a button per kid, the `+N more` row, and on `8j` the pinned banner sits directly
+            // above it — and a tap target wrapped round all of them has to win an ambiguity
+            // contest with each on every tap. It is also the wrong shape for VoiceOver: a card
+            // that is one button reads its title, its head-count, its coach and five children's
+            // names as a single label, and swiping through the kids — let alone opening one —
+            // stops being possible at all.
+            //
+            // What keeps them apart is that none of them overlaps another. Each is a sibling in
+            // one column, grown to `HitTarget.minimum` and then shaped to exactly the region it
+            // was grown to, so every point on the card belongs to at most one of them and
+            // hit-testing has nothing to arbitrate. That is why none of them bleeds its target
+            // past its own row, and why adding a control per kid did not have to move the three
+            // that were already here.
             //
             // Gated on the closure alone. Your own court has no caret in the design — but that is
             // `OverviewScreen`'s rule to state, and it states it by passing nothing. Re-testing
@@ -281,7 +323,7 @@ struct OverviewCourtCard: View {
     private var rosterList: some View {
         VStack(spacing: OverviewTheme.rosterRowGap) {
             ForEach(roster.rows) { row in
-                CourtRosterRow(row: row)
+                kidRow(row)
             }
 
             // Drawn whenever the court can fold at all, rather than whenever something *is*
@@ -291,6 +333,61 @@ struct OverviewCourtCard: View {
                 overflowRow(onToggleRoster)
             }
         }
+    }
+
+    /// One name, and the way to the kid behind it.
+    ///
+    /// `CourtScreen.kidRow` exactly, which is the point: it wraps this same `CourtRosterRow` in
+    /// this same button to reach this same screen, so a child tapped on a card and a child tapped
+    /// on the court behind it are one gesture and not two that can drift. The row is left as a
+    /// line that takes no gestures of its own — see its own header, which the court screen already
+    /// depends on.
+    ///
+    /// **No horizontal inset inside the label, where the court screen's copy has
+    /// `OnTheDayTokens.cardInset`.** There the rows sit in an unpadded `Card` and each supplies its
+    /// own gutter, so the button spans the card and the drawn line is inset within it. Here the
+    /// whole column already sits inside `OverviewTheme.cardPadding`, so repeating an inset would
+    /// push the names off the rank numerals they are lined up with. Bleeding the target back out
+    /// over that padding was the other way to match the court screen and is refused: neither
+    /// `CourtCoachLine` nor `overflowRow` reaches into it, and a card where a tap in the margin
+    /// beside a name opens a kid while the same tap beside the coach does nothing is a card whose
+    /// edges mean two different things.
+    private func kidRow(_ row: PlayerRow) -> some View {
+        Button {
+            onOpenPlayer(row.id)
+        } label: {
+            CourtRosterRow(row: row)
+                // The drawn line keeps the height the design gives it and the touch grows around
+                // it. Grown first, shaped second — the reverse pins the target back onto the drawn
+                // line and hands out a column of ~20pt targets. It is the order `CourtCoachLine`
+                // and `MoreRow` in this same column are already written in.
+                .frame(minHeight: HitTarget.minimum)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        // Set outright rather than lifted off the row inside the label. `spokenLabel(for:)` is
+        // `static` for exactly this — see its doc for what a column of buttons all announced as
+        // "Button" costs a reader who cannot see which kid is which.
+        .accessibilityLabel(CourtRosterRow.spokenLabel(for: row))
+        // The court screen's own words for the same act (`CourtScreen.swift:300`), spelled out a
+        // second time rather than shared.
+        //
+        // **Not because it could not be shared.** The label directly above already reaches into
+        // `CourtRosterRow` for `spokenLabel(for:)`, which is `static` for exactly that reason, and
+        // a hint constant beside it would be the same move. It is that one string is not what is
+        // duplicated here: the whole of this method is `CourtScreen.kidRow` with a different
+        // inset, so the honest fix is a `CourtRosterButton` over `row`, `inset` and `action` that
+        // both screens consume.
+        //
+        // That view would live here, beside the row, in this folder — the boundary is narrower
+        // than "another feature". It is `CourtScreen.swift` itself, which is the one line that
+        // would have to change to adopt it and is under a screen this unit does not own. Landing
+        // the shared view with a single consumer would leave the court screen's copy standing
+        // *and* a view calling itself shared, which is three spellings where there are now two.
+        //
+        // So: two copies, watched. If they ever start saying different things about the same tap,
+        // that is the signal to write the third view rather than to reconcile the strings.
+        .accessibilityHint("Opens their screen")
     }
 
     /// `+3 more`, indented into the rank column so it starts where the names do — and
@@ -331,6 +428,11 @@ struct OverviewCourtCard: View {
 private struct OverviewCourtCardPreviewHarness: View {
 
     @State private var expanded: Set<Group.ID> = []
+    /// The last name tapped. A preview cannot push `8q`, so the closure's argument is drawn
+    /// instead — which is also the only way to check by hand that the controls stacked down a card
+    /// each win their own taps: the header caret, the coach line and `+N more` all have to leave
+    /// this line alone, and every name has to change it to itself and not to its neighbour.
+    @State private var opened: String?
 
     private let cards = [
         OverviewFixtures.drills,
@@ -346,6 +448,10 @@ private struct OverviewCourtCardPreviewHarness: View {
 
         return ScrollView {
             VStack(spacing: OverviewTheme.cardGap) {
+                Text(opened.map { "Opened \($0)" } ?? "Tap a name")
+                    .typeStyle(.meta, color: Theme.inkFaint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 ForEach(cards) { card in
                     let isExpanded = expanded.contains(card.id)
                     let roster = TodayCourts.roster(
@@ -364,7 +470,10 @@ private struct OverviewCourtCardPreviewHarness: View {
                         onToggleRoster: roster.isFoldable(to: OverviewTheme.rosterPreview)
                             ? { expanded.toggle(card.id) }
                             : nil,
-                        onOpenCourt: {}
+                        onOpenCourt: {},
+                        onOpenPlayer: { id in
+                            opened = roster.rows.first { $0.id == id }?.player.displayName
+                        }
                     )
                 }
             }
@@ -386,11 +495,31 @@ private struct OverviewCourtCardPreviewHarness: View {
         roster: OverviewFixtures.fullRoster(for: OverviewFixtures.drills),
         onOpenCoach: {},
         onToggleRoster: {},
-        onOpenCourt: {}
+        onOpenCourt: {},
+        onOpenPlayer: { _ in }
     )
     .padding(Spacing.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(Theme.surfaceWarm)
+}
+
+/// The same card at the size the app caps Dynamic Type at, which is where the rows being controls
+/// shows: each was already at least `HitTarget.minimum` tall, so a longer name should make the
+/// card taller without the rank column or the marks at the end of a line leaving it.
+#Preview("A court, open — accessibility1") {
+    OverviewCourtCard(
+        card: OverviewFixtures.drills,
+        capacity: OverviewFixtures.capacity(for: OverviewFixtures.drills),
+        roster: OverviewFixtures.fullRoster(for: OverviewFixtures.drills),
+        onOpenCoach: {},
+        onToggleRoster: {},
+        onOpenCourt: {},
+        onOpenPlayer: { _ in }
+    )
+    .padding(Spacing.gutter)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(Theme.surfaceWarm)
+    .dynamicTypeSize(.accessibility1)
 }
 
 #Preview("Your court") {
@@ -402,7 +531,8 @@ private struct OverviewCourtCardPreviewHarness: View {
             for: OverviewFixtures.drills, limit: OverviewTheme.rosterPreview
         ),
         onOpenCoach: {},
-        onToggleRoster: {}
+        onToggleRoster: {},
+        onOpenPlayer: { _ in }
     )
     .padding(Spacing.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -420,7 +550,8 @@ private struct OverviewCourtCardPreviewHarness: View {
         ),
         onOpenCoach: {},
         onToggleRoster: {},
-        onOpenCourt: {}
+        onOpenCourt: {},
+        onOpenPlayer: { _ in }
     )
     .padding(Spacing.gutter)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
