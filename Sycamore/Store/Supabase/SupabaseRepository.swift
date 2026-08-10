@@ -447,6 +447,47 @@ actor SupabaseRepository: SycamoreRepository {
         return try await membership(forAccount: accountID, camp: camp.id)
     }
 
+    /// Deletes the camp, and with it everything the camp is made of.
+    ///
+    /// **One statement, and it is genuinely enough.** `camps` cascades to `sites`, `memberships`
+    /// and `coaches`; `sites` cascades to `groups`, `players`, `tournaments`, `schedule_blocks` and
+    /// `inbox_items`; those cascade in turn to the join tables and the attendance, ratings and
+    /// assessment rows hanging off them. Nothing is orphaned and nothing has to go in a particular
+    /// order, so there is no half-deleted camp to recover from — which matters more here than
+    /// anywhere else in this file, because there is no second attempt at a delete that half worked.
+    ///
+    /// The rows back rather than a bare 204, for the reason `deleteAccount` gives at length: a
+    /// `DELETE` that matched nothing answers identically to one that matched, and under
+    /// `camps_delete_admin` a coach's request matches nothing. Without asking for the rows, this
+    /// would report success and the app would put the reader back on the camps list — where the
+    /// camp they were just told they had deleted is still sitting.
+    func deleteCamp(id: Camp.ID) async throws {
+        let deleted: [CampRecord] = try await db.delete(
+            Relation.camps, where: PostgRESTQuery().eq("id", id), returning: CampRecord.self
+        )
+        guard deleted.isEmpty else { return }
+        throw await refusedOrMissing(campID: id)
+    }
+
+    /// Which of the two things a delete that removed nothing meant.
+    ///
+    /// The same question `SupabaseRepository+SectionEight`'s `missingOrRefused` answers, asked of a
+    /// different table and answered with a different noun — that one is private to its file and
+    /// hard-codes `unknownGroup`, and a shared version would need a caller-supplied error to say
+    /// anything useful, which is most of what it does.
+    ///
+    /// Reading is member-scoped and deleting is admin-scoped, so the two cases separate cleanly: a
+    /// camp this caller can still select is a camp they are in but do not administer, and a camp
+    /// they cannot select either is one that was already gone — or was never theirs to see.
+    /// A failure of the read itself falls to `unknownCamp`, because a network error on the way to
+    /// explaining a refusal should not be reported as the refusal.
+    private func refusedOrMissing(campID: Camp.ID) async -> SycamoreError {
+        let rows: [RowIDRecord]? = try? await db.select(
+            Relation.camps, .select("id").eq("id", campID).limit(1)
+        )
+        return rows?.isEmpty == false ? .notPermitted : .unknownCamp
+    }
+
     // MARK: - The day
 
     func setAttendance(
@@ -566,6 +607,88 @@ actor SupabaseRepository: SycamoreRepository {
 
             try await insertSite(venue, campID: campID)
             try await db.insert(Relation.groups, after.groups(in: venue.id).map(Self.groupRow))
+            return try await camp(id: campID)
+        }
+    }
+
+    /// One court off a venue, chosen by name rather than by lowering a count.
+    ///
+    /// `serialised` with explicit writes rather than `mutateLadder`, for the reason `updateVenue`
+    /// is written that way: `mutateLadder` sends placements and the ladder, and neither of those
+    /// is what moves here. What moves is a row in `groups`, the labels of the rows behind it, and
+    /// one column on `sites`.
+    ///
+    /// **The kids are Postgres's half of the job.** `players_group_id_fkey` is `on delete set
+    /// null` (`20260808211500_fresh_start_and_camp_isolation.sql:190-192`), so the delete below
+    /// unassigns everyone standing on the court in the same statement, and `assessments.group_id`
+    /// empties the same way two constraints further down. A `writePlacements` pass beside it would
+    /// send an UPDATE per kid saying what the foreign key has already said — a second answer to a
+    /// question the schema settles, and the one that would quietly rot if the constraint ever
+    /// changed.
+    ///
+    /// **`writeLadder` is not called, and that is a claim rather than an omission.** The ladder is
+    /// `ratings.rating`, and a deletion moves nobody in it: `Camp.removeGroup` leaves `overallRank`
+    /// exactly as it found it. `storageLadder` re-sequences each group's members into their court
+    /// order, and on a camp just read back from Postgres those two orders already agree — the
+    /// loader derives `courtRank` by walking the ratings sequence itself
+    /// (`SupabaseRepository+Graph.swift:43-60`) — so the call would compute the permutation it
+    /// started from and post nothing. Saying so beats spending a select to prove it.
+    ///
+    /// **A venue's last group cannot be deleted against Postgres**, and could not before this
+    /// method existed either. `sites_group_count_range` is `check (group_count between 1 and 40)`,
+    /// so the count reaching 0 is rejected and this whole call throws — exactly as `updateVenue`
+    /// already did when `Camp.removeGroup` handed it a zero. `InMemoryRepository` has no CHECK and
+    /// so allows it, which is the one place the two implementations disagree about this verb. The
+    /// fix is a migration and a floor on the affordance, neither of which is this change's.
+    ///
+    /// Three writes and not a transaction, which is the exposure every multi-write method in this
+    /// actor carries (`updateVenue` makes four). A failure between them leaves a camp that still
+    /// reads: a venue claiming one more group than it holds re-creates a court on the next venue
+    /// edit, which is the ordinary "add a group" path rather than damage.
+    func deleteGroup(_ groupID: Group.ID, campID: Camp.ID) async throws -> Camp {
+        try await serialised(campID) {
+            let before = try await camp(id: campID)
+            guard let doomed = before.group(groupID) else { throw SycamoreError.unknownGroup }
+            let venueID = doomed.venueID
+
+            var after = before
+            after.removeGroup(groupID, from: venueID)
+
+            // `dropCourts` rather than a `db.delete` spelled out here. Three of the four tables
+            // pointing at `groups` were created with no `on delete` clause, so a bare delete is
+            // refused outright — and clearing them is already written down as the thing trimming a
+            // venue does. It takes the difference between two graphs, which for this pair is the
+            // one group.
+            try await dropCourts(before: before, after: after, venueID: venueID)
+
+            // The survivors' names. `number` is not a column — `courts(from:)` derives it from the
+            // `rank_order` sequence, and `removeGroup` leaves that sparse on purpose — so the only
+            // thing the renumbering leaves to write down is the label. One upsert rather than a
+            // PATCH each: a venue of twelve courts losing its first renames eleven, and eleven
+            // round trips for a label is the cost `writePlacements` groups its own writes to avoid.
+            //
+            // **In ascending order, which is load-bearing.** `groups` carries `unique (site_id,
+            // name)`, and every rename here moves a court *down* one number into a name somebody
+            // else is still holding. Ascending, the name is always free by the time it is claimed:
+            // the first rename takes the one the delete above just vacated, and each after it takes
+            // the one the preceding row in the same statement gave up. `groups(in:)` sorts by
+            // `rankOrder`, so this is that order and not an accident of the array.
+            let renamed = after.groups(in: venueID).filter { before.group($0.id)?.label != $0.label }
+            try await db.upsert(Relation.groups, renamed.map(Self.groupRow), onConflict: "id")
+
+            // And the count, which is the line that makes the deletion stick: `syncGroups(for:)`
+            // creates courts up to it on every venue edit, so a venue left claiming the old number
+            // would put this court straight back. One column rather than `Self.siteRow(_:campID:)`
+            // — a whole-row PATCH sent from a deletion would post thirteen columns read a moment
+            // ago and undo anybody who renamed the venue in between, which is the case `RowValues`'
+            // own header opens on.
+            if let venue = after.venue(venueID) {
+                try await db.update(
+                    Relation.sites,
+                    set: ["group_count": .int(venue.groupCount)],
+                    where: PostgRESTQuery().eq("id", venueID)
+                )
+            }
             return try await camp(id: campID)
         }
     }

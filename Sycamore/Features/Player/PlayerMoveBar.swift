@@ -5,10 +5,18 @@
 //  `8q`'s pinned bar: 52pt at radius 16, white on a `stroke` hairline rather than a fill, the label
 //  in `ink` and the glyph a step back in `inkSecondary`.
 //
-//  It reads "Move to another court" and opens `PlayerCourtPicker`. It read "Move up a court" and
-//  performed that one move; the picker's own header records why that was narrowed and why it is
-//  not any more. The construction below is unchanged by it — a bar that opens a list and a bar
-//  that committed a move are the same button.
+//  It reads "Move to another group" — the design's own words — and opens `PlayerCourtPicker`.
+//
+//  It has said two other things. First "Move up a court", which performed that one move; the
+//  picker's own header records why that was narrowed and why it is not any more. Then "Move to
+//  another court", which opened the list but named the destination after the place rather than
+//  after the thing being picked. Groups titles its cards "Group N" (`GroupCard.swift:63`), so a
+//  coach who tapped this bar was told to pick a court and then handed a list of the same rank
+//  bands they had just been reading as groups. The court is where a group plays; the group is
+//  what a kid belongs to, and this bar changes the latter.
+//
+//  The construction below is unchanged by any of it — a bar that opens a list and a bar that
+//  committed a move are the same button.
 //
 //  Not `PrimaryButton(tone: .outline)`, which is the same shape but a different set of colours —
 //  that tone borders in `hairline` and sets its whole label, glyph included, in `inkSecondary`.
@@ -21,14 +29,14 @@ import SwiftUI
 
 struct PlayerMoveBar: View {
 
-    /// False when there is nowhere else in the camp to send them — a camp of one court, or one
+    /// False when there is nowhere else in the camp to send them — a camp of one group, or one
     /// still being shaped — which is a real state rather than a failure. See
     /// `PlayerScreen.canMoveElsewhere`.
     ///
-    /// It meant "there is a court above this one" for as long as the bar performed the move
+    /// It meant "there is a group above this one" for as long as the bar performed the move
     /// itself. The bar opens `PlayerCourtPicker` now, so the question it answers is whether that
-    /// list would have anything in it worth tapping — and a kid on the top court, which used to
-    /// stand this down, has eleven other courts to choose from.
+    /// list would have anything in it worth tapping — and a kid in the top group, which used to
+    /// stand this down, has eleven other groups to choose from.
     let isEnabled: Bool
     /// Opens the picker. Deliberately not a write any more: `8q` no longer decides where a kid
     /// goes, it asks.
@@ -44,7 +52,7 @@ struct PlayerMoveBar: View {
                     .foregroundStyle(Theme.inkSecondary)
                     .accessibilityHidden(true)
 
-                Text("Move to another court")
+                Text("Move to another group")
                     .typeStyle(.onTheDayBarLight, color: Theme.ink)
             }
             .padding(.vertical, Spacing.small)
@@ -65,8 +73,8 @@ struct PlayerMoveBar: View {
         // enabled bar reads as it looks.
         //
         // "Already on the top court" is what this used to say, and it is no longer the reason —
-        // the top court is a perfectly good place to be moved off. Written without naming a count,
-        // because the disabled state covers a camp of one court, a camp with none built yet and a
+        // the top group is a perfectly good place to be moved off. Written without naming a count,
+        // because the disabled state covers a camp of one group, a camp with none built yet and a
         // store that has not finished loading, and the reader does not need those told apart.
         .accessibilityHint(isEnabled ? "" : "There is nowhere else to move them")
     }

@@ -91,6 +91,19 @@ protocol SycamoreRepository: SectionEightData {
     func joinCamp(inviteCode: String, accountID: Account.ID) async throws -> Membership
     /// Screen 4. The creator becomes the camp's first admin.
     func createCamp(_ draft: CampDraft, accountID: Account.ID) async throws -> Membership
+    /// The camp page's last row, and the only thing in this app that cannot be taken back.
+    ///
+    /// **Admin only, enforced by the database rather than by this signature.** `camps_delete_admin`
+    /// is a `using` policy, so a coach's request is not refused — it simply matches no row, and
+    /// the implementation is what has to turn that silence back into "only an admin can do that".
+    /// `InMemoryRepository` has no policies and so cannot reproduce the refusal at all; the screen
+    /// gates the control, and the offline build takes the caller at their word.
+    ///
+    /// **Returns nothing, which breaks convention 1 at the top of this file on purpose.** Every
+    /// other camp mutation hands the whole camp back so the caller need not patch local state; the
+    /// point of this one is that there is no camp left to hand back, and the caller's next move is
+    /// to stop holding one.
+    func deleteCamp(id: Camp.ID) async throws
 
     // MARK: The day
 
@@ -129,6 +142,35 @@ protocol SycamoreRepository: SectionEightData {
     func updateVenue(_ venue: Venue, campID: Camp.ID) async throws -> Camp
     /// Setup's "Add" beside the VENUES header.
     func addVenue(campID: Camp.ID) async throws -> Camp
+
+    /// The Groups tab's "Remove" — one named group off a venue, and only that one.
+    ///
+    /// **Why this had to become its own verb.** Until it did, the only door onto a venue's courts
+    /// was `updateVenue`, and what that runs is `Camp.upsert(_:)` → `syncGroups(for:)`, which
+    /// reconciles a *count*: it trims the venue's **last** court and then seats whoever it
+    /// orphaned onto the smallest one remaining. That is the right answer to "this venue runs four
+    /// groups now" and the wrong answer to "remove group 1" — deleting anything but the last group
+    /// deleted a different group the moment anything reloaded, and the kids it was supposed to
+    /// leave standing were re-seated by the very next write. Nor was there any verb at all that
+    /// could put a player's `groupID` back to nil, so "waiting for a group" was a state only the
+    /// screen could hold, and only until the next round trip.
+    ///
+    /// **No venue argument, deliberately.** A group already knows which venue it is at — through
+    /// `Group.venueID` offline and `groups.site_id` in Postgres — so a second argument could only
+    /// agree or disagree with the row, and there is nothing useful to do with a disagreement down
+    /// here. `AppStore.removeGroup(_:from:)` does hold both and does check them against each
+    /// other, because that is where a mismatched pair comes from: a screen that has moved on. This
+    /// takes the id of the thing to delete.
+    ///
+    /// **What it promises, all of it `Camp.removeGroup(_:from:)`'s arithmetic** (`Models.swift`):
+    /// the group goes; its kids stay at the venue with no group and sink to the foot of wherever
+    /// somebody puts them next; the survivors renumber so `number` and `label` still read 1…n with
+    /// no gap; the venue's `groupCount` comes down, which is the line that stops the next upsert
+    /// from re-creating what was just deleted; and a coach standing on it comes off it. The ladder
+    /// is untouched — nobody's place in the camp changes because a court did.
+    ///
+    /// Throws `unknownGroup` for an id that is not in the camp, and writes nothing when it does.
+    func deleteGroup(_ groupID: Group.ID, campID: Camp.ID) async throws -> Camp
 
     /// `8t`'s "Camp name & sport".
     ///
@@ -414,6 +456,32 @@ actor InMemoryRepository: SycamoreRepository {
         return membership
     }
 
+    /// Postgres does this with five levels of `on delete cascade`. Here the graph is one value in
+    /// one dictionary, so removing it takes the venues, the courts, the kids, the staff and the
+    /// attendance with it in a single assignment — `Camp` is a value type and everything about a
+    /// camp except the four things below is inside it.
+    ///
+    /// Those four are swept by hand because they live beside the camps rather than in them.
+    /// Memberships are a flat array; section eight's blocks, notes and court closures are keyed by
+    /// venue and by court, which is exactly the shape that would otherwise survive its camp — a
+    /// block whose venue no longer exists is not a stale row, it is a row nothing can ever delete.
+    ///
+    /// **The offline tournament draws are the one thing left standing, and they are unreachable
+    /// rather than leaked.** `OfflineDraws` is `private` to `TournamentRepository.swift` and keyed
+    /// by venue id, and every venue that could name one has just gone; nothing can ask for them
+    /// again. That actor's own header says it exists only because a stored property could not be
+    /// declared here, and this line goes when that one does.
+    func deleteCamp(id: Camp.ID) async throws {
+        guard let camp = camps.removeValue(forKey: id) else { throw SycamoreError.unknownCamp }
+        membershipRecords.removeAll { $0.campID == id }
+
+        let venueIDs = Set(camp.venues.map(\.id))
+        let groupIDs = Set(camp.groups.map(\.id))
+        sectionEightBlocks.removeAll { venueIDs.contains($0.venueID) }
+        sectionEightInbox.removeAll { venueIDs.contains($0.venueID) }
+        closedCourts = closedCourts.filter { !groupIDs.contains($0.key) }
+    }
+
     // MARK: The day
 
     func setAttendance(
@@ -507,6 +575,22 @@ actor InMemoryRepository: SycamoreRepository {
                     sortIndex: index
                 )
             )
+        }
+    }
+
+    /// The venue comes off the group rather than off the caller, which is the whole point of the
+    /// signature having no venue in it. `Camp.removeGroup(_:from:)` wants both — it guards the
+    /// pairing, because the caller *it* was written for is a screen — so the pairing is resolved
+    /// here from the one place it is definitely true.
+    ///
+    /// Through `mutate` like every other camp write, so the reindex and the projection refresh at
+    /// the end of it are the same ones a reorder or a venue edit gets. `removeGroup` reindexes on
+    /// its own account as well; running it twice is a sort over an already-sorted array and costs
+    /// less than a second path through this actor would.
+    func deleteGroup(_ groupID: Group.ID, campID: Camp.ID) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard let court = camp.group(groupID) else { throw SycamoreError.unknownGroup }
+            camp.removeGroup(groupID, from: court.venueID)
         }
     }
 

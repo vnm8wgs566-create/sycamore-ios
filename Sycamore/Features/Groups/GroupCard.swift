@@ -107,13 +107,15 @@ struct GroupCard: View {
     private var subtitle: String { move?.dropLine ?? summary }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous)
-
         // `1.5px solid #C3DFCF` against the resting `1px solid #EDEEF1` — the design's own pair
         // (`state1.js:107`), which is `accentBorder` over `hairline` at `input` over `hairline`.
         // Not `Theme.accent`: the strong green is what the *rule inside* the card is drawn in, and
         // a card outlined in the same weight competes with the one line that names the landing.
-        return Card(
+        //
+        // (A `let shape = RoundedRectangle(…)` stood here and was read by nothing: the halo this
+        // card used to draw outside its border was the only thing that needed a shape of its own,
+        // and it went when the drop line took over saying where the kid lands.)
+        Card(
             radius: GroupsMetrics.cardRadius,
             borderColor: isTarget ? Theme.accentBorder : Theme.hairline,
             borderWidth: isTarget ? BorderWidth.input : BorderWidth.hairline,
@@ -427,7 +429,13 @@ private enum CardSeat: Identifiable {
 /// Rank, name, whatever is true about the kid today, and the handle. The meta line the old card
 /// carried ("13 · F · returning") is gone: section 8 puts those facts on `8q`, and a rank band
 /// wants one line per kid so that eight of them fit in a card.
-private struct GroupPlayerRow: View {
+///
+/// Internal rather than `private` to this file, and for exactly one caller: `UnassignedCard` draws
+/// the kids at a venue with no group, and the whole claim that card makes is that they are draggable
+/// like anybody else. A second row that merely *looked* like this one would be the bespoke
+/// re-implementation this codebase keeps producing — and the drift would show at the worst moment,
+/// because the card carrying a lifted kid is positioned directly over the row it came out of.
+struct GroupPlayerRow: View {
 
     let row: PlayerRow
     /// True while a kid is in the air. The row stops opening the player then — that tap belongs
@@ -438,7 +446,11 @@ private struct GroupPlayerRow: View {
     let onMoveChanged: (CGFloat) -> Void
     let onMoveEnded: () -> Void
     let onMoveCancelled: () -> Void
-    let onNudge: (Int) -> Void
+    /// One place up or down in the ladder, for a reader with no pointer. **Nil where the step has
+    /// no meaning**: a kid in no group has no place in a card to move away from, and a rotor action
+    /// that silently does nothing is worse than an absent one. `UnassignedCard.rowView` carries the
+    /// argument for what those readers get instead.
+    let onNudge: ((Int) -> Void)?
 
     /// True for exactly as long as the lift gesture is live. A sequenced gesture that is
     /// *cancelled* never calls `onEnded`, and `@GestureState` is the one thing SwiftUI
@@ -470,9 +482,14 @@ private struct GroupPlayerRow: View {
         .onTapGesture { if !isAiming { onOpen() } }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        // The drag is a pointer affordance, so restate it as rotor actions.
-        .accessibilityAction(named: "Move up") { onNudge(-1) }
-        .accessibilityAction(named: "Move down") { onNudge(1) }
+        // The drag is a pointer affordance, so restate it as rotor actions — where a step is a
+        // thing this row can take. See `onNudge`.
+        .accessibilityActions {
+            if let onNudge {
+                Button("Move up") { onNudge(-1) }
+                Button("Move down") { onNudge(1) }
+            }
+        }
         .overlay(alignment: .trailing) { handle }
         .onChange(of: isHolding) { _, holding in
             // The safety net for a cancelled lift, which never reaches `onEnded`.

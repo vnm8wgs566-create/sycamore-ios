@@ -350,7 +350,13 @@ extension SupabaseRepository {
             "court_count": .int(venue.courtCount),
             "group_count": .int(venue.groupCount),
             "target_per_group": .int(venue.targetPerGroup),
-            "age_band": .text(venue.ageBand.rawValue),
+            // Two nullable columns where there was one `not null` text. `.int(Int?)` sends NULL
+            // for an absent bound, which is the whole vocabulary: "not asking on that side". An
+            // all-ages venue therefore writes two NULLs rather than a sentinel, and
+            // `sites_age_bounds_ordered` has nothing to compare — see `AgeBand`, whose init is
+            // where the ordering that CHECK enforces is guaranteed before the row is built.
+            "age_min": .int(venue.ageBand.minAge),
+            "age_max": .int(venue.ageBand.maxAge),
             "coach_min": .int(venue.coachMin),
             "coach_max": .int(venue.coachMax),
             "player_min": .int(venue.playerMin),

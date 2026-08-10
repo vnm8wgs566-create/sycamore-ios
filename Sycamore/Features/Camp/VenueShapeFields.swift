@@ -86,28 +86,207 @@ struct VenueFieldLabel: View {
 
 // MARK: - Age band
 
-/// "All ages" / "11 & under" / "12 & up", from `AgeBand` itself.
+/// Which ages this venue takes: pick the *shape* of the answer, then pick the age.
 ///
-/// `AgeBand.allCases` rather than a list written here: the enum owns the three and their labels
-/// (`Models.swift:520-532`), and the migration's CHECK owns the same three. A fourth added there
-/// appears here without anyone remembering to.
+/// ── Why a shape row over steppers, and not two steppers that switch off ──────────────────────
+///
+/// `AgeBand` stopped being three cases and became a nullable pair, so this control had to stop
+/// being three chips. The two honest ways to draw a nullable pair were a segmented shape row plus
+/// one or two steppers, or two steppers each with an off state, and this is the first of them.
+///
+/// **The deciding argument is what "All ages" costs.** Most venues are not asking about age, so
+/// the default has to be free — and with two switchable steppers it is *two* switch-offs and a
+/// state the reader has to infer, because "no lower bound and no upper bound" is not a phrase
+/// anybody reads as "all ages". Here it is one chip, already selected, worded in the reader's own
+/// language, and a venue nobody narrows never sees a stepper at all. It is also the control that
+/// was already on this screen, so a camp that was happy with "11 & under" still gets there in one
+/// tap and finds the number they expect underneath.
+///
+/// The second argument is that three of the four shapes make an invalid band *unreachable*, and
+/// the fourth is bounded by construction: the lower stepper cannot climb past the upper and the
+/// upper cannot fall below the lower, because each takes the other as its range. `sites`
+/// `sites_age_bounds_ordered` therefore has nothing to catch, and `AgeBand`'s own init is the
+/// second belt rather than the first.
+///
+/// ── The shape is derived, never stored ───────────────────────────────────────────────────────
+///
+/// `Shape` below is read off the bounds on every pass and is not a field on anything. That is the
+/// whole point of dropping the enum: one representation, and a picker that cannot come to disagree
+/// with the band it is editing. Switching shape *seeds* bounds — and seeds them from whatever is
+/// already there, so moving between "12 & up" and "between" keeps the twelve rather than throwing
+/// away the number somebody just chose.
 struct VenueAgeBandPicker: View {
     @Binding var ageBand: AgeBand
 
     var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.small) {
+            shapeChips
+
+            if !ageBand.isUnrestricted {
+                boundsCard
+
+                // Said here because this is the screen where somebody narrows a venue, and the
+                // consequence is the one thing about a band that surprises people: it does not
+                // remove anybody. `Camp.admit(_:at:)` leaves a refused kid at the venue with no
+                // group, which is a visible, countable, one-drag-away state — and a reader who
+                // does not know that reads the steppers as a delete button.
+                Text("Kids outside this stay at the venue without a group — nobody is removed.")
+                    .typeStyle(.meta.lineHeight(1.5), color: Theme.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .sensoryFeedback(.selection, trigger: ageBand)
+    }
+
+    // MARK: - The shape
+
+    /// The four shapes a nullable pair can take, named for the answer rather than for the columns.
+    private enum Shape: CaseIterable {
+        case all, upTo, from, between
+
+        /// Short on the chip, because four pills wrap onto two rows at the larger type sizes and
+        /// a wrapped pill row is where this control stops reading as one question.
+        var title: String {
+            switch self {
+            case .all: "All ages"
+            case .upTo: "Up to"
+            case .from: "From"
+            case .between: "Between"
+            }
+        }
+
+        /// Spoken in full. "Up to" on its own is not an answer to anything by ear, and the numbers
+        /// that complete it are in a separate element below.
+        var spoken: String {
+            switch self {
+            case .all: "All ages"
+            case .upTo: "Up to an age"
+            case .from: "From an age"
+            case .between: "Between two ages"
+            }
+        }
+    }
+
+    private var shape: Shape {
+        switch (ageBand.minAge, ageBand.maxAge) {
+        case (nil, nil): .all
+        case (nil, _): .upTo
+        case (_, nil): .from
+        default: .between
+        }
+    }
+
+    private var shapeChips: some View {
         FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
-            ForEach(AgeBand.allCases, id: \.self) { band in
-                let isSelected = band == ageBand
-                Chip(band.label, isSelected: isSelected, metrics: .ageBand) {
-                    ageBand = band
+            ForEach(Shape.allCases, id: \.self) { option in
+                let isSelected = option == shape
+                Chip(option.title, isSelected: isSelected, metrics: .ageBand) {
+                    select(option)
                 }
                 // The chip draws its selection and does not say so, which makes "which ages" an
                 // unanswerable question by ear. `CreateCampView.sportChips` adds the same trait
                 // to the same shared control for the same reason.
+                .accessibilityLabel(option.spoken)
                 .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }
-        .sensoryFeedback(.selection, trigger: ageBand)
+    }
+
+    /// Seeded from what is already on the band wherever there is something to keep.
+    ///
+    /// The two one-sided shapes fall back to the bounds this type used to be *made* of — eleven
+    /// and twelve — so the two bands the app could express before are still one tap and no steps.
+    /// "Between" opens three years wide around whichever bound already exists, which is a band a
+    /// reader adjusts rather than one they have to build: fresh, that is 9–12, and from "12 & up"
+    /// it is 12–15 rather than the useless 12–12 a plain `?? 12` on both sides would give.
+    private func select(_ option: Shape) {
+        switch option {
+        case .all:
+            ageBand = .all
+        case .upTo:
+            ageBand = .upTo(ageBand.maxAge ?? AgeBand.defaultCeiling)
+        case .from:
+            ageBand = .from(ageBand.minAge ?? AgeBand.defaultFloor)
+        case .between:
+            let span = 3
+            let lower = ageBand.minAge
+                ?? max(AgeBand.range.lowerBound, (ageBand.maxAge ?? AgeBand.defaultFloor) - span)
+            let upper = ageBand.maxAge ?? min(AgeBand.range.upperBound, lower + span)
+            ageBand = .between(lower, upper)
+        }
+    }
+
+    // MARK: - The ages
+
+    /// The same card the numbers above it live in — `VenueLimitRow` inside a `Card`, with
+    /// `IntakeStepper` as the control. Reused rather than invented: an age is a small integer
+    /// somebody nudges, which is exactly what the courts, groups and target steppers are, and a
+    /// bespoke control here would be a fourth spelling of one interaction on one sheet.
+    /// A `switch` returning three whole cards rather than one card holding two `if`s, and the
+    /// reason is `Card`'s divider: it stacks through `_VariadicView`, where a conditional row is
+    /// still a child even when it renders nothing — so a one-stepper card built that way draws a
+    /// hairline above an empty row. Three shapes, three literal card bodies, no empty children.
+    @ViewBuilder
+    private var boundsCard: some View {
+        switch shape {
+        case .all:
+            EmptyView()
+        case .upTo:
+            Card(radius: Radius.input, borderColor: Theme.strokeAlt) { oldestRow }
+        case .from:
+            Card(radius: Radius.input, borderColor: Theme.strokeAlt) { youngestRow }
+        case .between:
+            Card(radius: Radius.input, borderColor: Theme.strokeAlt) {
+                youngestRow
+                oldestRow
+            }
+        }
+    }
+
+    /// The lower stepper stops at the upper bound, so "between" cannot be dragged inside out.
+    private var youngestRow: some View {
+        VenueLimitRow(
+            title: "Youngest",
+            detail: "Nobody younger is dealt onto a court here."
+        ) {
+            IntakeStepper(
+                value: floorBinding,
+                range: AgeBand.range.lowerBound...(ageBand.maxAge ?? AgeBand.range.upperBound),
+                label: "Youngest age",
+                valueWidth: 34
+            )
+        }
+    }
+
+    private var oldestRow: some View {
+        VenueLimitRow(
+            title: "Oldest",
+            detail: "Nobody older is dealt onto a court here."
+        ) {
+            IntakeStepper(
+                value: ceilingBinding,
+                range: (ageBand.minAge ?? AgeBand.range.lowerBound)...AgeBand.range.upperBound,
+                label: "Oldest age",
+                valueWidth: 34
+            )
+        }
+    }
+
+    /// Writes through the whole band rather than one property, because `AgeBand`'s bounds are
+    /// `private(set)` — the type normalises the pair on the way in, and a binding straight into a
+    /// stored property would be the one route past it.
+    private var floorBinding: Binding<Int> {
+        Binding(
+            get: { ageBand.minAge ?? AgeBand.defaultFloor },
+            set: { ageBand = AgeBand(minAge: $0, maxAge: ageBand.maxAge) }
+        )
+    }
+
+    private var ceilingBinding: Binding<Int> {
+        Binding(
+            get: { ageBand.maxAge ?? AgeBand.defaultCeiling },
+            set: { ageBand = AgeBand(minAge: ageBand.minAge, maxAge: $0) }
+        )
     }
 }
 
@@ -287,9 +466,11 @@ struct VenueTargetStepper: View {
 ///   *deliberately* gives them no court: "A kid with no court shows up in Groups' unassigned
 ///   band, which is where somebody decides where they belong — as opposed to being dropped into
 ///   court 1 by an import and quietly outranking kids already there" (`Repository.swift:611`).
-/// - **Nothing filters by age.** `AgeBand.admits(_:)` exists and, at the time of writing, has no
-///   caller anywhere in the app. The migration that added the column says as much in its own
-///   header: the band is recorded *so that* importing can one day leave the misfits out.
+/// - **The age band gates the deal, not the import.** `Camp.admit(_:at:)` now asks
+///   `AgeBand.admits(_:)` of every kid a deal touches, so a venue that is asking genuinely leaves
+///   the misfits unassigned — but that happens where kids are *dealt onto courts*, and an import
+///   is not that. A sentence promising "import deals every fitting kid into these {n} groups"
+///   would still be describing a machine this app does not have.
 /// - **Saving does not re-deal.** `updateVenue` → `Camp.upsert` → `syncGroups(for:)` adds or trims
 ///   courts and nothing else; a kid standing on a court that goes has their `groupID` cleared and
 ///   waits (`Models.swift:1580-1589`). The re-deal by ladder order is "Even out", which lives on
@@ -486,6 +667,24 @@ struct VenueRemoveButton: View {
 }
 
 // MARK: - Previews
+
+/// The four shapes of a band, stacked, because the control changes height as it changes shape and
+/// that is the thing worth looking at: "All ages" is a bare chip row, and only a narrowed venue
+/// pays for a card.
+#Preview("Age band — the four shapes") {
+    @Previewable @State var bands: [AgeBand] = [.all, .upTo(11), .from(12), .between(9, 12)]
+
+    ScrollView {
+        VStack(alignment: .leading, spacing: Spacing.large) {
+            ForEach(bands.indices, id: \.self) { index in
+                VenueFieldLabel(title: bands[index].label, topPadding: 0)
+                VenueAgeBandPicker(ageBand: $bands[index])
+            }
+        }
+        .padding(Spacing.sheet)
+    }
+    .background(Theme.surface)
+}
 
 #Preview("Venue shape fields") {
     @Previewable @State var ageBand = AgeBand.all

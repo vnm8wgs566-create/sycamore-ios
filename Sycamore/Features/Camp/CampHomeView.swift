@@ -67,6 +67,20 @@ struct CampHomeView: View {
     /// fire, and neither invents a mechanism: `SetupView.isConfirmingRoll` is the pattern.
     @State private var isConfirmingSignOut = false
 
+    /// Deleting the camp, which asks twice.
+    ///
+    /// Two flags rather than one, because this is the only control in the app whose mistake cannot
+    /// be repaired — rolling a code inconveniences whoever held the old one, signing out is undone
+    /// by signing in, and this takes every kid, venue, tournament and schedule block with it and
+    /// takes them from the other staff as well. One dialog is what the app asks before an
+    /// inconvenience; the second is the difference between a decision and a slip.
+    ///
+    /// The two are attached to different views on purpose — the first to the row, the second to
+    /// the card around it. Both anchored on the same view would be two presentations contending
+    /// for one slot, and the second would be the one that never appears.
+    @State private var isConfirmingDelete = false
+    @State private var isConfirmingDeleteForGood = false
+
     /// The design's `padding:14px 22px 16px`, less the 4pt the back disc's 44pt hit frame hangs
     /// above its 36pt circle. Measured to the disc rather than to the frame, as `8t` does.
     private let headerTop: CGFloat = 10
@@ -208,6 +222,9 @@ struct CampHomeView: View {
                 holdsCard(camp)
                 staffCard(camp)
                 exitsCard(camp)
+                if store.isAdmin {
+                    deleteCard(camp)
+                }
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.gutterWide)
@@ -399,6 +416,101 @@ struct CampHomeView: View {
     private var campCount: String {
         let count = store.memberships.count
         return "\(count) camp\(count == 1 ? "" : "s")"
+    }
+
+    // MARK: The door that does not open again
+
+    /// Deleting the camp. Admin only — the caller gates it, the same way "Import the roster" and
+    /// "Roll a new code" are gated, and for a stronger version of the same reason: a coach cannot
+    /// do this, and a red row that refuses is worse than no row.
+    ///
+    /// **Its own card rather than a fourth line in "the three ways out".** Those three are ways out
+    /// *of* the camp — it carries on without you. This is a way out of the camp's existence, and
+    /// putting it a thumb's width from "Switch camp" would make the two look like neighbours in a
+    /// list of exits. The gap is the point.
+    private func deleteCard(_ camp: Camp) -> some View {
+        Card(radius: Radius.settingsCard) {
+            SettingsRow(
+                "Delete camp",
+                icon: "trash",
+                iconColor: Theme.danger,
+                // `inkFaint`, which is where a qualifier belongs — the sentence that actually
+                // costs something is in the dialog, where there is room to say it in full.
+                subtitle: "Everyone loses it, not just you",
+                accessory: .plain,
+                titleColor: Theme.danger
+            ) {
+                isConfirmingDelete = true
+            }
+            .accessibilityHint("Asks twice. Deletes the camp and everything in it for everyone.")
+            .confirmationDialog(
+                "Delete \(camp.name)?",
+                isPresented: $isConfirmingDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Delete camp", role: .destructive) { isConfirmingDeleteForGood = true }
+                Button("Keep camp", role: .cancel) {}
+            } message: {
+                Text(deleteConsequence(for: camp))
+            }
+        }
+        .confirmationDialog(
+            "Delete for good?",
+            isPresented: $isConfirmingDeleteForGood,
+            titleVisibility: .visible
+        ) {
+            Button("Delete permanently", role: .destructive, action: deleteCamp)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("There is no undo and no copy. \(camp.name) disappears from every phone it is on the moment you tap.")
+        }
+    }
+
+    /// What a delete actually takes, counted off the camp in front of the reader.
+    ///
+    /// "This cannot be undone" is true of a great many harmless things and tells nobody what they
+    /// are about to lose. The camp knows its own kids, venues and courts, so the sentence says
+    /// them: *74 kids, 3 venues and 12 courts go with it.* The parts that have no count to hand —
+    /// tournaments and schedule blocks live behind their own repository calls, keyed by venue —
+    /// are named without one rather than left out, because a reader who has a tournament running
+    /// needs to know it goes even if this screen cannot say how many.
+    ///
+    /// Counts of zero are dropped rather than printed. "0 venues" in a list of losses is a line
+    /// arguing against itself, and a camp that has nothing yet gets its own honest sentence.
+    private func deleteConsequence(for camp: Camp) -> String {
+        var losses: [String] = []
+        if camp.playerCount > 0 {
+            losses.append("\(camp.playerCount) kid\(camp.playerCount == 1 ? "" : "s")")
+        }
+        if camp.venueCount > 0 {
+            losses.append("\(camp.venueCount) venue\(camp.venueCount == 1 ? "" : "s")")
+        }
+        // The sport's own word for a court, as `venueSummary` above already does it — a swim club
+        // being told it is losing twelve courts is the one loss on the list it does not have.
+        let courts = camp.groups.count
+        if courts > 0 {
+            let noun = camp.sport.groupNoun.lowercased()
+            losses.append("\(courts) \(noun)\(courts == 1 ? "" : "s")")
+        }
+
+        let opening = losses.isEmpty
+            ? "Nothing has been set up in this camp yet, and it still goes for good"
+            : "\(losses.formatted(.list(type: .and))) go with it, along with every tournament and every schedule block"
+
+        // The reader is one of the staff, so the count they need is of everybody else — "4 staff
+        // lose it" reads as though they were counting themselves out of their own camp.
+        let others = max(camp.staffCount - 1, 0)
+        guard others > 0 else { return "\(opening)." }
+        return "\(opening). The other \(others) staff lose the camp too."
+    }
+
+    /// `store.deleteCamp()` clears `camp` and `pushedScreen`, so this page puts itself away — the
+    /// same arrangement `signOut` below relies on, and with the same one gap: `isSwitchingCamps` is
+    /// a local `@State` the store has never seen, and a delete raised with that sheet open would
+    /// leave the camp picker stacked over the camp picker.
+    private func deleteCamp() {
+        isSwitchingCamps = false
+        Task { await store.deleteCamp() }
     }
 
     /// `store.signOut()` clears `pushedScreen` and `activeSheet`, so this page puts itself away.

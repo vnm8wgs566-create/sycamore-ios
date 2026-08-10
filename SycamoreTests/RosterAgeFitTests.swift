@@ -61,7 +61,7 @@ struct RosterAgeFitTests {
     func routedToTheVenueThatTakesThem() {
         let fit = RosterAgeFit(
             [Self.kid("Ana", age: 9), Self.kid("Bo", age: 14)],
-            venues: [Self.venue("Juniors", .underTwelve), Self.venue("Seniors", .twelveUp)]
+            venues: [Self.venue("Juniors", .upTo(11)), Self.venue("Seniors", .from(12))]
         )
 
         #expect(fit.isEverybodyPlaced)
@@ -75,7 +75,7 @@ struct RosterAgeFitTests {
     func nobodyTakesThem() {
         let fit = RosterAgeFit(
             [Self.kid("Ana", age: 9), Self.kid("Bo", age: 14)],
-            venues: [Self.venue("Seniors", .twelveUp)]
+            venues: [Self.venue("Seniors", .from(12))]
         )
 
         #expect(fit.placed.count == 1)
@@ -98,7 +98,7 @@ struct RosterAgeFitTests {
     func missingAgeIsRefusedByARestrictedBand() {
         let fit = RosterAgeFit(
             [Self.kid("Cy", age: nil)],
-            venues: [Self.venue("Seniors", .twelveUp)]
+            venues: [Self.venue("Seniors", .from(12))]
         )
 
         #expect(fit.unplaced.count == 1)
@@ -109,7 +109,7 @@ struct RosterAgeFitTests {
     func missingAgeFindsTheOpenVenue() {
         let fit = RosterAgeFit(
             [Self.kid("Cy", age: nil)],
-            venues: [Self.venue("Seniors", .twelveUp), Self.venue("Sycamore", .all)]
+            venues: [Self.venue("Seniors", .from(12)), Self.venue("Sycamore", .all)]
         )
 
         #expect(fit.isEverybodyPlaced)
@@ -122,7 +122,7 @@ struct RosterAgeFitTests {
     func theTwoRefusalsReadDifferently() {
         let fit = RosterAgeFit(
             [Self.kid("Ana", age: 9), Self.kid("Cy", age: nil)],
-            venues: [Self.venue("Seniors", .twelveUp)]
+            venues: [Self.venue("Seniors", .from(12))]
         )
 
         let wrongAge = fit.reason(for: fit.unplaced[0])
@@ -139,7 +139,7 @@ struct RosterAgeFitTests {
     func outcomeLineOneVenue() {
         let fit = RosterAgeFit(
             [Self.kid("Ana", age: 13), Self.kid("Bo", age: 14), Self.kid("Cy", age: 9)],
-            venues: [Self.venue("Seniors", .twelveUp)]
+            venues: [Self.venue("Seniors", .from(12))]
         )
 
         #expect(fit.outcomeLine == "2 go to Seniors · 1 needs someone to place them")
@@ -149,7 +149,7 @@ struct RosterAgeFitTests {
     func outcomeLineWhenAllPlaced() {
         let fit = RosterAgeFit(
             [Self.kid("Ana", age: 13), Self.kid("Bo", age: 14)],
-            venues: [Self.venue("Seniors", .twelveUp)]
+            venues: [Self.venue("Seniors", .from(12))]
         )
 
         #expect(fit.outcomeLine == "2 go to Seniors")
@@ -159,7 +159,7 @@ struct RosterAgeFitTests {
     func outcomeLineAcrossVenues() {
         let fit = RosterAgeFit(
             [Self.kid("Ana", age: 9), Self.kid("Bo", age: 14)],
-            venues: [Self.venue("Juniors", .underTwelve), Self.venue("Seniors", .twelveUp)]
+            venues: [Self.venue("Juniors", .upTo(11)), Self.venue("Seniors", .from(12))]
         )
 
         #expect(fit.outcomeLine == "2 go to their venues")
@@ -182,7 +182,7 @@ struct RosterAgeFitTests {
         )
 
         let routed = commit.routed(
-            by: [Self.venue("Juniors", .underTwelve), Self.venue("Seniors", .twelveUp)]
+            by: [Self.venue("Juniors", .upTo(11)), Self.venue("Seniors", .from(12))]
         )
 
         #expect(routed.inserting.map(\.venueIndex) == [1])
@@ -201,7 +201,7 @@ struct RosterAgeFitTests {
 
     @Test("The note names where they go instead")
     func noteNamesTheTaker() {
-        let venues = [Self.venue("Juniors", .underTwelve), Self.venue("Seniors", .twelveUp)]
+        let venues = [Self.venue("Juniors", .upTo(11)), Self.venue("Seniors", .from(12))]
         let note = RosterAgeFit.note(forAge: 14, atVenue: 0, among: venues)
 
         #expect(note == "Juniors takes 11 & under, so they go to Seniors instead.")
@@ -209,7 +209,7 @@ struct RosterAgeFitTests {
 
     @Test("The note asks for an age rather than blaming one")
     func noteAsksForAnAge() {
-        let venues = [Self.venue("Seniors", .twelveUp)]
+        let venues = [Self.venue("Seniors", .from(12))]
         let note = try? #require(RosterAgeFit.note(forAge: nil, atVenue: 0, among: venues))
 
         #expect(note == "Seniors takes 12 & up. Add an age, or they join with no group.")
@@ -217,7 +217,7 @@ struct RosterAgeFitTests {
 
     @Test("An index no chip answers to has no note")
     func noteOutOfRange() {
-        #expect(RosterAgeFit.note(forAge: 9, atVenue: 4, among: [Self.venue("A", .twelveUp)]) == nil)
+        #expect(RosterAgeFit.note(forAge: 9, atVenue: 4, among: [Self.venue("A", .from(12))]) == nil)
     }
 }
 
@@ -235,7 +235,7 @@ struct AgeBandReachesEnrolmentTests {
 
     @Test("A venue's band survives Venue -> VenueShape")
     func theAdapterCarriesTheBand() {
-        for band in [AgeBand.all, .underTwelve, .twelveUp] {
+        for band in [AgeBand.all, .upTo(11), .from(12)] {
             var venue = SampleData.sycamore
             venue.ageBand = band
 
@@ -249,7 +249,7 @@ struct AgeBandReachesEnrolmentTests {
     @Test("A shape narrowed on 8b turns a kid away two screens later")
     func aNarrowedShapeIsEnforcedAtEnrolment() {
         var shape = CampShape.initial(venueCount: 1, courts: 4)
-        shape.venues[0].ageBand = .twelveUp
+        shape.venues[0].ageBand = .from(12)
 
         // Exactly what `OnboardingFlowView` now hands the enrolment screens.
         let venues = shape.venues.map(\.rosterVenue)

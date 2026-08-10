@@ -51,7 +51,16 @@ enum GroupsSpace {
 struct GroupsMove: Equatable {
 
     let row: PlayerRow
-    let sourceGroupID: Group.ID
+    /// The group the kid was picked up from, or **nil for a kid who was in none**.
+    ///
+    /// Nil is not a defensive spelling: the model leaves kids at a venue with no group two ways —
+    /// a band that refuses them, and a group that was deleted out from under them — and
+    /// `UnassignedCard` draws those kids as ordinary draggable rows, because the way to place one
+    /// is the same drag that moves anybody else. So "where did this kid come from" genuinely has no
+    /// answer for them, and every place that asks reads the nil correctly for free: no card is the
+    /// source, `isNoop` can never fire (there is no boundary they already stand either side of),
+    /// and `endTracking` parks the carried card because the landing is always a change of group.
+    let sourceGroupID: Group.ID?
     /// The kid immediately below the mover in their own group at lift time, or nil if they were
     /// last in it.
     ///
@@ -183,6 +192,10 @@ struct GroupsMove: Equatable {
     /// Worth catching: committing one of these would spend a write, a reload and a re-render to
     /// put the ladder back exactly as it was — and on a flaky connection it would fail visibly
     /// for a gesture that asked for nothing.
+    ///
+    /// A kid lifted from no group has a nil `sourceGroupID`, which no slot's group can equal — so
+    /// every landing is a real move for them, which is exactly right: there is no boundary they
+    /// already stand either side of, and any group at all is somewhere they are not.
     func isNoop(_ slot: GroupsDropSlot) -> Bool {
         guard slot.landing.groupID == sourceGroupID else { return false }
         return slot.landing.anchor == row.id || slot.landing.anchor == nextRowID

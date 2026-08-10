@@ -16,6 +16,14 @@ struct PlayerHeader: View {
     /// `Sycamore · Court 1 · Nass` — where the design writes `Group 1 · Court 1`. Same line, one
     /// more fact: this app's camps run several venues, so which one the kid is at is the part a
     /// coach cannot infer from the court number alone.
+    ///
+    /// **The "Court 1" here is the place, and it stays.** The pass that made the move bar and its
+    /// picker say "group" left this alone deliberately: the design names both halves, so the court
+    /// is not standing in for the group — the group is simply missing from a crumb that has never
+    /// had it. Adding it means changing `Camp.placementLine(for:)` (`Models.swift:1286-1295`),
+    /// which is a model this unit does not own; until then the group number is a cell away in the
+    /// stat card and `PlayerScreen.groupNumber` reads it off the same `Group.number` the picker
+    /// does.
     let placement: String
     let name: String
     /// The mark the design draws in front of the line below (`ph-gender-male` at `#A2A6AE`).

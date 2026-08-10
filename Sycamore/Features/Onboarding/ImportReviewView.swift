@@ -20,10 +20,12 @@ struct ImportReviewView: View {
     let file: IntakeImport
     /// The venues this file's rows will be dealt across, each carrying the ages it takes.
     ///
-    /// Empty at onboarding, which is every caller today: the camp is written at the *end* of that
-    /// flow, so while this screen is up there are no venues — only `8b`'s sketch, which has no band
-    /// to sketch (`Venue.ageBand` defaults to `.all` and `VenueShape` carries no control for it).
-    /// Empty means nothing is asking, and `RosterAgeFit` then places every row.
+    /// **No longer empty at onboarding, and that comment used to say the opposite.** It read that
+    /// `8b`'s sketch "has no band to sketch" because `VenueShape` carried no control for one — true
+    /// when written, false since the shape sheet grew an age picker. `OnboardingFlowView` now hands
+    /// this screen `shape.venues.map(\.rosterVenue)`, so a file imported into a camp whose venues
+    /// were narrowed before the first roster arrived is placed against the bands that were actually
+    /// chosen. Empty still means nothing is asking, and `RosterAgeFit` then places every row.
     ///
     /// Carried anyway rather than left out, because the *screen's* promise does not depend on which
     /// flow reached it: "nothing is written until the button at the bottom" is only kept if what

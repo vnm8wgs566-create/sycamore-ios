@@ -15,19 +15,26 @@
 //  `Record 6–2` stat cell have no source; and a pick-up carries a day and a time but no collector,
 //  so the "Mum" / "Dad" column is not there. Both are noted rather than faked.
 //
-//  The pinned bar reads "Move to another court" where the design reads "Move to another group",
-//  and it opens `PlayerCourtPicker` — every court in the camp, venue by venue, with its fill and
-//  its coach on it.
+//  The pinned bar reads "Move to another group", as the design writes it, and it opens
+//  `PlayerCourtPicker` — every group in the camp, venue by venue, with its fill and its coach on
+//  it.
 //
 //  It read "Move up a court" and did exactly that, on the argument recorded here that an arbitrary
 //  move belonged to `8p` because "it needs the whole ladder on screen to aim at, which this screen
 //  does not have". That was wrong about what aiming needs, and the correction is small: a ladder
-//  is how you decide *whether* a kid should move; a list of courts is all you need to decide
-//  *where*. One court up is still the common case and is now one tap inside the picker rather than
+//  is how you decide *whether* a kid should move; a list of groups is all you need to decide
+//  *where*. One group up is still the common case and is now one tap inside the picker rather than
 //  the only sentence this screen could say. `PlayerCourtPicker`'s header argues it in full.
 //
-//  `AppStore.moveUpACourt` went with it. This bar was its only caller, and the one direction it
-//  could go is a question nothing asks now that the picker offers every court in either direction.
+//  It then read "Move to another court" for a while, which is the divergence this file used to
+//  record as known and unclosed. A move changes which rank band a kid is in — the thing Groups
+//  titles "Group N" — and naming it after the place that band happens to play on made the two
+//  screens most often used together disagree about what the row was called. Bar, picker and
+//  VoiceOver all say group now, off `Group.number`.
+//
+//  `AppStore.moveUpACourt` went with the first change. This bar was its only caller, and the one
+//  direction it could go is a question nothing asks now that the picker offers every group in
+//  either direction.
 //
 
 import SwiftUI
@@ -137,25 +144,59 @@ struct PlayerScreen: View {
     /// One card of three cells, not three cards. `8q` draws a single `16`-radius plate with
     /// `padding:14` and `gap:12`, where this screen had three separate `grouped` tiles.
     ///
-    /// The design's third cell is `RECORD 6–2`. There is no match model, so the cell carries the
-    /// court rank instead — real data in the shape the design asks for, rather than a dash.
+    /// **There is one rank in this app, and this card used to draw two.** It read
+    /// `GROUPS #7 · GROUP 1 · ON COURT #3`, where the first numeral is `overallRank` — the camp
+    /// ladder, 1…N, the number every row on the Groups screen wears — and the third is
+    /// `courtRank`, the kid's seat inside their own group. Two hashed numerals side by side, in
+    /// identical type, and nothing on the card said which was which; the smaller one read as the
+    /// authoritative one, because a smaller number looks like a better place.
+    ///
+    /// `courtRank` is also, since section 8, a number with nothing of its own to say. A group is a
+    /// *band of the ladder* — `Camp.reindex()` re-derives every court's sequence from
+    /// `overallRank`, and `GroupsLandingPlan` reads a group's order back off the ladder rather than
+    /// authoring it — so "third on this court" is entirely determined by "seventh in the camp". A
+    /// cell that competes with the rank and adds nothing to it is the cell to spend.
+    ///
+    /// What replaces it is the thing that made `#7` mean anything: how many kids there are. The
+    /// design's own third cell is `RECORD 6–2` and there is still no match model to fill it, so the
+    /// slot goes to the ladder's denominator rather than to a dash or to a second rank.
     private var statCard: some View {
         let shape = RoundedRectangle(cornerRadius: OnTheDayTokens.card, style: .continuous)
 
         return HStack(alignment: .top, spacing: Spacing.medium) {
-            StatCell(label: "Groups", value: "#\(player?.overallRank ?? 0)")
-            StatCell(label: "Group", value: courtNumber)
-            StatCell(label: "On court", value: "#\(player?.courtRank ?? 0)")
+            StatCell(label: "Rank", value: "#\(player?.overallRank ?? 0)")
+            StatCell(label: "Group", value: groupNumber)
+            StatCell(label: "Camp", value: campRoll)
         }
         .padding(OnTheDayTokens.cardInsetWide)
         .background(Theme.surface, in: shape)
         .overlay { shape.strokeBorder(Theme.hairline, lineWidth: BorderWidth.hairline) }
     }
 
-    /// The bare numeral the design shows — "1", not "Court 1", because the cell is labelled.
-    private var courtNumber: String {
+    /// The bare numeral the design shows — "1", not "Group 1", because the cell beside it is
+    /// already labelled "Group".
+    ///
+    /// `Group.number`, which is the same field `GroupCard`'s title and `PlayerCourtChoices`' rows
+    /// count off. This cell has always read it; the move path has now been brought up to it.
+    ///
+    /// The em dash is not only the loading state any more. A kid can genuinely be at a venue with
+    /// no group — a band that refuses them, or a group that was deleted out from under them — and
+    /// this is what that looks like here. The Groups tab is where it is explained and where it can
+    /// be fixed; the bar at the foot of this screen is the other way to fix it.
+    private var groupNumber: String {
         guard let groupID = player?.groupID, let group = store.group(groupID) else { return "—" }
         return "\(group.number)"
+    }
+
+    /// `42 kids` — what the rank beside it is out of.
+    ///
+    /// The camp's roll and not the venue's, because `overallRank` is camp-wide: `Camp.reindex()`
+    /// sorts the whole roster and numbers it 1…N, and a venue is a contiguous run of that list
+    /// rather than a ladder of its own. Pairing `#7` with a venue's 20 would be the same two-ranks
+    /// confusion arriving by a different door.
+    private var campRoll: String {
+        let count = store.camp?.playerCount ?? 0
+        return "\(count) kid\(count == 1 ? "" : "s")"
     }
 
     // MARK: - Leaving early
@@ -279,8 +320,8 @@ struct PlayerScreen: View {
 
     // MARK: - The bar
 
-    /// `8q`'s pinned bar. The design writes it "Move to another group"; see the file header for
-    /// why it says what it says, and `PlayerCourtPicker` for what it opens.
+    /// `8q`'s pinned bar, reading the design's "Move to another group"; see the file header for
+    /// what it used to say, and `PlayerCourtPicker` for what it opens.
     private var moveBar: some View {
         PlayerMoveBar(isEnabled: canMoveElsewhere) {
             courtRequest = PlayerCourtRequest(id: playerID)
@@ -291,16 +332,16 @@ struct PlayerScreen: View {
 
     /// Whether there is anywhere else in the camp to put them.
     ///
-    /// It used to ask whether there was a court *above* this one, because the bar performed that
+    /// It used to ask whether there was a group *above* this one, because the bar performed that
     /// one move and `moveUpACourt` returns silently when there is not — a bar that answers a tap
     /// with nothing being worse than one that says it is spent. The bar opens a list now, so the
-    /// question is whether the list would have anything in it: a kid on the top court has eleven
-    /// other courts to choose from and the bar has no business standing down for them.
+    /// question is whether the list would have anything in it: a kid in the top group has eleven
+    /// other groups to choose from and the bar has no business standing down for them.
     ///
     /// Asked of `PlayerCourtChoices` — the type the sheet itself lists from — rather than with a
     /// predicate of its own. A live bar over an empty picker, or a dead bar over a full one, is a
     /// disagreement neither screen could show you; one answer cannot disagree with itself. A
-    /// camp still loading, or one with no courts shaped yet, comes back false through the same
+    /// camp still loading, or one with no groups shaped yet, comes back false through the same
     /// route and the bar stands down and says so.
     private var canMoveElsewhere: Bool {
         PlayerCourtChoices(for: playerID, in: store.camp).hasSomewhereElse

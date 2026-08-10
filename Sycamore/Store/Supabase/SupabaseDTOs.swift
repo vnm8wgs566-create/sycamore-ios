@@ -101,9 +101,17 @@ struct SiteRecord: Decodable, Sendable {
     /// senses that happen to want one spelling: the column is nullable because "no target" is a
     /// real answer, and the property is optional because the column may not exist yet.
     var targetPerGroup: Int?
-    /// Which ages this venue takes — `sites.age_band`. Optional for the migration reason only;
-    /// the column is `not null default 'all'`.
-    var ageBand: String?
+    /// The inclusive bounds of the ages this venue takes — `sites.age_min` and `sites.age_max`.
+    ///
+    /// Optional in both senses at once, the way `GroupRecord.closedReason` is. The columns are
+    /// genuinely nullable: NULL means "not asking on that side", which is what makes "All ages" a
+    /// pair of NULLs rather than a magic pair of numbers. And an optional property is also what
+    /// lets a build talking to a database one migration behind read the rest of the row — although
+    /// here that tolerance is one-way and short-lived, because
+    /// `20260810050000_a_venue_picks_its_own_age` **drops** `age_band` in the same transaction
+    /// that adds these, so an older build is the one that breaks, not this one.
+    var ageMin: Int?
+    var ageMax: Int?
 }
 
 struct GroupRecord: Decodable, Sendable {
@@ -344,7 +352,13 @@ extension Venue {
             // somebody's venue to four groups the first time it was saved back.
             groupCount: record.groupCount ?? record.courtCount,
             targetPerGroup: record.targetPerGroup,
-            ageBand: record.ageBand.flatMap(AgeBand.init(rawValue:)) ?? .all,
+            // No `?? .all` needed and none written: a pair of absent bounds *is* "all ages", so
+            // the fallback and the value are the same expression. A row from a database that has
+            // not had `20260810050000_a_venue_picks_its_own_age` applied yet decodes both as nil
+            // and therefore reads as an unrestricted venue — the same thing the old `age_band`
+            // default said, and the safe direction to be wrong in: it deals every kid rather than
+            // quietly refusing some.
+            ageBand: AgeBand(minAge: record.ageMin, maxAge: record.ageMax),
             coachMin: record.coachMin,
             coachMax: record.coachMax,
             playerMin: record.playerMin,

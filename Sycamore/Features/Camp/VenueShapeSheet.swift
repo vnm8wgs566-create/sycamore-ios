@@ -505,8 +505,10 @@ struct VenueShapeSheet: View {
     VenueShapeSheetPreviewHarness(venueCount: 2, isEditing: false)
 }
 
-/// A venue that has been given a shape of its own — four groups on six courts, a target, and an
-/// age band — which is the whole point of the sheet and the state no other preview reaches.
+/// A venue that has been given a shape of its own — four groups on six courts, a target, and a
+/// nine-to-twelve age band — which is the whole point of the sheet and the state no other preview
+/// reaches. The band is closed at both ends deliberately: it is the shape the old three-case
+/// `AgeBand` could not say at all, so it is the one worth drawing.
 #Preview("Venue editor — shaped") {
     VenueShapeSheetPreviewHarness(venueCount: 2, shaping: true)
 }
@@ -530,7 +532,7 @@ private struct VenueShapeSheetPreviewHarness: View {
             shape.venues[0].subtitle = "Higher level"
             shape.venues[0].groups = 4
             shape.venues[0].targetPerGroup = 12
-            shape.venues[0].ageBand = .twelveUp
+            shape.venues[0].ageBand = .between(9, 12)
         }
         let venue = isEditing ? shape.venues[0] : shape.newVenue()
 

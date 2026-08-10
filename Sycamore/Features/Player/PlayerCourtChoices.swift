@@ -2,14 +2,29 @@
 //  PlayerCourtChoices.swift
 //  Sycamore
 //
-//  Every court a kid could be sent to — the list behind `8q`'s bar, with no view in it.
+//  Every group a kid could be sent to — the list behind `8q`'s bar, with no view in it.
+//
+//  ── It says "Group 3", and it says it from `Group.number` ─────────────────────────────────────
+//
+//  The rows read `Group 3` and not `Group.label`'s `Court 3`. Groups titles its cards
+//  "Group \(card.group.number)" (`GroupCard.swift:63`), the design writes `8q`'s bar "Move to
+//  another group", and a coach who reads a card as a group and then has to pick a court is being
+//  asked to translate between two names for one row. `Group.label` keeps its meaning — it is the
+//  sport's noun for the *place*, "Court 1" / "Lane 1", and Attendance, Overview and Schedule still
+//  want it — so this list stops reading it rather than the model changing under them.
+//
+//  Composed here from `number` rather than borrowed from `GroupCard`, which is a `View` and so
+//  `@MainActor`; the one line of formatting is cheaper than the isolation. What stops the two
+//  drifting is that both count off the same field, and `PlayerMoveTargetsTheGroupTests` holds the
+//  sentence to the letter.
 //
 //  Lifted out of `PlayerCourtPicker` for the reason `GroupsLandingPlan` was lifted out of
 //  `GroupsView` (`GroupsLandingPlan.swift:7-11`) and `ScheduleResizePlan` out of a finger on a
 //  card's edge: everything decided here is something a person could otherwise only check by
 //  putting a finger on a device, and every way it can be wrong looks right. A picker that quietly
-//  dropped the second venue's six courts still reads as a picker. One that ticked the wrong row
-//  still reads as a picker.
+//  dropped the second venue's six groups still reads as a picker. One that ticked the wrong row
+//  still reads as a picker. One that numbered its rows off `rankOrder` instead of `number` still
+//  reads as a picker, and disagrees with the Groups tab on every row a coach has reordered.
 //
 //  It also settles an agreement that would otherwise be invisible. `PlayerScreen` asks this type
 //  whether the bar has anywhere to go, and `PlayerCourtPicker` asks it what to draw — so a live
@@ -22,16 +37,25 @@
 
 import Foundation
 
-// MARK: - One court on the list
+// MARK: - One group on the list
 
-/// A court a kid could be sent to, with everything a person needs to aim at it.
+/// A group a kid could be sent to, with everything a person needs to aim at it.
+///
+/// The type keeps its name. Everything it describes is a `Group` row, and the app's own vocabulary
+/// for those rows is still split — `Group.label`, `AppStore.closedCourts`, `CourtCapacity` — so a
+/// rename here would move the seam rather than close it. What a person *reads* is the thing this
+/// pass was about, and that is `label` below.
 struct PlayerCourtOption: Identifiable, Hashable, Sendable {
 
     let id: Group.ID
-    /// Carried because the write takes one — `movePlayer(_:toVenue:group:)` — and because a court
+    /// Carried because the write takes one — `movePlayer(_:toVenue:group:)` — and because a group
     /// two venues away is a legitimate destination, so the venue cannot be inferred from the kid.
     let venueID: Venue.ID
-    /// `Court 3` — `Group.label`, which is the sport's noun plus the number.
+    /// `Group 3` — `Group.number` under the same sentence `GroupCard` titles its cards with.
+    ///
+    /// Deliberately **not** `Group.label`, which is the sport-derived name for the place a group
+    /// plays on: "Court 3", "Lane 3", "Pitch 3". A venue that renames its courts must not change
+    /// what the move screen calls a group, which is why this reads the numeral and not the string.
     let label: String
     /// Nil where nobody has this court yet; said as `CoachPill.needsACoach`, which is the words
     /// Overview and Schedule already use for the same hole.
@@ -43,7 +67,7 @@ struct PlayerCourtOption: Identifiable, Hashable, Sendable {
     /// `PlayerCourtChoices.init`.
     let isClosed: Bool
     /// Where the kid stands right now. Ticked and inert, rather than absent: a picker that hid
-    /// their own court would make them count courts to work out which one they were on.
+    /// their own group would make them count rows to work out which one they were in.
     let isCurrent: Bool
 
     /// The one state this row is in — `2 spots`, `Full`, `1 over`, `Closed` — or nil on a court
@@ -72,7 +96,7 @@ struct PlayerCourtOption: Identifiable, Hashable, Sendable {
         return capacity?.flag
     }
 
-    /// `6 of 8 · Nass`, or `6 of 8 · Needs a coach` — the line under the court's name.
+    /// `6 of 8 · Nass`, or `6 of 8 · Needs a coach` — the line under the group's name.
     ///
     /// The coach segment is always there, including when there is nobody: "who has it" is one of
     /// the three things this list exists to answer, and a row that simply omitted the answer would
@@ -104,11 +128,13 @@ struct PlayerCourtOption: Identifiable, Hashable, Sendable {
 
 // MARK: - One venue's worth of them
 
-/// The courts at one venue, under that venue's name.
+/// The groups at one venue, under that venue's name.
 ///
-/// Sectioned rather than flat because court labels repeat: `SampleData` alone has a "Court 1" at
-/// Sycamore and a "Court 1" at LATC, and a single list of twelve would offer two identical rows
-/// with no way to tell which is which.
+/// Sectioned rather than flat because the numbering restarts at every venue: `SampleData` alone has
+/// a "Group 1" at Sycamore and a "Group 1" at LATC, and a single list of twelve would offer two
+/// identical rows with no way to tell which is which. That was already true of `Group.label` and it
+/// is no less true of `Group.number`, which `syncGroups` counts from one per venue
+/// (`Models.swift:1592-1598`) — so the venue header is load-bearing, not decoration.
 struct PlayerCourtSection: Identifiable, Hashable, Sendable {
     let id: Venue.ID
     /// The venue's name. Deliberately not its emoji as well: the header is set uppercase through
@@ -120,7 +146,7 @@ struct PlayerCourtSection: Identifiable, Hashable, Sendable {
 
 // MARK: - The whole list
 
-/// Every court in the camp, ordered, with the kid's own marked.
+/// Every group in the camp, ordered, with the kid's own marked.
 struct PlayerCourtChoices: Equatable, Sendable {
 
     let sections: [PlayerCourtSection]
@@ -158,7 +184,10 @@ struct PlayerCourtChoices: Equatable, Sendable {
                 PlayerCourtOption(
                     id: court.id,
                     venueID: venue.id,
-                    label: court.label,
+                    // `number`, not `label`. See `PlayerCourtOption.label` and this file's header:
+                    // the row names the rank band, which is what a move changes, and `Group.label`
+                    // names the place it plays on.
+                    label: "Group \(court.number)",
                     coachName: camp.coach(forGroup: court.id)?.name,
                     capacity: CourtCapacity.reading(for: court),
                     isClosed: closedCourts.contains(court.id),
@@ -178,9 +207,9 @@ struct PlayerCourtChoices: Equatable, Sendable {
     /// sections.
     var courts: [PlayerCourtOption] { sections.flatMap(\.courts) }
 
-    /// Whether this list is worth opening: is there a court that is not already theirs.
+    /// Whether this list is worth opening: is there a group that is not already theirs.
     ///
-    /// What `PlayerScreen` enables the bar on. Not "is there a court above this one" — that was the
+    /// What `PlayerScreen` enables the bar on. Not "is there a group above this one" — that was the
     /// old bar's question, from when the bar performed the move itself.
     ///
     /// Nested `contains` rather than `courts.contains`, which is the same sentence one line

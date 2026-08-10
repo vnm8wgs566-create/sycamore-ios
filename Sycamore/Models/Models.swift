@@ -508,26 +508,114 @@ enum StaffingStatus: Hashable, Sendable {
     var needsAttention: Bool { self != .inRange }
 }
 
-/// Which ages a venue takes.
+/// Which ages a venue takes: an inclusive pair of bounds, either of which may be absent.
 ///
-/// Three values because the venue sheet offers three. It is a band rather than a pair of numbers
-/// on purpose: the question being asked is "which of my two groups is this kid for", not "is this
-/// kid between 9 and 11", and a camp that wants finer slicing has venues for it.
+/// ── Why this is not three cases any more ─────────────────────────────────────────────────────
+///
+/// It used to be `all / under_twelve / twelve_up`, with the pivot **welded to twelve inside the
+/// type**. Three answers is not a setting, it is a guess about which camp is asking: a camp that
+/// splits at ten, or at thirteen, or that runs a nine-to-twelve venue beside an open one, had no
+/// way to say so and no way to ask for one. Two nullable bounds subsume all three of the old
+/// values *and* every pivot a camp might actually pick, at the cost of one comparison:
+///
+///     minAge   maxAge    label            was
+///     ---------------------------------------------------
+///     nil      nil       "All ages"       .all
+///     nil      11        "11 & under"     .underTwelve
+///     12       nil       "12 & up"        .twelveUp
+///     9        12        "9–12"           — unsayable before
+///
+/// A pair rather than a pivot-plus-direction, which is the shape the request literally described
+/// ("over and under at a chosen age"): a pivot cannot express a band closed at both ends, and the
+/// camp that has once been able to say "12 & up" asks for "9–12" the same afternoon. It is also
+/// the shape `sites`' own CHECK wants — one comparison between two columns, rather than a
+/// direction column that has to be read before either bound means anything. The columns are
+/// `sites.age_min` and `sites.age_max`, added by
+/// `20260810050000_a_venue_picks_its_own_age`, which dropped `age_band` in the same transaction.
 ///
 /// **What this does not do is filter a list.** It decides where an *imported* kid lands. A roster
 /// arriving at a venue is dealt onto its courts, and a kid outside the band is left unassigned
 /// and counted rather than dealt somewhere they do not belong — see `admits(_:)`.
-enum AgeBand: String, Codable, Hashable, Sendable, CaseIterable {
-    case all
-    case underTwelve = "under_twelve"
-    case twelveUp = "twelve_up"
+///
+/// Two places enforce that, and between them they cover every way a kid reaches a court:
+/// `RosterAgeFit` decides which venue an arrival is offered to, and `Camp.admit(_:at:)` decides
+/// who the venue's own deal will seat once they are there. Both ask `admits(_:)` and nothing else,
+/// which is why widening the representation cost neither of them a line.
+struct AgeBand: Hashable, Codable, Sendable {
+
+    /// The youngest age admitted, or nil for "not asking on that side". Inclusive.
+    private(set) var minAge: Int?
+    /// The oldest age admitted, or nil for "not asking on that side". Inclusive.
+    private(set) var maxAge: Int?
+
+    /// Three to twenty-one — `sites_age_min_sane` and `sites_age_max_sane`, mirrored.
+    ///
+    /// Not arbitrary and not this file's invention: below three there is no camp, and twenty-one
+    /// is where a junior programme stops being one. Wide enough that no real camp meets it, narrow
+    /// enough that a fat-fingered 120 is refused before it is drawn on a chip as "120 & up".
+    static let range = 3...21
+
+    /// A venue that is not asking. The default every venue is created with, and the one most of
+    /// them keep.
+    static let all = AgeBand()
+
+    /// The two bounds a reader is offered first when they narrow a venue for the first time —
+    /// which are, deliberately, exactly the two bands this type used to be able to express. A camp
+    /// that wanted "11 & under" or "12 & up" before still reaches it in one tap and no steps.
+    static let defaultCeiling = 11
+    static let defaultFloor = 12
+
+    /// **Both bounds are normalised here, and that is why they are `private(set)`.**
+    ///
+    /// Two invariants, and each of them is a constraint on `sites` rather than a preference. Each
+    /// bound is clamped into `range`, because `sites_age_min_sane` refuses anything outside it —
+    /// and a row Postgres refuses surfaces as an opaque 400 on a save button two screens from the
+    /// stepper that caused it. And a pair given out of order is put back in order, because
+    /// `sites_age_bounds_ordered` refuses that too; an inverted band also admits nobody, which is
+    /// a venue that can never be filled and is far likelier to be a slip than an intention.
+    ///
+    /// The upper bound is the one that moves when they cross, not the lower: the caller who passes
+    /// both is the "between" control, whose lower stepper is the one under the finger.
+    init(minAge: Int? = nil, maxAge: Int? = nil) {
+        let lower = minAge.map { $0.clamped(to: Self.range) }
+        let upper = maxAge.map { $0.clamped(to: Self.range) }
+        self.minAge = lower
+        if let lower, let upper {
+            self.maxAge = Swift.max(lower, upper)
+        } else {
+            self.maxAge = upper
+        }
+    }
+
+    /// `11 & under` — a ceiling and no floor.
+    static func upTo(_ age: Int) -> AgeBand { AgeBand(maxAge: age) }
+
+    /// `12 & up` — a floor and no ceiling.
+    static func from(_ age: Int) -> AgeBand { AgeBand(minAge: age) }
+
+    /// `9–12` — the shape the three-case enum could not say at all.
+    static func between(_ lower: Int, _ upper: Int) -> AgeBand {
+        AgeBand(minAge: lower, maxAge: upper)
+    }
+
+    /// Whether this venue is asking about age at all. What `band != .all` used to mean, said as a
+    /// question rather than as a comparison against one particular value — there are now many
+    /// bands and exactly one of them is not asking.
+    var isUnrestricted: Bool { minAge == nil && maxAge == nil }
 
     /// The chip in the venue sheet, and the chip on the venue's card.
+    ///
+    /// Derived from the bounds rather than stored beside them, so there is no second field that
+    /// can come to disagree with the numbers it describes — which is the whole reason the enum
+    /// went. The four shapes are the four combinations of "asking on that side" and nothing else;
+    /// an en dash between two numbers because that is what a range is set with, and "10 only" for
+    /// the degenerate closed band, because "10–10" is a puzzle where "10 only" is an answer.
     var label: String {
-        switch self {
-        case .all: "All ages"
-        case .underTwelve: "11 & under"
-        case .twelveUp: "12 & up"
+        switch (minAge, maxAge) {
+        case (nil, nil): "All ages"
+        case (nil, let ceiling?): "\(ceiling) & under"
+        case (let floor?, nil): "\(floor) & up"
+        case (let floor?, let ceiling?): floor == ceiling ? "\(floor) only" : "\(floor)–\(ceiling)"
         }
     }
 
@@ -540,14 +628,39 @@ enum AgeBand: String, Codable, Hashable, Sendable, CaseIterable {
     /// year old on a 12-and-up court because a spreadsheet had a blank cell. Refusing them leaves
     /// a kid unassigned, where the screen says so out loud and somebody can place them by hand.
     ///
-    /// The second is the one that fails where a person can see it, so it is the one taken. `.all`
-    /// admits everybody including the unknowns, because it is not asking.
+    /// The second is the one that fails where a person can see it, so it is the one taken. An
+    /// unrestricted band admits everybody including the unknowns, because it is not asking.
+    ///
+    /// **The meaning is unchanged from the three-case version, deliberately.** Every caller in the
+    /// app asks this and only this — the deal-gating in `Camp.admit(_:at:)`, `RosterAgeFit`, the
+    /// enrolment chips — so widening the representation was allowed to add shapes and was not
+    /// allowed to move the line. `nil` at a restricted band was false before and is false now.
     func admits(_ age: Int?) -> Bool {
-        switch self {
-        case .all: true
-        case .underTwelve: (age ?? .max) <= 11
-        case .twelveUp: (age ?? .min) >= 12
-        }
+        guard !isUnrestricted else { return true }
+        guard let age else { return false }
+        if let minAge, age < minAge { return false }
+        if let maxAge, age > maxAge { return false }
+        return true
+    }
+}
+
+extension AgeBand {
+    /// Decoded through the memberwise init rather than by the synthesised member-by-member
+    /// assignment, which would walk straight past the clamping above — and the one place a band
+    /// arrives from outside this process is exactly where an out-of-range pair is most likely.
+    /// `encode(to:)` stays synthesised; there is nothing to defend on the way out.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            minAge: try container.decodeIfPresent(Int.self, forKey: .minAge),
+            maxAge: try container.decodeIfPresent(Int.self, forKey: .maxAge)
+        )
+    }
+}
+
+private extension Int {
+    func clamped(to range: ClosedRange<Int>) -> Int {
+        Swift.min(range.upperBound, Swift.max(range.lowerBound, self))
     }
 }
 
@@ -1485,7 +1598,7 @@ extension Camp {
     /// rather than through the subset below, which would resolve those ids back into the very list
     /// they were flattened from.
     mutating func redistribute(in venueID: Venue.ID) {
-        deal(players(in: venueID), across: groups(in: venueID))
+        deal(players(in: venueID), across: groups(in: venueID), at: venueID)
     }
 
     /// The same deal, over an explicit subset of the venue's courts.
@@ -1500,7 +1613,7 @@ extension Camp {
     /// in — a set of ids from a picker has no meaningful order, and a court's position in the
     /// venue is a fact about the venue.
     mutating func redistribute(in venueID: Venue.ID, across courtIDs: [Group.ID]) {
-        deal(players(in: venueID), across: courts(courtIDs, in: venueID))
+        deal(players(in: venueID), across: courts(courtIDs, in: venueID), at: venueID)
     }
 
     /// "Even out", narrowed to a handful of courts: levels the kids *already standing on*
@@ -1515,7 +1628,8 @@ extension Camp {
         let onThem = Set(courts.map(\.id))
         deal(
             players(in: venueID).filter { $0.groupID.map(onThem.contains) ?? false },
-            across: courts
+            across: courts,
+            at: venueID
         )
     }
 
@@ -1532,19 +1646,99 @@ extension Camp {
         return groups(in: venueID).filter { chosen.contains($0.id) }
     }
 
+    /// Hands back the part of `ladder` the venue's age band will take, and turns the rest out of
+    /// whatever group they were in.
+    ///
+    /// `AgeBand`'s own header (`:517-519`) has always claimed this behaviour — *"a kid outside the
+    /// band is left unassigned and counted rather than dealt somewhere they do not belong"* — and
+    /// until this method existed nothing anywhere performed it. A venue set to `12 & up` dealt its
+    /// nine-year-olds onto its courts exactly like everybody else, because `deal` was handed the
+    /// whole venue and never asked the venue anything.
+    ///
+    /// **Turned out, not dropped.** `groupID = nil` is the entire consequence: the kid keeps their
+    /// venue, their rank and their row, and every count of "kids at this venue" still includes
+    /// them. That is the difference between a band and a filter, and it is the difference the
+    /// screens depend on — an unassigned kid is visible and complainable-about, whereas a kid
+    /// quietly left off the deal would have been a kid nobody could find.
+    ///
+    /// **Including a kid who was already sitting there.** Narrowing a venue from `All ages` to
+    /// `12 & up` does not un-place the nine-year-olds by itself, so this runs over everybody the
+    /// deal was given rather than only the currently-unassigned: the band is a statement about who
+    /// may stand on these courts, not about who may walk onto them next. The alternative —
+    /// grandfathering whoever got there first — means the venue chip reads `12 & up` above a court
+    /// with a nine-year-old on it, which is the app lying about its own configuration. Every deal
+    /// therefore re-asks the question of every kid it touches, and `syncGroups(for:)` asks it too
+    /// so that the upsert which *narrows* the band is itself the moment the turning-out happens.
+    ///
+    /// **Where the line is drawn: deals and bookkeeping ask, hand placements do not.** A refused
+    /// kid has to be placeable — "they simply have no group until somebody places them" is the
+    /// whole point of leaving them assigned to the venue — so `movePlayer(_:toVenue:group:)` and
+    /// `applyVenueAssignments(_:)` are left alone. Those are a person naming a kid and a court,
+    /// and an app that silently undid the instruction it was just given would be worse than one
+    /// that lets a coach make an exception. `syncGroups(for:)` is on the other side of that line
+    /// because nobody named anybody: it fires as a side effect of editing the *venue*, and its
+    /// court-of-last-resort would otherwise hand a refused kid a court in the same breath as the
+    /// edit that refused them.
+    ///
+    /// `courtRank` follows the convention `movePlayer` and `syncGroups` already use for a kid with
+    /// nowhere to stand: sink them to the bottom, so that when somebody does place them by hand
+    /// they arrive at the foot of that court rather than at a rank they held on a different one.
+    ///
+    /// A nil age is not decided here. `admits(_:)` refuses it at a restricted band and its comment
+    /// carries the whole argument for that (`:534-551`); this method's only job is to make the
+    /// refusal land as "unassigned" rather than as a crash or a silent admission. `.all` and a
+    /// venue that cannot be found both return the ladder untouched — the second because a lookup
+    /// failure is not a reason to empty a camp's courts.
+    @discardableResult
+    private mutating func admit(_ ladder: [Player], at venueID: Venue.ID) -> [Player] {
+        guard let band = venue(venueID)?.ageBand, !band.isUnrestricted else { return ladder }
+
+        var admitted: [Player] = []
+        admitted.reserveCapacity(ladder.count)
+        for player in ladder {
+            guard band.admits(player.age) else {
+                guard let index = players.firstIndex(where: { $0.id == player.id }) else { continue }
+                players[index].groupID = nil
+                players[index].courtRank = Int.max / 2
+                continue
+            }
+            admitted.append(player)
+        }
+        return admitted
+    }
+
     /// Deals `ladder` across `courts`, top-down, so every court ends within one kid of every other
-    /// and the leftovers go to the courts that come first.
+    /// and the leftovers go to the courts that come first — after the venue's age band has had its
+    /// say about who is dealt at all.
     ///
     /// Takes resolved courts rather than ids so the whole-venue path does not go out through
     /// `map(\.id)` and back in through a `Set` to rebuild the list it started with — `partition()`
     /// runs this once per venue.
     ///
+    /// Takes `venueID` **as well as** the courts, which look redundant next to each other and are
+    /// not: the courts say where the kids may land, the venue says which kids may land at all, and
+    /// `evenOut(_:in:)` hands over a strict subset of one venue's courts where neither answers the
+    /// other's question. Resolving the band here rather than at each of the three call sites is
+    /// what makes the gate impossible to forget on the next deal somebody writes.
+    ///
+    /// Evenness is measured over the *admitted* kids and nobody else. A venue holding eleven kids
+    /// two of whom the band refuses deals nine across its courts and ends 5/4, not 6/5 with two
+    /// phantom seats — the refused pair are not on a court to be counted, so counting them would
+    /// only make the courts that are real less even.
+    ///
     /// Deliberately no `reindex()`, matching the shape this was extracted from: `partition()` and
     /// `evenOut()` both reindex once at the end rather than once per venue. A caller that reads
     /// `players(inGroup:)` straight afterwards needs none — that read filters and sorts the
     /// players themselves, and it is only the denormalised counts on `Group` that go stale.
-    private mutating func deal(_ ladder: [Player], across courts: [Group]) {
+    private mutating func deal(_ ladder: [Player], across courts: [Group], at venueID: Venue.ID) {
+        // No courts, no deal, and no turning-out either. A venue with nowhere to put anybody is
+        // mid-edit — `syncGroups(for:)` trimming to zero, a block naming courts that no longer
+        // exist — and emptying its kids out of groups on the way past would be a second, silent
+        // edit nobody asked for. `redistribute(in:)` has always answered this case by leaving the
+        // venue exactly as it found it, and the band does not change what "leave it alone" means.
         guard !courts.isEmpty else { return }
+
+        let ladder = admit(ladder, at: venueID)
         let base = ladder.count / courts.count
         let remainder = ladder.count % courts.count
 
@@ -1602,11 +1796,99 @@ extension Camp {
             courts.append(court)
         }
 
-        // Anyone left without a court after a trim lands on the smallest one.
-        for index in players.indices where players[index].venueID == venueID && players[index].groupID == nil {
+        // Whoever the band no longer takes comes off their court first.
+        //
+        // This is the upsert that *narrows* a venue — `VenueSheet` writes `ageBand` onto the draft
+        // and saves through `upsert(_ venue:)`, which lands here — so it is the one moment at which
+        // "12 & up" stops being a fact about arrivals and becomes a fact about the kids already
+        // standing there. Leaving them until the next `evenOut()` would mean the change a coach
+        // just made appeared to do nothing, and the courts would read as compliant while holding
+        // the very kids the band was set to exclude.
+        admit(players(in: venueID), at: venueID)
+
+        // Anyone left without a court after a trim lands on the smallest one — unless the band is
+        // the reason they have no court, which is the whole of the previous paragraph undone if
+        // this loop is allowed to run over them. `admits(_:)` is asked twice on purpose rather than
+        // this loop being narrowed to "kids the trim just displaced": the honest invariant is that
+        // nothing in this method ever seats a kid the venue refuses, whatever put them in reach.
+        for index in players.indices
+        where players[index].venueID == venueID
+            && players[index].groupID == nil
+            && venue.ageBand.admits(players[index].age) {
             players[index].groupID = smallestGroupID(in: venueID)
             players[index].courtRank = Int.max / 2
         }
+    }
+
+    /// Removes one group from a venue. Its kids stay at the venue with `groupID = nil`; the groups
+    /// after it renumber so `number` stays 1…n with no gap.
+    ///
+    /// ── Why the kids are turned out rather than moved ────────────────────────────────────────
+    ///
+    /// `syncGroups(for:)` trims courts too, and it ends by parking anyone left standing on the
+    /// smallest remaining court. That is right for a trim, which is a *count* being lowered and
+    /// says nothing about the kids. This is not that: somebody has pointed at one court and said
+    /// remove it, and the kids on it are the substance of the decision. Sweeping them onto the
+    /// court next door in the same breath would place eight kids nobody named, silently, at ranks
+    /// they did not hold — and Groups already draws an unassigned band for exactly this, where
+    /// they are visible, countable and one drag from where they belong.
+    ///
+    /// `courtRank` sinks to `Int.max / 2`, which is the convention `movePlayer(_:toVenue:group:)`
+    /// and `admit(_:at:)` already use for a kid with nowhere to stand: when somebody does place
+    /// them by hand they arrive at the foot of that court rather than at a rank they held on a
+    /// different one.
+    ///
+    /// ── Why `groupCount` comes down with it ──────────────────────────────────────────────────
+    ///
+    /// **This is the line that makes the deletion stick.** `groupCount` is what `syncGroups(for:)`
+    /// creates courts up to, and it runs on every `upsert(_ venue:)` — so a venue left claiming
+    /// four groups while holding three would re-create the removed court on the next venue edit,
+    /// and the deletion would appear to undo itself with nobody having asked for it back.
+    ///
+    /// ── What is renumbered and what is not ───────────────────────────────────────────────────
+    ///
+    /// `number` and `label` follow the new position, because both are read as "the third court
+    /// here" — a venue whose courts read 1, 2, 4 has lost a court in a way the screen cannot
+    /// explain. `rankOrder` is left sparse on purpose: it is the coach's ordering of the courts,
+    /// `Group.rankOrder`'s own note says it is free to be sparse after a reorder, and
+    /// `SupabaseRepository.courts(from:)` re-derives `number` from the rank order's *sequence* on
+    /// the next load — so the two agree without this method having to overwrite a decision.
+    ///
+    /// A coach standing on the removed court is taken off it and returned to whatever their role
+    /// does by default, for the same reason `syncGroups` does it: `CourtAssignment.groupID` is not
+    /// optional, so an assignment pointing at a court that no longer exists is a dangling row that
+    /// no screen can draw.
+    ///
+    /// A group id that is not at `venueID` is ignored rather than removed from wherever it really
+    /// lives. The caller names both because it holds both, and a mismatch is a stale id from a
+    /// screen that has moved on — not permission to empty a court at another venue.
+    mutating func removeGroup(_ groupID: Group.ID, from venueID: Venue.ID) {
+        guard groups.contains(where: { $0.id == groupID && $0.venueID == venueID }) else { return }
+
+        groups.removeAll { $0.id == groupID }
+
+        for index in players.indices where players[index].groupID == groupID {
+            players[index].groupID = nil
+            players[index].courtRank = Int.max / 2
+        }
+
+        for index in staff.indices where staff[index].assignment?.groupID == groupID {
+            staff[index].assignment = nil
+            staff[index].isRoaming = staff[index].role.roamsByDefault
+        }
+
+        for (offset, remaining) in groups(in: venueID).enumerated() {
+            guard let index = groups.firstIndex(where: { $0.id == remaining.id }) else { continue }
+            let number = offset + 1
+            groups[index].number = number
+            groups[index].label = "\(sport.groupNoun) \(number)"
+        }
+
+        if let index = venues.firstIndex(where: { $0.id == venueID }) {
+            venues[index].groupCount = max(0, venues[index].groupCount - 1)
+        }
+
+        reindex()
     }
 
     mutating func setRole(_ role: Role, forStaff staffID: StaffMember.ID) {

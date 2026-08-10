@@ -943,3 +943,136 @@ struct RepositoryVenueEditTests {
         #expect(after.staff(alex.id)?.detailLine == "Worker · Sycamore North · Court 3")
     }
 }
+
+/// The verb that made deleting a group durable, against the design's own camp — six courts at
+/// Sycamore with Alex standing on the third, which is the only fixture where one deletion can be
+/// followed from the graph out into the projections the picker and Profile read.
+///
+/// **The contract `SupabaseRepository.deleteGroup` owes**, in the sense this file's header means it.
+/// There is no stub layer for the Postgres actor anywhere in this target, so what is written down
+/// here is what the other implementation has to arrive at by its own route: the named group and no
+/// other, survivors closed up 1…n, kids left at the venue with no group, the venue's count down,
+/// and a coach on the removed court taken off it.
+@Suite("InMemoryRepository — deleting a group")
+struct RepositoryDeleteGroupTests {
+
+    private func loaded() -> (InMemoryRepository, Camp) {
+        let repo = InMemoryRepository(
+            accounts: [SampleData.account],
+            memberships: SampleData.memberships,
+            camps: SampleData.camps
+        )
+        return (repo, SampleData.uclaTennisCamp)
+    }
+
+    /// Sycamore's second court. Not its sixth: `Camp.upsert(_:)` trims a venue's *last* court to
+    /// reach `groupCount`, so a deletion aimed at the end is the one case where the wrong mechanism
+    /// and the right one remove the same row.
+    private func middleCourt(_ camp: Camp) throws -> Group {
+        try #require(camp.groups(in: SampleData.sycamore.id).dropFirst().first)
+    }
+
+    @Test("The group named is the one that goes, and the survivors close up behind it")
+    func theNamedGroupGoes() async throws {
+        let (repo, camp) = loaded()
+        let doomed = try middleCourt(camp)
+        let survivors = camp.groups(in: SampleData.sycamore.id).filter { $0.id != doomed.id }.map(\.id)
+
+        let after = try await repo.deleteGroup(doomed.id, campID: camp.id)
+
+        #expect(after.group(doomed.id) == nil)
+        #expect(after.groups(in: SampleData.sycamore.id).map(\.id) == survivors)
+        #expect(after.groups(in: SampleData.sycamore.id).map(\.number) == Array(1...5))
+        // The labels follow the numbers, because both are read as "the third court here".
+        #expect(
+            after.groups(in: SampleData.sycamore.id).map(\.label)
+                == (1...5).map { "Court \($0)" }
+        )
+        // The other venue is not touched at all. The signature takes no venue — it resolves one off
+        // the group — and this is the assertion that the resolution is the group's own and not the
+        // camp's first.
+        #expect(after.groups(in: SampleData.latc.id).count == 6)
+    }
+
+    @Test("Its kids stay at the venue with no group, and keep their place in the camp")
+    func itsKidsStayAtTheVenue() async throws {
+        let (repo, camp) = loaded()
+        let doomed = try middleCourt(camp)
+        let stranded = camp.players(inGroup: doomed.id).map(\.id)
+        #expect(!stranded.isEmpty)
+
+        let after = try await repo.deleteGroup(doomed.id, campID: camp.id)
+
+        #expect(stranded.allSatisfy { after.player($0)?.groupID == nil })
+        #expect(stranded.allSatisfy { after.player($0)?.venueID == SampleData.sycamore.id })
+        // Nobody left the camp and nobody's rank moved. The ladder is what tells somebody where to
+        // put these kids back, and a deletion that renumbered it would take that away.
+        #expect(after.players.count == camp.players.count)
+        #expect(after.orderedPlayers.map(\.id) == camp.orderedPlayers.map(\.id))
+        #expect(after.orderedPlayers.map(\.overallRank) == Array(1...camp.players.count))
+    }
+
+    /// The regression, at the repository rather than at the store. A venue still claiming six
+    /// groups re-creates the sixth on the next upsert — which is how the deletion used to undo
+    /// itself — so the count coming down is the line that makes this stick.
+    @Test("The venue's count comes down, so the next venue write does not re-create the court")
+    func theCountComesDown() async throws {
+        let (repo, camp) = loaded()
+        let doomed = try middleCourt(camp)
+
+        let after = try await repo.deleteGroup(doomed.id, campID: camp.id)
+        #expect(after.venue(SampleData.sycamore.id)?.groupCount == 5)
+
+        let venue = try #require(after.venue(SampleData.sycamore.id))
+        let reloaded = try await repo.updateVenue(venue, campID: camp.id)
+
+        #expect(reloaded.groups(in: SampleData.sycamore.id).count == 5)
+        #expect(reloaded.group(doomed.id) == nil)
+    }
+
+    /// `Camp.removeGroup` clears the assignment because `CourtAssignment.groupID` is not optional —
+    /// a coach pointing at a court that has gone is a row no screen can draw. `mutate` then
+    /// refreshes the memberships, which is where Profile's "On today" tile reads from, so a coach
+    /// left standing on a deleted court would show up there and nowhere else.
+    @Test("A coach standing on the removed court comes off it, tile and all")
+    func theCoachComesOff() async throws {
+        let (repo, camp) = loaded()
+        let alex = try #require(camp.staff.first { $0.accountID == SampleData.account.id })
+        let alexsCourt = try #require(alex.assignment?.groupID)
+
+        let after = try await repo.deleteGroup(alexsCourt, campID: camp.id)
+
+        #expect(after.staff(alex.id)?.assignment == nil)
+        let memberships = try await repo.memberships(forAccount: SampleData.account.id)
+        let membership = try #require(memberships.first { $0.campID == camp.id })
+        #expect(membership.todayAssignment == nil)
+    }
+
+    @Test("A group that is not in the camp is refused, and nothing is written")
+    func anUnknownGroupIsRefused() async throws {
+        let (repo, camp) = loaded()
+
+        await #expect(throws: SycamoreError.unknownGroup) {
+            try await repo.deleteGroup(Group.ID(), campID: camp.id)
+        }
+        // Including a group that is real but belongs to another camp. `mutate` edits a copy and
+        // stores nothing when the edit throws, so the refusal costs the caller their write and not
+        // somebody else's court.
+        let elsewhere = try #require(SampleData.westsideSwim.groups.first)
+        await #expect(throws: SycamoreError.unknownGroup) {
+            try await repo.deleteGroup(elsewhere.id, campID: camp.id)
+        }
+        let untouched = try await repo.camp(id: camp.id)
+        #expect(untouched == camp)
+    }
+
+    @Test("A camp that is not there is refused before the group is even looked for")
+    func anUnknownCampIsRefused() async throws {
+        let (repo, _) = loaded()
+        let orphan = try #require(SampleData.uclaTennisCamp.groups.first)
+
+        await #expect(throws: SycamoreError.unknownCamp) {
+            try await repo.deleteGroup(orphan.id, campID: Camp.ID())
+        }
+    }
+}

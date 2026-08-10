@@ -359,6 +359,26 @@ struct GroupsVenueSection: Identifiable, Hashable, Sendable {
     /// The venue's whole roster, not the filtered count — the header reads "50 kids".
     let playerCount: Int
     let cards: [GroupsCoachCard]
+    /// The kids who are **at this venue and in no group**, in ladder order.
+    ///
+    /// The model produces these two ways and neither of them used to reach a screen. A venue whose
+    /// age band refuses a kid leaves them here — `Camp.admit(_:at:)` sets `groupID = nil` and its
+    /// own comment promises "the screen says so out loud and somebody can place them by hand" —
+    /// and `Camp.removeGroup(_:from:)` leaves a deleted group's kids here too. Between them, the
+    /// one screen whose whole job is who-is-where could hold a child it never drew.
+    ///
+    /// Beside `cards` rather than smuggled in as a thirteenth card, because it is not a group: it
+    /// has no `Group.ID` to be a drop target with, no coach, no number and no band of the ladder.
+    /// `UnassignedCard` draws it, and `GroupsView` treats it as a drag *source* only.
+    ///
+    /// Filtered by the same search and the same chips as `cards`, so a search that narrows the
+    /// cards narrows this too — a screen showing "Liam" should not also show eleven kids called
+    /// something else because they happen to have no group.
+    ///
+    /// Ordered by `overallRank`, which `Camp.players(in:)` already sorts by. Court rank means
+    /// nothing to a kid with no court: `Camp.movePlayer` and `Camp.admit` both sink one to
+    /// `Int.max / 2`, so sorting by it would be sorting by a placeholder.
+    let unassigned: [PlayerRow]
 }
 
 /// Everything `AppStore.groupsSections` looks at, boiled down to something cheap to
@@ -829,12 +849,30 @@ extension AppStore {
                 return GroupsCoachCard(id: group.id, group: group, coach: coach, rows: rows)
             }
 
-            if cards.isEmpty && isNarrowing { return nil }
+            // The kids this venue is holding and has not placed. Walked over the venue's roll
+            // rather than over `camp.players`, so it is the same scope — and the same sort — the
+            // section's `playerCount` is counted from.
+            //
+            // `rank:` is `overallRank` and not `courtRank`, unlike the cards above. A card's rows
+            // are a court's own sequence; these kids are on no court, and the only number that is
+            // true about them is their place in the camp ladder — which is also the numeral the
+            // row draws.
+            let unassigned = camp.players(in: venue.id)
+                .filter { $0.groupID == nil }
+                .filter { passes(playerFilter, $0) }
+                .filter { term.isEmpty || $0.matches(search: term) }
+                .map { row(for: $0, rank: $0.overallRank) }
+
+            // A venue narrowed to nothing still disappears — but "nothing" now has to mean no
+            // cards *and* nobody waiting, or a search matching only an unplaced kid would take the
+            // venue off the screen and with it the one card that could say where they are.
+            if cards.isEmpty && unassigned.isEmpty && isNarrowing { return nil }
             return GroupsVenueSection(
                 id: venue.id,
                 venue: venue,
                 playerCount: camp.players(in: venue.id).count,
-                cards: cards
+                cards: cards,
+                unassigned: unassigned
             )
         }
     }
@@ -1139,6 +1177,40 @@ extension AppStore {
         selectedMembership = nil
         activeSheet = nil
         resetFilters()
+    }
+
+    /// The camp page's last row. The camp, its venues, its kids and every tournament and block in
+    /// it, gone for good.
+    ///
+    /// **Deliberately not optimistic, which is the one place this store departs from `land(_:in:)`
+    /// and its siblings.** Optimism buys latency back on a gesture somebody makes forty times an
+    /// afternoon, and it is paid for by a rollback that has to restore state the reader is still
+    /// looking at. Neither half applies here. This is a once-ever action already behind two
+    /// confirmations, so nobody is waiting on it impatiently; and the "optimistic" state is not a
+    /// reordered ladder but *a different screen* — `camp = nil` routes the whole app back to the
+    /// picker (`RootView.stage`). A failed write would then have to push the reader back into a
+    /// camp they had just watched disappear, which is a worse thing to be wrong about than a
+    /// hundred milliseconds. So the write goes first, and until it answers nothing moves.
+    ///
+    /// **The membership is dropped here rather than refetched.** The server has just confirmed the
+    /// row is gone; asking it again is a second call that can fail on its own, and a failure *after*
+    /// a successful delete would put an error banner over a delete that in fact worked. The picker
+    /// re-asks on its own anyway — `CampPickerView` runs `loadMemberships()` in a `.task` — so the
+    /// list this leaves behind is right immediately and refreshed a moment later regardless.
+    ///
+    /// `pushedScreen` is cleared for the reason `signOut()` clears it: this intent is raised *from*
+    /// a pushed screen, and `MainTabView` — which presents it — goes away with the camp. Left set,
+    /// it would reappear over the next camp the reader opens, showing them the camp page of a camp
+    /// they never asked about.
+    func deleteCamp() async {
+        guard let camp else { return }
+        let campID = camp.id
+        await perform {
+            try await self.repository.deleteCamp(id: campID)
+            self.memberships.removeAll { $0.campID == campID }
+            self.switchCamp()
+            self.pushedScreen = nil
+        }
     }
 
     func signOut() async {
@@ -1685,6 +1757,68 @@ extension AppStore {
     func addVenue() async {
         guard let campID = camp?.id else { return }
         await perform { self.camp = try await self.repository.addVenue(campID: campID) }
+    }
+
+    /// The Groups tab's "Remove" — one group off a venue, its kids left standing at the venue with
+    /// no group.
+    ///
+    /// **The arithmetic is `Camp.removeGroup(_:from:)` and nothing here restates it.** It takes the
+    /// group out, renumbers the survivors so `number` still runs 1…n with no gap, decrements the
+    /// venue's `groupCount` so the next `upsert` does not re-create what was just deleted, and
+    /// leaves the kids at the venue with `groupID = nil` — the same state `syncGroups(for:)`
+    /// already leaves a trimmed court's kids in, and the same one an age band leaves a refused kid
+    /// in. `GroupsView` shows them; see `GroupsVenueSection.unassigned`.
+    ///
+    /// **Optimistic, in the shape `land(_:in:)` established**: mutate the local graph, then write,
+    /// then put the snapshot back if the write throws. A deletion is one tap on a destructive
+    /// control and waiting a round trip to see it happen is the complaint `land` was written to
+    /// answer.
+    ///
+    /// **The write is `repository.deleteGroup`, and the whole of the deletion now survives it.**
+    /// This used to go out as `updateVenue` with a lower `groupCount`, because that was the only
+    /// door the protocol had onto a venue's courts — and `Camp.upsert(_:)` → `syncGroups(for:)`
+    /// reconciles a count rather than honouring a choice: it trimmed the venue's **last** court and
+    /// re-seated whoever that orphaned onto the smallest remaining one. So deleting anything but
+    /// the last group deleted a *different* group as soon as anything reloaded, and the kids this
+    /// method had just stood down were quietly put back on a court by the next write to return a
+    /// camp. `UnassignedReason.groupRemoved` was, in consequence, a state that only existed until
+    /// the next round trip. `SycamoreRepository.deleteGroup(_:campID:)` carries the reasoning; both
+    /// implementations run the same `Camp.removeGroup(_:from:)` this line does.
+    ///
+    /// **The returned camp is assigned rather than discarded**, which is the one thing here that
+    /// differs from `land(_:in:)`'s otherwise identical shape. `land` discards its *first* answer
+    /// because that call is half of a two-call intent and the intermediate graph is visibly wrong;
+    /// this is one call, and the graph it returns is the same arithmetic run a round trip later.
+    /// Where it does differ it is more right, not less: against Postgres it comes back with the
+    /// labels, the court ranks and the ladder re-derived from rows, and with anything another
+    /// device wrote in between. Discarding that would leave the screen holding a camp nothing else
+    /// agrees with.
+    ///
+    /// Compared before assigning, for the reason `land` compares: the setter bumps `campRevision`
+    /// and drops the section memos, so an unconditional write re-derives every court's rows to
+    /// arrive at the graph already on screen. Equal is the ordinary case, not the lucky one.
+    ///
+    /// Guarded on the group actually belonging to the venue named. A caller that has the two out of
+    /// step is a caller whose screen has already gone stale, and deleting *something* would be
+    /// worse than deleting nothing. The repository takes no venue at all — a row knows its own —
+    /// so this guard is the only place the pairing is checked, and here is where it belongs.
+    func removeGroup(_ groupID: Group.ID, from venueID: Venue.ID) async {
+        guard let campID = camp?.id, var optimistic = camp else { return }
+        guard optimistic.group(groupID)?.venueID == venueID else { return }
+
+        let rollback = optimistic
+        optimistic.removeGroup(groupID, from: venueID)
+        camp = optimistic
+
+        await perform {
+            do {
+                let settled = try await self.repository.deleteGroup(groupID, campID: campID)
+                if settled != self.camp { self.camp = settled }
+            } catch {
+                self.camp = rollback
+                throw error
+            }
+        }
     }
 
     /// Adds a venue and immediately gives it the shape somebody just typed.

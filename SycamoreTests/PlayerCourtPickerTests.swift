@@ -24,6 +24,12 @@
 //  and nothing about it looked wrong. `AppStore.closedCourts is the camp's` at the foot of this
 //  file is that half, tested from the store because that is where it can be got wrong.
 //
+//  What a row is *called* is not this file's subject and the strings below are backdrop, but they
+//  moved: the rows read "Group N" off `Group.number` rather than `Group.label`'s "Court N", so the
+//  move screen and the Groups tab name one row one way. `PlayerMoveTargetsTheGroupTests` is where
+//  that is the subject — it is the file to change if the sentence changes again, and the failures
+//  here are the ones that tell you it did.
+//
 //  `flag` used to be a `String?` this file wrote itself — "Full" bolted onto Overview's words for
 //  the over-capacity case — and the tests below that changed shape are the ones that had been
 //  pinning the seam. It is `CourtCapacity.Flag` now: one enum, one branch, and the pill and the
@@ -99,20 +105,23 @@ struct PlayerCourtChoicesShapeTests {
 
         #expect(choices.sections.count == 2)
         #expect(choices.courts.count == 4)
+        // "Group 1", not "Court 1": the rows are titled off `Group.number` the way `GroupCard`
+        // titles its cards, and `PlayerMoveTargetsTheGroupTests` is where that is the subject
+        // rather than the backdrop.
         #expect(
             Courts.rows(choices) == [
-                "Sycamore · Court 1",
-                "Sycamore · Court 2",
-                "LATC · Court 1",
-                "LATC · Court 2",
+                "Sycamore · Group 1",
+                "Sycamore · Group 2",
+                "LATC · Group 1",
+                "LATC · Group 2",
             ]
         )
     }
 
-    /// Court labels repeat across venues — "Court 1" is at both — so the section a row sits in is
-    /// the only thing that tells two identical rows apart. It is also what the write needs:
+    /// Group numbering restarts at every venue — "Group 1" is at both — so the section a row sits
+    /// in is the only thing that tells two identical rows apart. It is also what the write needs:
     /// `movePlayer` takes a venue as well as a court.
-    @Test("A court carries the venue it belongs to, because two venues both have a Court 1")
+    @Test("A court carries the venue it belongs to, because two venues both have a Group 1")
     func courtsCarryTheirVenue() {
         let camp = Courts.camp()
         let choices = PlayerCourtChoices(for: Courts.kid(camp).id, in: camp)
@@ -183,13 +192,14 @@ struct PlayerCourtChoicesCurrentTests {
 
         #expect(current.count == 1)
         #expect(current.first?.id == kid.groupID)
-        #expect(current.first?.label == "Court 1")
+        #expect(current.first?.label == "Group 1")
         #expect(current.first?.venueID == camp.orderedVenues[0].id)
     }
 
-    /// Sycamore's Court 1 and LATC's Court 1 share a label and nothing else. A `isCurrent` keyed
-    /// on anything but the id would tick both.
-    @Test("The other venue's Court 1 is not ticked as well")
+    /// Sycamore's Group 1 and LATC's Group 1 share a title and nothing else — and they shared one
+    /// before the rows were titled off `Group.number` too. A `isCurrent` keyed on anything but the
+    /// id would tick both.
+    @Test("The other venue's Group 1 is not ticked as well")
     func onlyOneIsCurrent() {
         let camp = Courts.camp()
         let choices = PlayerCourtChoices(for: Courts.kid(camp).id, in: camp)
@@ -340,8 +350,8 @@ struct PlayerCourtOptionReadingTests {
         let withCoach = Courts.putACoachOn(Courts.court(camp, venue: 0, court: 0), named: "Nass", in: camp)
         let choices = PlayerCourtChoices(for: Courts.kid(withCoach).id, in: withCoach)
 
-        #expect(choices.courts[0].spokenLabel == "Court 1. 4 of 4 kids. Full. Coach Nass")
-        #expect(choices.courts[1].spokenLabel == "Court 2. 0 of 4 kids. 4 spots left. Needs a coach")
+        #expect(choices.courts[0].spokenLabel == "Group 1. 4 of 4 kids. Full. Coach Nass")
+        #expect(choices.courts[1].spokenLabel == "Group 2. 0 of 4 kids. 4 spots left. Needs a coach")
     }
 
     /// A kid who is away is not standing on the court, which is what `Group.isOverCapacity`
@@ -414,9 +424,9 @@ struct PlayerCourtChoicesClosureTests {
         #expect(choices.hasSomewhereElse)
     }
 
-    /// Only the courts named are shut. A flag keyed on anything looser — the venue, the label —
-    /// would put "Closed" on LATC's Court 2 as well, and the two share nothing but a number.
-    @Test("The other courts are untouched, including the one with the same label next door")
+    /// Only the courts named are shut. A flag keyed on anything looser — the venue, the title —
+    /// would put "Closed" on LATC's Group 2 as well, and the two share nothing but a number.
+    @Test("The other courts are untouched, including the one with the same title next door")
     func onlyTheNamedCourt() {
         let camp = Courts.camp(ceiling: 4)
         let shut = Courts.court(camp, venue: 0, court: 1)
@@ -426,7 +436,7 @@ struct PlayerCourtChoicesClosureTests {
         )
 
         #expect(choices.courts.filter(\.isClosed).count == 1)
-        #expect(choices.courts[3].label == "Court 2")
+        #expect(choices.courts[3].label == "Group 2")
         #expect(choices.courts[3].flag == .room(4))
     }
 
@@ -477,7 +487,7 @@ struct PlayerCourtChoicesClosureTests {
             for: Courts.kid(withCoach).id, in: withCoach, closedCourts: [shut.id]
         )
 
-        #expect(choices.courts[0].spokenLabel == "Court 1. 4 of 4 kids. Closed. Coach Nass")
+        #expect(choices.courts[0].spokenLabel == "Group 1. 4 of 4 kids. Closed. Coach Nass")
     }
 
     /// The default, and why it is safe. Closure changes what a row says and never which rows

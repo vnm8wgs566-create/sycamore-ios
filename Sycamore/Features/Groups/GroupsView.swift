@@ -60,6 +60,19 @@ struct GroupsView: View {
     /// `.onChange(initial: true)` fires *after* the first pass, and an empty array on that pass is
     /// not a screen with no groups in it drawn one frame early — it is the wrong screen.
     @State private var listEntries: [GroupsEntry]?
+    /// The venue's kids with no group, held beside `listEntries` and rebuilt by the same triggers.
+    ///
+    /// A plain array rather than an optional, because the empty case is not ambiguous the way
+    /// `listEntries`' is: no cards on the first pass could mean "not built yet", where nobody
+    /// waiting simply draws no card at all — which is also the state a healthy venue is in.
+    @State private var unassignedRows: [PlayerRow] = []
+    /// Which group card is swiped open, and which has a finger on it. One value for the whole
+    /// list, so only one card can be open — see `SwipeRevealState`.
+    @State private var swipe = SwipeRevealState<Group.ID>()
+    /// The group whose removal is being asked about, or nil. Carries the sentence's numbers with
+    /// it for `PlayerScreen`'s reason: the dialog has to survive the card underneath it going away,
+    /// and a message assembled from a group that no longer exists reads as "0 kids".
+    @State private var deleteTarget: GroupDeletion?
     /// What the scroll view is showing, which is what the autoscroll measures the carried card
     /// against. Held by reference; `GroupsViewportBox` says why.
     @State private var viewport = GroupsViewportBox()
@@ -136,7 +149,7 @@ struct GroupsView: View {
         // this was for.
         .onChange(of: store.groupsSections, initial: true) { rebuildEntries() }
         .onChange(of: expandedGroupIDs) { rebuildEntries() }
-        .onChange(of: move?.sourceGroupID) { rebuildEntries() }
+        .onChange(of: movingFromGroup) { rebuildEntries() }
         // A filter that changes under a kid in the air can take their group off the screen.
         // Through `cancelMove()` rather than `move = nil`, which would strand the unfolded cards,
         // the missing tab bar and the autoscroll loop behind it.
@@ -171,6 +184,11 @@ struct GroupsView: View {
             GroupsLockedState(store: store, onAddKids: beginEnrolment)
         } else {
             list(entries, venue: venue)
+                .removalConfirmation(
+                    target: deleteTarget,
+                    isPresented: isConfirmingRemoval,
+                    onConfirm: { id in Task { await remove(id) } }
+                )
         }
     }
 
@@ -215,13 +233,20 @@ struct GroupsView: View {
             // with no rectangle is a group a kid cannot be dropped into. A camp has a dozen of
             // them, not a thousand.
             VStack(spacing: GroupsMetrics.cardGap) {
+                // **Above the groups, not below them.** Everything under it is a place these kids
+                // could go, so the card and its answers read down the screen in the direction the
+                // drag travels. It is also the exception on a screen of routine — a venue in a
+                // normal state draws nothing here at all — and an exception at the foot of twelve
+                // cards is an exception nobody scrolls to.
+                unassignedCard
+
                 ForEach(entries) { entry in
                     cardView(entry)
                 }
 
                 // Inside the list rather than instead of it, so a venue that has been searched
                 // down to nothing still offers the one thing you can do about that.
-                if entries.isEmpty {
+                if entries.isEmpty && unassignedRows.isEmpty {
                     nothingHere
                 }
 
@@ -256,20 +281,106 @@ struct GroupsView: View {
             .overlay(alignment: .top) { liftedRow }
         }
         .scrollIndicators(.hidden)
-        // For as long as a kid is in the air, which is now the length of one gesture plus any
-        // confirmation. The list still *moves* in that time — `GroupsAutoscroll` drives it
-        // through `scrollPosition` below — and this only takes the pan away from the finger,
-        // which is already busy carrying somebody. Two things scrolling the same list at once is
-        // how a drop lands a group away from where it was aimed.
-        .scrollDisabled(move != nil)
+        // **Deliberately not `.scrollDisabled(move != nil)`.**
+        //
+        // It was, and the comment sitting here said the autoscroll would still drive the list
+        // "through `scrollPosition` below" because disabling only takes the pan away from the
+        // finger. That is wrong, and wrong in the way that hides: `.scrollDisabled(true)` puts
+        // `isScrollEnabled = false` on the scroll view underneath, and a disabled scroll view
+        // ignores a programmatic position as thoroughly as it ignores a thumb. So for the whole
+        // life of a move the autoscroll computed a correct step, asked the list to travel, and
+        // was not listened to — carry a kid to the bottom of the screen and the groups below
+        // simply never came. The arithmetic was right and tested the entire time, which is
+        // exactly why it survived: every test exercised the part that worked.
+        //
+        // Nothing takes its place, because nothing needs to. The worry it was defending against
+        // was two things scrolling one list at once, and the finger carrying the kid is not one
+        // of them: the lift is a `LongPressGesture.sequenced(before: DragGesture)` on the handle
+        // (`GroupCard.lift`), so by the time a kid is in the air the scroll view's pan has
+        // already failed for that touch and cannot claim it back. A *second* finger can still
+        // pan, and that is fine — `creditListTravel(_:)` credits the carried card with whatever
+        // the list actually did, whoever asked for it.
         // The list moving is the only travel the drag itself cannot report, so it is credited
         // where it is *observed* rather than where it is asked for — see `creditListTravel(_:)`.
         // Straight off the scroll geometry rather than through an `.onChange` on the viewport,
         // because the viewport is no longer state anybody can watch: see `GroupsViewportBox`.
         .groupsListScroll($listScroll, viewport: viewport, onTravel: creditListTravel)
+        // The one `.scrollDisabled` this screen is allowed, and it is a different question from the
+        // one the long comment above answers. That one was about a *vertical* drag fighting the
+        // pan and taking the autoscroll down with it; this is a card sliding **sideways** under a
+        // finger, where the list scrolling at the same time is the thing that makes a swipe
+        // impossible to finish. `swipe.isTracking` is only true between a horizontal axis lock and
+        // the release that ends it, which is a window no move can be live in — the two gestures
+        // start on different views and neither can begin while the other is running.
+        .scrollDisabled(swipe.isTracking)
+    }
+
+    /// The kids at this venue with no group, drawn only when there are some.
+    ///
+    /// A card rather than a section header and loose rows, so it sits in the same stack as the
+    /// groups, wears the same plate, and can be reached by the same drag. `UnassignedCard` carries
+    /// the whole argument for what it says and why it is a source and not a target.
+    ///
+    /// Hidden by nothing mid-move: unlike the three dashed rows at the foot of the list, this is
+    /// not something *new* appearing under a kid in the air — it is already on screen when the lift
+    /// starts, and taking it away would move every slot below it. Its rows do give up nothing and
+    /// gain nothing during a move, so the boundaries the slots were measured against hold.
+    @ViewBuilder
+    private var unassignedCard: some View {
+        if !unassignedRows.isEmpty, let venue = selectedVenue {
+            UnassignedCard(
+                rows: unassignedRows,
+                band: venue.ageBand,
+                isMoving: move != nil,
+                isSource: move != nil && move?.sourceGroupID == nil,
+                onOpenPlayer: { store.pushedScreen = .player($0.id) },
+                onMoveBegan: { beginMove($0, from: nil, among: unassignedRows) },
+                onMoveChanged: updateMove(to:),
+                onMoveEnded: endTracking,
+                onMoveCancelled: cancelTracking,
+                onRowFrame: { id, frame in
+                    guard isMeasuring else { return }
+                    rowFrames[id] = frame
+                    scheduleGeometryRefresh()
+                },
+                heldRowID: move?.sourceGroupID == nil ? move?.row.id : nil
+            )
+        }
     }
 
     private func cardView(_ entry: GroupsEntry) -> some View {
+        // The house's one destructive idiom for a `ScrollView` of cards, rather than a second
+        // spelling of it. `SwipeToDelete`'s header argues why a horizontal swipe is the gesture
+        // this app can actually build — direction separates it from the scroll, where every other
+        // drag on this screen is vertical and has to be separated by *time* — and it brings the
+        // named accessibility action with it, which is the whole non-pointer route to a delete.
+        //
+        // `onDelete: nil` mid-move switches the swipe off entirely rather than leaving it live and
+        // hoping: a card sliding out from under a kid in the air would take its drop slots
+        // sideways, and the reader is holding the screen with the other hand.
+        SwipeToDelete(
+            id: entry.id,
+            state: $swipe,
+            actionLabel: "Remove group \(entry.card.group.number)",
+            // `SwipeToDelete` paints this behind the sliding row because its other caller wraps a
+            // bare `CardRow`, which has no background of its own. A `Card` has one, at a radius —
+            // so a second opaque rectangle behind it would show as square white shoulders on every
+            // card in the list.
+            background: .clear,
+            onDelete: move == nil ? { requestRemoval(of: entry) } : nil
+        ) {
+            groupCard(entry)
+        }
+        // And this is the other half of `background: .clear`. The action plate is in the stack at
+        // rest as well as when it is open — covered by the row rather than absent — so with a
+        // transparent background it would show through the card's own rounded corners as two red
+        // wedges on a screen where nothing has been swiped. Clipping the pair to the card's shape
+        // hides it exactly where the card does and gives the revealed plate the same trailing
+        // radius, which is what it should have had anyway.
+        .clipShape(RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous))
+    }
+
+    private func groupCard(_ entry: GroupsEntry) -> some View {
         GroupCard(
             card: entry.card,
             summary: entry.summary,
@@ -280,7 +391,7 @@ struct GroupsView: View {
             move: GroupsCardMove(move, card: entry.id, drawnRows: entry.visibleRows),
             onToggle: { toggle(entry.id) },
             onOpenPlayer: { store.pushedScreen = .player($0.id) },
-            onMoveBegan: { beginMove($0, in: entry) },
+            onMoveBegan: { beginMove($0, from: entry.id, among: entry.card.rows) },
             onMoveChanged: updateMove(to:),
             onMoveEnded: endTracking,
             onMoveCancelled: cancelTracking,
@@ -320,6 +431,17 @@ struct GroupsView: View {
 
     /// Whether a rectangle arriving now describes the list a drop slot can be measured from.
     private var isMeasuring: Bool { move == nil || move?.awaitingGeometry == true }
+
+    /// The group the kid in the air came out of: nil when nobody is being carried, and *also* nil
+    /// when the kid came out of no group at all.
+    ///
+    /// The two nils are deliberately not distinguished, because nothing that reads this needs them
+    /// to be. It watches for the source card changing which rows it draws, and neither of those
+    /// states has a source card. Spelled here rather than as `move?.sourceGroupID ?? nil` inline:
+    /// that flattening is what tipped `body`'s modifier chain past what the type checker will
+    /// attempt in one expression, and a `Group.ID??` at a call site is a value with two spellings
+    /// of "nobody" in it.
+    private var movingFromGroup: Group.ID? { move?.sourceGroupID ?? nil }
 
     /// Ask for the slots to be rebuilt once this layout pass has finished arriving.
     ///
@@ -756,6 +878,11 @@ struct GroupsView: View {
     /// which is before the `.onChange` that would rebuild this.
     private func rebuildEntries() {
         listEntries = entries(in: selectedVenue)
+        // Off the same memoised sections the cards come from, in the same pass, so the two halves
+        // of the list can never describe different writes to the camp.
+        unassignedRows = selectedVenue
+            .flatMap { venue in store.groupsSections.first { $0.id == venue.id } }?
+            .unassigned ?? []
     }
 
     private func entries(in venue: Venue?) -> [GroupsEntry] {
@@ -917,13 +1044,68 @@ struct GroupsView: View {
         await store.updateVenue(updated)
     }
 
+    // MARK: Removing a group
+
+    /// A swipe reached its Remove. Ask, or just do it.
+    ///
+    /// **The count is the group's own `playerCount`, not its drawn rows.** A search leaves three of
+    /// eight kids on screen, and a dialog that said "3 kids" while five more were about to lose
+    /// their group would be the most expensive kind of true-looking sentence. `Camp.reindex()`
+    /// denormalises that field on every write, so it is the roster's number rather than the
+    /// screen's.
+    ///
+    /// Nothing is asked about an empty group. There is no cost to undo — the dashed "Add a group"
+    /// row directly below puts one back — and a dialog guarding a reversible nothing is what makes
+    /// readers stop reading dialogs.
+    private func requestRemoval(of entry: GroupsEntry) {
+        let kids = entry.card.group.playerCount
+        guard kids > 0 else {
+            Task { await remove(entry.id) }
+            return
+        }
+        deleteTarget = GroupDeletion(id: entry.id, number: entry.card.group.number, kids: kids)
+    }
+
+    /// Whether the dialog is up, as a binding the modifier will take.
+    ///
+    /// Written this way round — derived from the optional, and only ever *clearing* it — so that
+    /// `deleteTarget` stays the one place the answer lives. A separate `Bool` beside it would be a
+    /// second fact that has to agree with the first, and the dialog outlives the card it is asking
+    /// about.
+    private var isConfirmingRemoval: Binding<Bool> {
+        Binding(
+            get: { deleteTarget != nil },
+            set: { if !$0 { deleteTarget = nil } }
+        )
+    }
+
+    /// The write. Scoped to the venue on screen, which is the only venue this list draws.
+    ///
+    /// `AppStore.removeGroup` carries what does and does not survive a round trip; it is not good
+    /// news, and it is written down there rather than discovered here.
+    private func remove(_ groupID: Group.ID) async {
+        guard let venueID = selectedVenue?.id else { return }
+        deleteTarget = nil
+        await store.removeGroup(groupID, from: venueID)
+    }
+
     // MARK: - The move
 
     /// Picking a kid up: the venue opens, the tab bar goes, and the list starts watching its own
     /// edges.
-    private func beginMove(_ row: PlayerRow, in entry: GroupsEntry) {
-        guard let origin = rowFrames[row.id],
-              let index = entry.card.rows.firstIndex(where: { $0.id == row.id })
+    ///
+    /// Takes the source group and the rows the kid was sitting among rather than a `GroupsEntry`,
+    /// because there is a second card a lift can start from and it is not a group: the kids with no
+    /// group at all. Everything below is the same for both — `sourceGroupID` is simply nil for one
+    /// of them, which is the honest answer to "which group did they come out of" and the one every
+    /// reader of it already handles. See `GroupsMove.sourceGroupID`.
+    private func beginMove(_ row: PlayerRow, from sourceGroupID: Group.ID?, among siblings: [PlayerRow]) {
+        // The venue off the screen rather than off the source card's group, because one of the two
+        // cards a lift can start from has no group to read it from. They are the same venue either
+        // way: this list is one venue's, and the chip row is exclusive.
+        guard let venueID = selectedVenue?.id,
+              let origin = rowFrames[row.id],
+              let index = siblings.firstIndex(where: { $0.id == row.id })
         else { return }
 
         // The last drop's "do not animate this" instruction, spent. Cleared here rather than on
@@ -970,10 +1152,8 @@ struct GroupsView: View {
         // leave state behind, and overwriting it beats stranding a kid in the air.
         move = GroupsMove(
             row: row,
-            sourceGroupID: entry.id,
-            nextRowID: entry.card.rows.indices.contains(index + 1)
-                ? entry.card.rows[index + 1].id
-                : nil,
+            sourceGroupID: sourceGroupID,
+            nextRowID: siblings.indices.contains(index + 1) ? siblings[index + 1].id : nil,
             origin: origin,
             // The folded layout's slots, which are the ones on screen for the frame or two
             // before the opened rows are measured. A provisional array rather than an empty one
@@ -988,15 +1168,23 @@ struct GroupsView: View {
             awaitingGeometry: !opening.isEmpty,
             // Aimed at where they already stand, so the first frame of a lift is not a screen
             // with a lifted card and nothing under it.
-            target: GroupsDropSlot(
-                landing: GroupsLanding(
-                    groupID: entry.id,
-                    venueID: entry.card.group.venueID,
-                    anchor: row.id
-                ),
-                y: origin.minY,
-                rank: row.player.overallRank
-            )
+            //
+            // Nil for a kid lifted out of no group, and that is the honest value rather than a
+            // missing feature: there is no place they already stand for the screen to point at, so
+            // until the finger moves they are aimed nowhere — and a release that never moved them
+            // falls through `endTracking`'s "nothing aimed at" guard and cancels, which is exactly
+            // right. The first `retarget` gives them the nearest real slot.
+            target: sourceGroupID.map { groupID in
+                GroupsDropSlot(
+                    landing: GroupsLanding(
+                        groupID: groupID,
+                        venueID: venueID,
+                        anchor: row.id
+                    ),
+                    y: origin.minY,
+                    rank: row.player.overallRank
+                )
+            }
         )
 
         // The tab bar is a trapdoor: dragging a kid down a card ends the drag over the one
@@ -1097,7 +1285,7 @@ struct GroupsView: View {
         // here rather than handed to `requestLanding` as a closure: this is the same comparison
         // it makes, and it is legible at the call site that lets go of the kid.
         if slot.landing.groupID != updated.sourceGroupID { park(on: slot) }
-        requestLanding(updated.row, to: slot.landing, from: updated.sourceGroupID)
+        requestLanding(updated.row, to: slot.landing)
     }
 
     /// Settling the carried card onto the space that has opened for it.
@@ -1233,7 +1421,7 @@ struct GroupsView: View {
     /// one card along.
     private func nudge(_ row: PlayerRow, in entry: GroupsEntry, by offset: Int) {
         guard let landing = landing(nudging: row, in: entry, by: offset) else { return }
-        requestLanding(row, to: landing, from: entry.id)
+        requestLanding(row, to: landing)
     }
 
     /// Where one step up or down puts a kid, inside their card or past the end of it.
@@ -1293,11 +1481,13 @@ struct GroupsView: View {
     /// and it moves the kid's band in the camp ladder as well as their card — which is the one
     /// part of a landing the row itself does not say. So that is the one that asks.
     ///
-    private func requestLanding(_ row: PlayerRow, to landing: GroupsLanding, from groupID: Group.ID) {
-        // The card is read for its name and nothing else — anchoring on an id removed the last
-        // reason to — but a landing in a group this venue does not have is still not something
-        // to write.
-        guard let card = card(landing.groupID) else {
+    /// The `from:` group it used to take has gone. It was the second half of a comparison the
+    /// confirmation dialog made — "is this a change of court?" — and nothing has asked since that
+    /// dialog was removed; keeping it meant every caller naming a group the body never read, and
+    /// one of those callers now has no group to name.
+    private func requestLanding(_ row: PlayerRow, to landing: GroupsLanding) {
+        // A landing in a group this venue does not have is not something to write.
+        guard card(landing.groupID) != nil else {
             cancelMove()
             return
         }
@@ -1427,4 +1617,62 @@ struct GroupsView: View {
 /// what is being presented instead.
 private struct EvenOutTarget: Identifiable {
     let id: Venue.ID
+}
+
+// MARK: - Which group the removal is asking about
+
+/// The group a confirmation is standing over, and both numbers its sentence needs.
+///
+/// It carries its own copy of the group's number and head-count rather than reaching back through
+/// the entry, for the reason the move's old confirmation carried its own: the sentence has to
+/// survive the thing it is about. `store.removeGroup` is optimistic, so the moment the destructive
+/// button is pressed the card is gone from `groupsSections` — and a message assembled from a group
+/// that no longer exists reads "Removes  and leaves 0 kids".
+extension View {
+
+    /// "Remove Group 2?" — asked before a group with kids in it goes.
+    ///
+    /// A modifier of its own rather than four more lines on `GroupsView.body`, and the reason is
+    /// mechanical rather than tidiness: that `body` is a twenty-modifier chain that the type
+    /// checker already gives up on when anything is added to it. Extracting the presentation moves
+    /// its inference out of that expression entirely.
+    ///
+    /// Only a group with kids in it ever gets here. An empty one is a slot somebody added and did
+    /// not fill, undone by the "Add a group" row directly underneath — a dialog in front of that is
+    /// a dialog in front of nothing. A group with kids is different: the kids do not go with it,
+    /// they are left standing at the venue with no group, and how many of them is the one fact the
+    /// swipe cannot show you. See `GroupsView.requestRemoval(of:)`.
+    fileprivate func removalConfirmation(
+        target: GroupDeletion?,
+        isPresented: Binding<Bool>,
+        onConfirm: @escaping (Group.ID) -> Void
+    ) -> some View {
+        confirmationDialog(
+            target.map { "Remove \($0.title)?" } ?? "",
+            isPresented: isPresented,
+            titleVisibility: .visible,
+            presenting: target
+        ) { target in
+            Button("Remove group", role: .destructive) { onConfirm(target.id) }
+        } message: { target in
+            Text(target.message)
+        }
+    }
+}
+
+private struct GroupDeletion: Identifiable {
+    let id: Group.ID
+    let number: Int
+    /// The group's whole roster, not the rows a search left on screen. See `requestRemoval(of:)`.
+    let kids: Int
+
+    var title: String { "Group \(number)" }
+
+    /// What actually happens, said in the terms the reader is worried about. Not "this cannot be
+    /// undone", which is the stock line and is also false — the kids are all still here, and
+    /// dragging them into a new group puts everything back.
+    var message: String {
+        "\(kids) kid\(kids == 1 ? "" : "s") will stay at this venue with no group until you "
+            + "place them. The other groups renumber."
+    }
 }

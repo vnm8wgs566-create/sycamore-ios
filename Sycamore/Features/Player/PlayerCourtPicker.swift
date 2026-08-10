@@ -2,7 +2,7 @@
 //  PlayerCourtPicker.swift
 //  Sycamore
 //
-//  Where this kid goes — every court in the camp, venue by venue, behind `8q`'s pinned bar.
+//  Where this kid goes — every group in the camp, venue by venue, behind `8q`'s pinned bar.
 //
 //  ── What this overturns ──────────────────────────────────────────────────────────────────────
 //
@@ -12,9 +12,18 @@
 //
 //  That is the wrong reading of what aiming needs. A ladder is how you decide *whether* a kid
 //  should move — it is one long comparison, and `8p` is the screen for it. Deciding *where* they
-//  go once that is settled needs three facts per court and nothing else: which court it is, how
-//  full it is, and who has it. That is a list, and this sheet is that list. One court up remains
+//  go once that is settled needs three facts per group and nothing else: which group it is, how
+//  full it is, and who has it. That is a list, and this sheet is that list. One group up remains
 //  the common case; it is now one tap in here rather than the only sentence the screen can say.
+//
+//  ── And the rows are groups, said in the Groups tab's own words ───────────────────────────────
+//
+//  The sheet listed `Group.label` for a while, so it offered "Court 1 … Court 12" behind a bar
+//  that read "Move to another court" — two names for the row Groups titles "Group N", on the two
+//  screens most likely to be used in the same minute. Both halves now say group, and the numeral
+//  comes off `Group.number` rather than off the label, so renaming a venue's courts cannot change
+//  what the move screen calls a group. `PlayerCourtChoices`' header carries the argument; the copy
+//  in this file follows it.
 //
 //  ── What this file is not ────────────────────────────────────────────────────────────────────
 //
@@ -22,10 +31,10 @@
 //  next door and with no view in it, so it can be tested. This file draws what that decides and
 //  commits the write. `PlayerCourtChoices.swift` argues why it lives apart.
 //
-//  ── A full or closed court is flagged, not blocked ───────────────────────────────────────────
+//  ── A full group, or one whose court is shut, is flagged and not blocked ─────────────────────
 //
-//  A court at its ceiling, past it, or out of play today wears a `WarningPill` and is still
-//  tappable. This is the app's standing answer, argued at length for the schedule's overlaps in
+//  A group at its ceiling, past it, or playing on a court that is out of play today wears a
+//  `WarningPill` and is still tappable. This is the app's standing answer, argued at length for the schedule's overlaps in
 //  `ScheduleResize.swift:19-42` and `BlockEditorDraft.swift:96-125`: the camp may legitimately go
 //  over, somebody wants to *see* it rather than be stopped at seven in the morning with a car park
 //  filling up, and a refusal here would be a second opinion about a rule `Group.isOverCapacity`
@@ -97,7 +106,7 @@ struct PlayerCourtPicker: View {
     ///
     /// `OnTheDayTokens.pickupDetent`'s 0.88 rather than `OverviewTheme.coachPickerDetent`'s 0.73,
     /// and for that constant's own reason: this sheet is a *long* list — `SampleData` alone is
-    /// twelve courts over two venues — and the thing somebody came here to do is find one of them.
+    /// twelve groups over two venues — and the thing somebody came here to do is find one of them.
     /// At 0.73 the second venue opens below the fold. `.large` is in the detent set as well,
     /// through `SheetChrome`, so the list can be pulled the rest of the way up.
     ///
@@ -122,7 +131,7 @@ struct PlayerCourtPicker: View {
         return SheetChrome(
             title: title,
             // The part nobody expects, said where it cannot be missed. See `move(to:)`.
-            subtitle: "They join the bottom of whichever court you pick.",
+            subtitle: "They join the bottom of whichever group you pick.",
             detentFraction: Self.detent,
             onClose: onClose
         ) {
@@ -174,13 +183,13 @@ struct PlayerCourtPicker: View {
         return "Move \(name)"
     }
 
-    // MARK: A court
+    // MARK: A group
 
-    /// Their own court is drawn, ticked, and is not a button.
+    /// Their own group is drawn, ticked, and is not a button.
     ///
     /// Deliberately not a disabled button. `CourtCoachPicker` keeps its already-on row tappable
-    /// because re-assigning the coach who is already there is a harmless no-op; picking the court
-    /// a kid is already on is not — `movePlayer` would sink them to the bottom of their own court
+    /// because re-assigning the coach who is already there is a harmless no-op; picking the group
+    /// a kid is already in is not — `movePlayer` would sink them to the bottom of their own group
     /// and write an Inbox row saying they had moved. And a `.disabled` button announces itself as
     /// dimmed, which describes a control that is temporarily unavailable rather than a statement
     /// of where they are.
@@ -212,6 +221,9 @@ struct PlayerCourtPicker: View {
                 // Allowed to wrap. "6 of 8 · Needs a coach" truncated at an accessibility size
                 // loses the coach, which is half of what the row is here to say — the same call
                 // `CourtCoachPicker` makes about its own detail line.
+                //
+                // The fill and the coach stay as they were. They are facts about the group, they
+                // name no place, and nothing in them had to move when the title did.
                 Text(court.meta)
                     .typeStyle(OverviewTheme.pickerMeta, color: Theme.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -247,21 +259,29 @@ struct PlayerCourtPicker: View {
         .frame(minHeight: HitTarget.minimum)
         .contentShape(.rect)
         // `.ignore` and one written sentence, not `.combine`. The row is drawn as three runs — a
-        // court, a fraction and a name — which combine into "Court 3, 6 of 8 · Nass", and a
+        // group, a fraction and a name — which combine into "Group 3, 6 of 8 · Nass", and a
         // fraction read out that way is a score or a date. That is the whole argument behind
         // `CourtCapacity.spokenLabel`, and this is where it is honoured. Written on the drawing
         // rather than on the button so the tapping row and the inert one cannot drift apart.
+        //
+        // It is also what carries the rename into VoiceOver. `spokenLabel` opens with the same
+        // `label` the row draws, so a screen that says group and speaks court is not a state these
+        // two can reach — see `PlayerCourtOption.spokenLabel`.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(court.spokenLabel)
     }
 
-    /// A camp with no courts in it yet. Drawn rather than left blank, because an empty sheet is
+    /// A camp with no groups in it yet. Drawn rather than left blank, because an empty sheet is
     /// indistinguishable from one that has not loaded — `CourtCoachPicker.emptyCard`'s argument,
     /// and `BlockCoachPicker.emptyRow`'s before it.
+    ///
+    /// "Groups" and not "courts", to match the rows this card stands in for. Shaping a venue is
+    /// still what makes them — `syncGroups` runs off `Venue.groupCount` — so the instruction is
+    /// unchanged; only the noun for the thing that appears has moved.
     private var emptyCard: some View {
         Card(radius: OnTheDayTokens.card, isDivided: false) {
             CardRow(spacing: Spacing.row, verticalPadding: Spacing.row) {
-                Text("This camp has no courts yet. Shape a venue in camp settings and they show up here.")
+                Text("This camp has no groups yet. Shape a venue in camp settings and they show up here.")
                     .typeStyle(OverviewTheme.cardSubtitle, color: Theme.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -277,11 +297,11 @@ struct PlayerCourtPicker: View {
     /// this sheet, and nothing needed to be: an arbitrary move has always been expressible, it
     /// just had no way in from here.
     ///
-    /// **The kid lands at the bottom of the court they arrive on, and that is correct.**
+    /// **The kid lands at the bottom of the group they arrive in, and that is correct.**
     /// `Camp.movePlayer` (`Models.swift:1340-1350`) sets `courtRank = Int.max / 2` and lets
-    /// `reindex()` close the gap, so a mover sinks to the back of their new court rather than
-    /// keeping a rank that meant something on the court they left. Position on a court is the
-    /// coach's ordering of the kids *on that court*; carrying it across would drop a newcomer into
+    /// `reindex()` close the gap, so a mover sinks to the back of their new group rather than
+    /// keeping a rank that meant something in the group they left. Position in a group is the
+    /// coach's ordering of the kids *in that group*; carrying it across would drop a newcomer into
     /// the middle of somebody else's ladder. `applyRankOrder` does the identical thing for the
     /// same reason (`Models.swift:1333`). **Do not "fix" this into a rank-preserving move** — the
     /// sheet's subtitle promises this behaviour, and re-ordering afterwards is what `8p` is for.
@@ -290,7 +310,7 @@ struct PlayerCourtPicker: View {
     /// with nothing moving on it reads as a tap that missed; and if the write is refused, the
     /// banner belongs over the screen — `perform` owns `errorMessage` and `RootView` floats it
     /// over every pushed screen — not inside a sheet that would then be the only thing left
-    /// claiming a court was being picked.
+    /// claiming a group was being picked.
     private func move(to court: PlayerCourtOption) {
         onClose()
         Task { await store.movePlayer(playerID, toVenue: court.venueID, group: court.id) }
@@ -347,9 +367,13 @@ private func shutCourtPreviewStore() -> AppStore {
     return store
 }
 
-/// Austin Z is on Court 1 at Sycamore, and Court 2 there is the nine-kid court `SampleData` seeds
-/// to make "1 over" real — so one frame carries the tick, the amber and ten plain rows across two
+/// Austin Z is in Sycamore's Group 1, and Group 2 there is the nine-kid one `SampleData` seeds to
+/// make "1 over" real — so one frame carries the tick, the amber and ten plain rows across two
 /// venues. Every state but one; `Closed` needs a read behind it and has the frame below.
+///
+/// It is also the frame that shows the rename landing: twelve rows that used to read "Court N" and
+/// now read "Group N", under venue headers that are the only thing telling Sycamore's Group 1 from
+/// LATC's.
 #Preview("Where does this kid go") {
     courtPickerPreview()
 }
@@ -369,7 +393,7 @@ private func shutCourtPreviewStore() -> AppStore {
         .preferredColorScheme(.dark)
 }
 
-/// A court's name over a wrapping detail line, with a pill and a tick beside it — the arrangement
+/// A group's name over a wrapping detail line, with a pill and a tick beside it — the arrangement
 /// that breaks first when the type ramp is pushed.
 #Preview("Where does this kid go — accessibility1") {
     courtPickerPreview()

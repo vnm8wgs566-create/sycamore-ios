@@ -18,6 +18,15 @@ struct AttendanceEntry: Identifiable, Hashable, Sendable {
     /// than the court's own 1…8.
     let rank: Int
     /// "Court 1". Nil when the session covers a single court, where naming it says nothing.
+    ///
+    /// **Still `Group.label`, and deliberately so.** The pass that made `8q`'s move bar and its
+    /// picker read "Group N" off `Group.number` stopped here on purpose. Those screens name the
+    /// rank band a kid belongs to, which is what a move changes. This one names somewhere to walk:
+    /// a coach marking "Courts 1–3" is holding a phone in the middle of three courts, and the
+    /// answer to "which of these is Liam on" has to be the court, not a band they would then have
+    /// to map back onto one. The header above the list says the same thing from the same source —
+    /// `AttendanceView.sessionLine` joins these labels when there is no block to name the session —
+    /// so renaming half of the pair would put a "Group 2" row under a "Court 1, Court 2" header.
     let courtLabel: String?
     /// What the day already says. `nil` is not a state here — a kid is either here or away; the
     /// screen's third state ("not answered yet") lives in `AttendanceView`, because the model
