@@ -367,7 +367,17 @@ struct GroupsView: View {
             // so a second opaque rectangle behind it would show as square white shoulders on every
             // card in the list.
             background: .clear,
-            onDelete: move == nil ? { requestRemoval(of: entry) } : nil
+            // Not offered on a venue's **only** group, and the reason is a column rather than a
+            // scruple: `sites_group_count_range` is `check (group_count between 1 and 40)`, so the
+            // decrement `Camp.removeGroup` makes would take it to 0 and Postgres would refuse the
+            // write. The store rolls back correctly, but the reader would have watched a group
+            // vanish and come back with an error banner — an affordance that is always going to
+            // fail is worse than one that is not there.
+            //
+            // Nor is it a loss. A venue with no groups has nowhere to put anybody; emptying the
+            // last one is what the age band and the drag already do, and those leave the kids
+            // somewhere the screen can name.
+            onDelete: (move == nil && !isOnlyGroup(entry)) ? { requestRemoval(of: entry) } : nil
         ) {
             groupCard(entry)
         }
@@ -1057,6 +1067,15 @@ struct GroupsView: View {
     /// Nothing is asked about an empty group. There is no cost to undo — the dashed "Add a group"
     /// row directly below puts one back — and a dialog guarding a reversible nothing is what makes
     /// readers stop reading dialogs.
+    /// Whether this is the last group standing at the venue on screen.
+    ///
+    /// Read off the drawn entries rather than the camp, so it agrees with what the reader can see:
+    /// the list is already scoped to one venue, and a count taken anywhere else could disagree with
+    /// it while a load is in flight.
+    private func isOnlyGroup(_ entry: GroupsEntry) -> Bool {
+        (listEntries ?? []).count <= 1
+    }
+
     private func requestRemoval(of entry: GroupsEntry) {
         let kids = entry.card.group.playerCount
         guard kids > 0 else {
@@ -1081,8 +1100,10 @@ struct GroupsView: View {
 
     /// The write. Scoped to the venue on screen, which is the only venue this list draws.
     ///
-    /// `AppStore.removeGroup` carries what does and does not survive a round trip; it is not good
-    /// news, and it is written down there rather than discovered here.
+    /// `AppStore.removeGroup` carries the round trip. It used to be bad news — the only door was
+    /// `updateVenue`, whose `syncGroups` trims a venue's *last* court and re-seats the orphans, so
+    /// deleting any other group deleted the wrong one the moment anything reloaded. There is a
+    /// `deleteGroup` verb now and the graph that comes back agrees with the one on screen.
     private func remove(_ groupID: Group.ID) async {
         guard let venueID = selectedVenue?.id else { return }
         deleteTarget = nil
