@@ -14,7 +14,7 @@ struct VerifyView: View {
     @FocusState private var isCodeFocused: Bool
     @State private var caretIsVisible = false
 
-    /// The cell carrying the caret, or nil once all six digits are in.
+    /// The cell carrying the caret, or nil once every digit is in.
     private var activeIndex: Int? {
         store.isCodeComplete ? nil : store.focusedCodeIndex
     }
@@ -79,8 +79,12 @@ struct VerifyView: View {
 
     // MARK: OTP
 
+    // The design draws six cells at `flex:1`, 9pt apart, 64pt tall. Eight cells share the same
+    // width, so honouring all three numbers at once would leave each one about 36pt across — at
+    // radius 15 the corners meet in the middle and the cell reads as a pill rather than a box.
+    // The gap closes to 6 and the height to 56, which puts the aspect back near the design's.
     private var codeField: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 6) {
             ForEach(Array(store.codeDigits.enumerated()), id: \.offset) { index, digit in
                 cell(digit: digit, isActive: index == activeIndex)
             }
@@ -104,7 +108,7 @@ struct VerifyView: View {
                 lineWidth: isActive ? BorderWidth.focus : BorderWidth.input
             )
             .frame(maxWidth: .infinity)
-            .frame(height: 64)
+            .frame(height: 56)
             .overlay {
                 if !digit.isEmpty {
                     Text(digit)
@@ -112,7 +116,7 @@ struct VerifyView: View {
                 } else if isActive {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(Theme.accent)
-                        .frame(width: 2, height: 27)
+                        .frame(width: 2, height: 24)
                         .opacity(caretIsVisible ? 1 : 0)
                 }
             }
@@ -137,13 +141,17 @@ struct VerifyView: View {
         #endif
     }
 
-    /// Keeps the store's `codeInput` to at most six digits however the text arrives —
-    /// typed, pasted or autofilled. Backspace simply shortens the string, which walks the
-    /// caret back a cell for free.
+    /// Keeps the store's `codeInput` to at most `SupabaseConfig.codeLength` digits however the
+    /// text arrives — typed, pasted or autofilled. Backspace simply shortens the string, which
+    /// walks the caret back a cell for free.
     private var codeBinding: Binding<String> {
         Binding(
             get: { store.codeInput },
-            set: { store.codeInput = String($0.filter(\.isNumber).prefix(6)) }
+            set: {
+                store.codeInput = String(
+                    $0.filter(\.isNumber).prefix(SupabaseConfig.codeLength)
+                )
+            }
         )
     }
 

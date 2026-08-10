@@ -713,15 +713,20 @@ extension AppStore {
 
     // MARK: Sign-in derived
 
-    /// Six entries, empty string for a cell with no digit yet.
+    /// One entry per cell, empty string for a cell with no digit yet.
     var codeDigits: [String] {
-        let digits = Array(codeInput.filter(\.isNumber).prefix(6))
-        return (0..<6).map { $0 < digits.count ? String(digits[$0]) : "" }
+        let length = SupabaseConfig.codeLength
+        let digits = Array(codeInput.filter(\.isNumber).prefix(length))
+        return (0..<length).map { $0 < digits.count ? String(digits[$0]) : "" }
     }
 
-    /// The cell with the blinking caret; 6 once every digit is in.
-    var focusedCodeIndex: Int { min(codeInput.filter(\.isNumber).count, 5) }
-    var isCodeComplete: Bool { codeInput.filter(\.isNumber).count == 6 }
+    /// The cell with the blinking caret; the last index once every digit is in.
+    var focusedCodeIndex: Int {
+        min(codeInput.filter(\.isNumber).count, SupabaseConfig.codeLength - 1)
+    }
+    var isCodeComplete: Bool {
+        codeInput.filter(\.isNumber).count == SupabaseConfig.codeLength
+    }
     var canResend: Bool { resendSeconds <= 0 }
 
     /// `Resend in 0:42`, then `Resend code` once the window closes.
