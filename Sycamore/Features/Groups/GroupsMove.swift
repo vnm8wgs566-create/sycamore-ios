@@ -189,6 +189,68 @@ struct GroupsMove: Equatable {
     }
 }
 
+// MARK: - What one card sees
+
+/// The kid in the air, cut down to the facts one `GroupCard` actually draws from.
+///
+/// `GroupCard` took the whole `GroupsMove` until this existed, and the cost of that only became
+/// visible once a lift started unfolding the entire venue. `translation` is rewritten on every
+/// frame of a drag — it is where the carried card is drawn, and it genuinely changes at display
+/// rate — and **no card reads it**. So the one field that changed per frame was the one field
+/// nothing on a card depended on, and handing the move to all twelve of them invalidated every
+/// row of an opened venue sixty times a second to redraw the same pixels.
+///
+/// Everything here is either constant for the length of a move or changes only when the *aim*
+/// does, which is what makes `GroupCard`'s `==` worth asking. A finger travelling inside one slot
+/// produces a digest identical to last frame's for every card in the venue, so nothing redraws
+/// until the kid is actually aimed somewhere else — and then only the two cards that say so.
+struct GroupsCardMove: Equatable {
+
+    /// `Drops in at #9` — what the target card writes where its head-count usually goes, and nil
+    /// on every other card. It is also how a card knows it *is* the target: a `Bool` beside this
+    /// would be a second answer to one question, and two fields that must agree.
+    let dropLine: String?
+    /// Whether the kid was picked up from this card. Only the fading of the cards that are
+    /// neither this nor the target reads it — the gap the kid left is drawn from `heldRowID`.
+    let isSource: Bool
+    /// The kid in the air. Stated for every card rather than nil'd out for all but the source:
+    /// no other card draws a row with this id, and a field that holds still for the length of a
+    /// move is a field that never invalidates anybody.
+    let heldRowID: Player.ID
+    /// Where this card opens the space for them, or nil if they are not aimed here.
+    let ghostSeat: GroupsGhost.Seat?
+    /// The move is still being measured, so this card draws itself exactly as it does at rest.
+    /// See `GroupsMove.awaitingGeometry` for what that pass is for.
+    let isSettling: Bool
+    /// The lifted row's measured height: what the ghost reserves, and what the row the kid came
+    /// out of gives up.
+    let ghostHeight: CGFloat
+    /// The kid's name, which is what the ghost says.
+    let ghostName: String
+
+    /// The kid is aimed at this card.
+    var isTarget: Bool { dropLine != nil }
+
+    /// Nil when nobody is being carried, which is the ordinary screen.
+    init?(_ move: GroupsMove?, card: Group.ID, drawnRows: [PlayerRow]) {
+        guard let move else { return nil }
+        let isSettling = move.awaitingGeometry
+
+        self.dropLine = move.target?.groupID == card ? move.target?.dropLine : nil
+        self.isSource = move.sourceGroupID == card
+        self.heldRowID = move.row.id
+        // No ghost while the list is being re-measured: a row in the flow that was not there when
+        // the slots were captured is precisely what would stop that pass describing the list at
+        // rest. The lifted row keeps its space over the same window, so the two cancel.
+        self.ghostSeat = isSettling
+            ? nil
+            : GroupsGhost.seat(aimedAt: move.target, card: card, drawnRows: drawnRows)
+        self.isSettling = isSettling
+        self.ghostHeight = move.origin.height
+        self.ghostName = move.row.name
+    }
+}
+
 /// A place a kid can land: a boundary between two rows, or the end of a group.
 struct GroupsDropSlot: Equatable, Hashable {
 

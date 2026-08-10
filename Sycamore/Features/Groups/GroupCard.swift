@@ -31,8 +31,13 @@ struct GroupCard: View {
     /// card: the drop slots are numbered against exactly this list, and two places working it
     /// out separately is two places to get it wrong.
     let visibleRows: [PlayerRow]
-    /// The kid in the air, if any — nil on the ordinary screen.
-    let move: GroupsMove?
+    /// What the kid in the air means for *this* card — nil on the ordinary screen.
+    ///
+    /// A digest rather than the `GroupsMove` itself, and `GroupsCardMove` carries the argument:
+    /// the move's `translation` changes on every frame of a drag, no card has ever read it, and
+    /// passing it to all of them made the whole venue rebuild at display rate. See also the
+    /// `Equatable` conformance below, which is what turns the small digest into few redraws.
+    let move: GroupsCardMove?
 
     let onToggle: () -> Void
     let onOpenPlayer: (PlayerRow) -> Void
@@ -57,8 +62,8 @@ struct GroupCard: View {
     /// is played on — `8q` heads a kid with "Group 1 · Court 1". `Group.label` is the court.
     private var title: String { "Group \(card.group.number)" }
 
-    private var isTarget: Bool { move?.target?.groupID == card.id }
-    private var isSource: Bool { move?.sourceGroupID == card.id }
+    private var isTarget: Bool { move?.isTarget == true }
+    private var isSource: Bool { move?.isSource == true }
     /// Faded while a kid is in the air: neither where they came from nor where they are going.
     /// The design leaves the source card at full strength — the gap in it is the point.
     private var isBystander: Bool { move != nil && !isTarget && !isSource }
@@ -78,29 +83,28 @@ struct GroupCard: View {
     /// height `H` arriving while a row of height `H` leaves would put two corrections into
     /// numbers that are supposed to describe the layout without either. See
     /// `GroupsMove.awaitingGeometry`.
-    private var isSettling: Bool { move?.awaitingGeometry == true }
+    ///
+    /// The no-ghost half is enforced a step earlier: `GroupsCardMove` builds `ghostSeat` nil for
+    /// the length of this window. What is left for this to say is the other half — the row the kid
+    /// came out of, still standing in the flow.
+    private var isSettling: Bool { move?.isSettling == true }
 
     /// Where this card opens a space for the kid in the air, if it is the one they are aimed at.
-    private var ghostSeat: GroupsGhost.Seat? {
-        guard let move, !isSettling else { return nil }
-        return GroupsGhost.seat(aimedAt: move.target, card: card.id, drawnRows: visibleRows)
-    }
+    /// Worked out in `GroupsCardMove` off the same rows this card draws, so that a `==` between
+    /// two frames of a drag is a comparison of the answer rather than of everything behind it.
+    private var ghostSeat: GroupsGhost.Seat? { move?.ghostSeat }
 
     /// Whether there is anything under the header at all: kids of the card's own, a "+N more"
     /// row, or the ghost of a kid aimed at a card that draws neither.
     ///
-    /// The same answer as `!seats.isEmpty` and stated separately on purpose — `body` runs on
-    /// every frame of a shift, the header asks this question too, and neither of them needs the
-    /// array built to be told no.
+    /// The same answer as `!seats.isEmpty` and stated separately on purpose: the header asks this
+    /// question too, and neither of them needs the array built to be told no.
     private var hasRowsSection: Bool {
         !visibleRows.isEmpty || hiddenCount > 0 || ghostSeat != nil
     }
 
     /// `Drops in at #9` while this card is the target, the head-count band otherwise.
-    private var subtitle: String {
-        guard isTarget, let slot = move?.target else { return summary }
-        return slot.dropLine
-    }
+    private var subtitle: String { move?.dropLine ?? summary }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous)
@@ -254,7 +258,7 @@ struct GroupCard: View {
     }
 
     private func rowView(_ row: PlayerRow) -> some View {
-        let isHeld = move?.row.id == row.id
+        let isHeld = move?.heldRowID == row.id
 
         return GroupPlayerRow(
             row: row,
@@ -289,7 +293,7 @@ struct GroupCard: View {
         // the gap: the card carrying the kid is drawn directly over it at `translation` 0.
         .opacity(isHeld ? 0 : 1)
         .accessibilityHidden(isHeld)
-        .padding(.bottom, isHeld && !isSettling ? -(move?.origin.height ?? 0) : 0)
+        .padding(.bottom, isHeld && !isSettling ? -(move?.ghostHeight ?? 0) : 0)
     }
 
     /// The kid, greyed, in the space that has opened for them.
@@ -314,12 +318,12 @@ struct GroupCard: View {
     /// asserts the new one beside rows that have not been renumbered yet, so two rows in one
     /// card read `#9`. The empty numeral column is what "+N more" already uses to line up with
     /// the names above it.
-    private func ghost(_ move: GroupsMove) -> some View {
+    private func ghost(_ move: GroupsCardMove) -> some View {
         let plate = RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous)
 
         return GroupsRow(
             rank: nil,
-            name: move.row.name,
+            name: move.ghostName,
             nameColor: Theme.inkFaint
         )
         .padding(.leading, GroupsMetrics.cardPadding)
@@ -328,7 +332,7 @@ struct GroupCard: View {
         .padding(.trailing, HitTarget.minimum)
         // The measured height of the row that closed — see `GroupsMetrics.ghostHeight` for why
         // this is a measurement and the plate inside it is a token.
-        .frame(height: move.origin.height)
+        .frame(height: move.ghostHeight)
         .background {
             plate
                 .fill(GroupsPalette.ghostFill)
@@ -341,7 +345,7 @@ struct GroupCard: View {
         // The card carrying the kid is drawn over this, and the handle being held is elsewhere.
         .allowsHitTesting(false)
         .accessibilityElement()
-        .accessibilityLabel("Where \(move.row.name) will land")
+        .accessibilityLabel("Where \(move.ghostName) will land")
     }
 
     /// `+3 more` — the folded rows, and the way back out of them.
@@ -371,6 +375,39 @@ struct GroupCard: View {
     }
 }
 
+// MARK: - When a card is worth redrawing
+
+/// Over the card's data and nothing else, which is the whole reason it is written out by hand.
+///
+/// The eight closures below `move` are the reason the synthesised conformance is not available and
+/// would be useless if it were: a closure is not `Equatable`, and every one of these is rebuilt by
+/// `GroupsView.body` on every pass — so a structural comparison would answer "different" every
+/// time and `.equatable()` would buy nothing. They are excluded rather than worked around, and
+/// that is sound here: each captures the entry it was built for, and an entry whose card, summary
+/// and drawn rows are all unchanged is the same entry. The one thing it also captures — the
+/// screen itself — reaches its state through boxes that outlive any single `body` pass.
+///
+/// What this buys is the point of `GroupsCardMove`. `GroupsView.body` runs on every frame of a
+/// drag because the carried card has to follow the finger, and it rebuilds all twelve of these
+/// each time. Without the comparison, all twelve redraw — and since the lift now opens every card
+/// in the venue, that is the venue's whole fifty rows at display rate. With it a card redraws when
+/// something it draws has changed, which over a whole drag is the card the kid was aimed at and
+/// the card they are aimed at now.
+///
+/// `@MainActor` on the conformance rather than on the operator, because a `View` is main-actor
+/// isolated in Swift 6 and so are its stored properties — an unisolated `==` could not read the
+/// card it is comparing. `.equatable()` is only ever reached from a `body`, so the isolation costs
+/// nothing and says the true thing.
+extension GroupCard: @MainActor Equatable {
+
+    static func == (lhs: GroupCard, rhs: GroupCard) -> Bool {
+        lhs.card == rhs.card
+            && lhs.summary == rhs.summary
+            && lhs.visibleRows == rhs.visibleRows
+            && lhs.move == rhs.move
+    }
+}
+
 // MARK: - Seats
 
 /// One thing a card stacks under its rule.
@@ -386,7 +423,7 @@ struct GroupCard: View {
 private enum CardSeat: Identifiable {
 
     case row(PlayerRow)
-    case ghost(GroupsMove)
+    case ghost(GroupsCardMove)
     case more
 
     enum ID: Hashable {
@@ -684,7 +721,11 @@ private struct GroupCardMovePreviewHarness: View {
                                 card: card,
                                 summary: "\(card.rows.count) players",
                                 visibleRows: visible,
-                                move: move(in: card, mover: visible[0], anchor: aim.anchor),
+                                move: GroupsCardMove(
+                                    move(in: card, mover: visible[0], anchor: aim.anchor),
+                                    card: card.id,
+                                    drawnRows: visible
+                                ),
                                 onToggle: {},
                                 onOpenPlayer: { _ in },
                                 onMoveBegan: { _ in },
@@ -706,9 +747,13 @@ private struct GroupCardMovePreviewHarness: View {
 
     /// The first drawn kid, in the air, aimed at `anchor`.
     ///
+    /// Posed as a whole `GroupsMove` and then put through `GroupsCardMove`, which is what the card
+    /// actually takes — so the preview exercises the same derivation the screen does rather than a
+    /// hand-written digest that could quietly disagree with it.
+    ///
     /// `origin` is a 44pt box because that is what a row measures at the default type size, and
     /// the ghost reserves exactly `origin.height` — so all three cards below come out the same
-    /// height as each other and as the card at rest. `slots` is empty: the card reads `target`,
+    /// height as each other and as the card at rest. `slots` is empty: the digest reads `target`,
     /// `row` and `origin`, and never the array a real move aims with.
     private func move(in card: GroupsCoachCard, mover: PlayerRow, anchor: Player.ID?) -> GroupsMove {
         GroupsMove(
