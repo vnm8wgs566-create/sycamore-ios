@@ -143,6 +143,22 @@ struct PlayerCourtPicker: View {
                 }
             }
         }
+        // Fetch the courts this sheet reads, rather than hoping somebody else already did.
+        //
+        // `store.courts` — which `closedCourts` is derived from — had exactly one writer on the
+        // way in here: `OverviewView`'s own `.task`. Overview is the tab the app opens on, so in
+        // practice it usually had run, and this sheet usually knew which courts were shut. Usually
+        // is the wrong word for it. Deep-link to a kid, open this from a coach's own screen, or
+        // reach it on a session that has not been to Overview, and `closedCourts` is empty — at
+        // which point the sheet does not say a court is closed, it says nothing, and nothing reads
+        // as open. A warning that silently degrades to no warning is worse than no warning at all,
+        // because the absence looks like an answer.
+        //
+        // One fetch per open, which is the same shape `CampPickerView` uses for its memberships:
+        // the screen that needs the rows asks for them. The wider repair is a `courts(forCamp:)`
+        // that does not need a venue chosen first — see `AppStore.loadCourts`, which narrows to
+        // `readVenueID` and says so.
+        .task { await store.loadCourts() }
     }
 
     /// `Move Austin Z`. Read from the graph per pass rather than handed in, so a sheet left open

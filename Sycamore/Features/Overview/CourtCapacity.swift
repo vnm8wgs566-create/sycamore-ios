@@ -61,7 +61,9 @@
 //
 //  `8i` draws three courts under their ceiling and one closed; it never draws a full-and-then-some
 //  court, and the one it draws at exactly 8 of 8 wears no pill at all. Both states exist all the
-//  same — `Group.capacityBanner` writes "1 over — move one kid down" and Groups draws that today —
+//  same — `Group.capacityBanner` writes "1 over — move one kid down", though nothing draws it:
+//  that property has no caller outside its own tests, so it argues for the state rather than
+//  evidencing it —
 //  so this names them rather than letting the pill that says "2 spots" quietly say "-1 spots", or
 //  letting a court with nowhere left to put a child look exactly like one with room.
 //
@@ -170,7 +172,12 @@ extension CourtCapacity {
             case .room(let free): free == 1 ? "1 spot" : "\(free) spots"
             case .full: "Full"
             case .over(let by): "\(by) over"
-            case .closed: "Closed"
+            // Borrowed rather than spelled a third time. `CourtStatus.badge` already owns this
+            // word (`SectionEight.swift:92-97`) and a court card draws it from there, so a
+            // literal here would be two screens agreeing by coincidence — which is what
+            // `OverviewCapacityTests` was left asserting. A test doing work an expression can do
+            // is a test that fails the day somebody rewords one of them and not the other.
+            case .closed: CourtStatus.closed(reason: "").badge
             }
         }
 
@@ -181,7 +188,8 @@ extension CourtCapacity {
             case .room(let free): "\(free) \(free == 1 ? "spot" : "spots") left"
             case .full: "Full"
             case .over(let by): "\(by) over capacity"
-            case .closed: "Closed"
+            // The same word from the same owner, for the same reason as `label` above.
+            case .closed: CourtStatus.closed(reason: "").badge
             }
         }
 
