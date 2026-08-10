@@ -86,3 +86,21 @@ Two things that test could not reach:
 - **The subject line is separate from the body.** The delivered mail arrived titled "Confirm your
   email address" — Supabase's stock subject — because pasting the HTML does not change it. Set it on
   both templates, or the message announces itself as a confirmation and then shows a sign-in code.
+
+## Applied to the dashboard
+
+2026-08-09: this 8-cell HTML is now live in **both** *Confirm signup* and *Magic Link*, and both
+subjects are set to *Your Sycamore sign-in code*. Verified by reading the project's auth config back
+(`GET /v1/projects/{ref}/config/auth`): `mailer_otp_length` is `8`, both template bodies match this
+file byte-for-byte, and both subjects match. So the length agrees across all three places at last —
+config `8`, cells `8`, `SupabaseConfig.codeLength` `8`.
+
+Written through the Management API, not pasted. One gotcha worth recording: the API sits behind
+Cloudflare, and a `Python-urllib` User-Agent is refused with **403 `error code: 1010`** (a banned
+client signature) regardless of the body. `curl` and browsers are fine. The `1010` looks exactly
+like a content/permission rejection and is neither — send template writes from `curl`.
+
+**Still outstanding, and only the account owner can do it:** the masthead logo at
+`https://sycamorecamps.com/email/sycamore-mark-240.png` returns **404**, so every inbox shows a
+broken image until [`assets/sycamore-mark-240.png`](assets/sycamore-mark-240.png) is uploaded to
+that path. Nothing in the app or the auth config can fix this — it is a file on the web host.
