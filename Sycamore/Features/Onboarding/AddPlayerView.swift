@@ -61,7 +61,7 @@ struct AddPlayerView: View {
     }
 
     var body: some View {
-        let screen = VStack(spacing: 0) {
+        VStack(spacing: 0) {
             StatusBarMock()
 
             IntakeHeader(
@@ -79,21 +79,15 @@ struct AddPlayerView: View {
         .background(Theme.surfaceWarm)
         .overlay(alignment: .bottom) { saveButton }
         .navigationBarBackButtonHidden(true)
-
-        #if os(iOS)
-        return screen
-            .toolbar(.hidden, for: .navigationBar)
-            // The number pad has no return key, and the pinned "Add" sits under the keyboard
-            // while it is up. This is the way out that does not need a free hand for a drag.
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focus = nil }
-                }
-            }
-        #else
-        return screen
-        #endif
+        .hidesNavigationBar()
+        // The number pad has no return key, and the pinned "Add" sits under the keyboard while it
+        // is up. This is the way out that does not need a free hand for a drag.
+        //
+        // The app's one spelling of the bar, not a second copy of it. This file used to hand-roll
+        // the `ToolbarItemGroup` behind its own `#if os(iOS)` — which is also what forced the
+        // `let screen` / two-`return` shape this body no longer has, because both modifiers that
+        // needed the `#if` now carry it themselves.
+        .keyboardDoneBar { focus = nil }
     }
 
     // MARK: Copy

@@ -24,10 +24,19 @@
 //  3. `sites.name` is globally unique and `camps.invite_code` is too, which the app's own
 //     "Venue 1" naming walks straight into. Both inserts retry with a disambiguated value.
 //
+//  And two things PostgREST's own verbs cannot express, both of which are therefore functions
+//  called over `rpc/` rather than a request against a table:
+//
 //  4. `camps` SELECT is members-only, so `joinCamp` cannot read a camp by its invite code — the
 //     one moment you legitimately need a camp you are not yet in. It goes through the
 //     `join_camp_by_code` RPC instead, which is the only unauthenticated-by-membership read of
 //     that table and writes the membership itself.
+//  5. Putting a coach on a court moves two people — the new coach on, the incumbent off — and
+//     row level security can refuse one of those without refusing the request. A `using` clause
+//     is a row filter, so a PATCH the policy declines matches nothing and answers 204. As two
+//     requests that meant a worker could empty a court by tapping somebody they were not allowed
+//     to move; `assignStaff` calls `assign_coach_to_court` so both updates share a transaction
+//     and either both land or neither does.
 //
 //  The missing REST grants this header used to warn about were fixed in
 //  `20260805152045_grant_rest_privileges`, and the open `mvp_all` policies it described were
@@ -629,6 +638,49 @@ actor SupabaseRepository: SycamoreRepository {
         }
     }
 
+    /// The arguments `assign_coach_to_court` takes.
+    ///
+    /// A struct rather than the `[String: String]` `joinCamp` gets away with, because these three
+    /// are not one type. `convertToSnakeCase` leaves all three single words alone, so the property
+    /// names are the parameter names.
+    ///
+    /// `CoachMove` rather than `CourtAssignment`, which is the name this wanted and is taken:
+    /// `Models.swift:644` is already where a staff member *stands*, and this is the move being
+    /// asked for. Nesting alone would not have kept them apart — a nested type shadows a module
+    /// one throughout the outer type's extensions, so the domain `CourtAssignment` that
+    /// `+Graph.swift:71` builds would have started resolving to this and stopped compiling.
+    ///
+    /// Not `private`, unlike `MovedCoach` below, and only because `encode(to:)` is tested —
+    /// `CoachMoveTests` asserts the exact body both moves put on the wire.
+    struct CoachMove: Encodable, Sendable {
+        var coach: StaffMember.ID
+        var court: Group.ID?
+        var roaming: Bool
+
+        /// Spelled out because `encode(to:)` below is: the compiler synthesises `CodingKeys` only
+        /// alongside the method it would have written, so hand-writing one costs the other.
+        private enum CodingKeys: String, CodingKey { case coach, court, roaming }
+
+        /// Written out rather than synthesised for one reason, on one line of it. A synthesised
+        /// `Encodable` encodes a nil `Optional` with `encodeIfPresent` and so leaves the key out
+        /// altogether — `{"coach":…,"roaming":true}`, checked rather than assumed — and PostgREST
+        /// resolves a function by the argument names in the body, so an omitted `court` would go
+        /// looking for a two-argument `assign_coach_to_court` and be told it does not exist.
+        /// Taking somebody off a court *is* `court: null`, and null has to be written down for it
+        /// to be said.
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(coach, forKey: .coach)
+            try container.encode(court, forKey: .court)
+            try container.encode(roaming, forKey: .roaming)
+        }
+    }
+
+    /// The single column `assign_coach_to_court` returns.
+    private struct MovedCoach: Decodable, Sendable {
+        var coachId: UUID
+    }
+
     func assignStaff(
         _ staffID: StaffMember.ID, toGroup groupID: Group.ID?, campID: Camp.ID
     ) async throws -> Camp {
@@ -637,35 +689,66 @@ actor SupabaseRepository: SycamoreRepository {
             guard let member = before.staff(staffID) else { throw SycamoreError.unknownStaff }
             if let groupID, before.group(groupID) == nil { throw SycamoreError.unknownGroup }
 
-            if let groupID, let court = before.group(groupID) {
-                // One coach per court: whoever was there is bumped to no court.
-                try await db.update(
-                    Relation.coaches,
-                    set: ["group_id": .null, "site_id": .null],
-                    where: PostgRESTQuery().eq("group_id", groupID).neq("id", staffID)
+            // One call, because the move is one decision and half of it is worse than none of it.
+            //
+            // This was two PATCHes — bump whoever is on the court, then put the new coach on —
+            // and `coaches_update_self_or_admin` turned that pair into a way to empty a court.
+            // The policy's `using` clause is applied by PostgREST as a row *filter*, so a write
+            // the caller may not make matches nothing and answers 204, exactly as a write with
+            // nothing to do would. A worker holding Court 1 who tapped an admin therefore came
+            // off it (their own row, permitted) while the admin was never put on it (not their
+            // row, silently skipped), and neither request failed. `assign_coach_to_court` does
+            // both updates in one transaction and aborts it when either is filtered out, so the
+            // court keeps the coach it had. `20260809120000_atomic_court_assignment.sql` carries
+            // the whole account, including the mirror case that put two coaches on one court.
+            //
+            // The venue is no longer sent: the function reads it from the court, which is where
+            // it is true. `is_roaming` still comes from here, because `Role.roamsByDefault` is
+            // the one place that decides it and a copy in SQL would be a copy to drift.
+            let moved: [MovedCoach]
+            do {
+                moved = try await db.rpc(
+                    "assign_coach_to_court",
+                    CoachMove(
+                        coach: staffID,
+                        court: groupID,
+                        roaming: groupID == nil && member.role.roamsByDefault
+                    )
                 )
-                try await db.update(
-                    Relation.coaches,
-                    set: [
-                        "group_id": .uuid(groupID),
-                        "site_id": .uuid(court.venueID),
-                        "is_roaming": .bool(false),
-                    ],
-                    where: PostgRESTQuery().eq("id", staffID)
-                )
-            } else {
-                try await db.update(
-                    Relation.coaches,
-                    set: [
-                        "group_id": .null,
-                        "site_id": .null,
-                        "is_roaming": .bool(member.role.roamsByDefault),
-                    ],
-                    where: PostgRESTQuery().eq("id", staffID)
-                )
+            } catch let refusal as SupabaseError where refusal.isPolicyRefusal {
+                // The 403 is the function saying it declined and rolled back, which is precisely
+                // "Only an admin can do that." Mapped here rather than in `PostgRESTClient` for
+                // the reason `adminWrite` gives next door: the sentence is only true where the
+                // policy is an admin gate, and this one is.
+                throw SycamoreError.notPermitted
+            }
+            guard moved.isEmpty == false else {
+                throw await missingStaffOrCourt(staffID, toGroup: groupID)
             }
             return try await camp(id: campID)
         }
+    }
+
+    /// Which end of a move stopped existing while the sheet was open.
+    ///
+    /// The two guards above have already checked both against the camp graph read moments earlier
+    /// in this same call, so zero rows back from the function does not mean the caller was refused
+    /// — a refusal is the 403 — it means somebody deactivated the person or dropped the court in
+    /// between. Rare, and worth one request to name correctly: "We couldn't find that person" sent
+    /// at a deleted court points the reader at the wrong screen entirely.
+    ///
+    /// Only the staff row needs asking about. With no court in the move there is nothing else it
+    /// could have been, and with one, a person who is still there leaves the court as the only
+    /// remaining answer. Falls back to `unknownStaff` if that read itself fails, because a network
+    /// error on the way to explaining a failure should not replace it with a different one.
+    private func missingStaffOrCourt(
+        _ staffID: StaffMember.ID, toGroup groupID: Group.ID?
+    ) async -> SycamoreError {
+        guard groupID != nil else { return .unknownStaff }
+        let rows: [RowIDRecord]? = try? await db.select(
+            Relation.coaches, .select("id").eq("id", staffID).isTrue("active").limit(1)
+        )
+        return rows?.isEmpty == false ? .unknownGroup : .unknownStaff
     }
 
     /// Deactivated, not deleted. `attendance.noted_by` and `ratings.last_by` point at coaches

@@ -45,3 +45,9 @@ playground.xcworkspace
 # Injected by CocoaPods / Carthage if they ever appear (they should not — no dependencies)
 Pods/
 Carthage/Build/
+
+# Supabase CLI local state. Created by `supabase link` / `supabase db push`, never by a build.
+# `pooler-url` carries the database connection string *including its password*, so this directory
+# is a credential leak the moment it is committed. The migrations beside it are the checked-in
+# artefact; this is per-machine scratch and belongs to whoever ran the CLI.
+supabase/.temp/

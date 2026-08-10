@@ -1,0 +1,75 @@
+-- ---------------------------------------------------------------------------------------------
+-- Two blocks at one venue may claim the same minute after all.
+-- ---------------------------------------------------------------------------------------------
+--
+-- This drops `schedule_blocks_no_overlap`, added one migration ago in
+-- 20260809112845_no_overlapping_blocks. That migration is careful work and most of it stands: the
+-- `btree_gist` install, the reasoning about `tsrange(day + starts_at, …)` over a range type that
+-- Postgres does not ship, the half-open `[)` boundary, and above all the two repair passes, which
+-- only ever shorten a claim and never delete a block. None of that is being reversed. What is
+-- being reversed is the constraint those things were built to carry.
+--
+-- ── WHY ───────────────────────────────────────────────────────────────────────────────────────
+--
+-- It states a rule this app does not hold. An EXCLUDE keyed on `site_id` says *two blocks at one
+-- venue may not overlap*. The app's rule is narrower and is in `BlockRules.sharesSpace`
+-- (`BlockEditorDraft.swift:187-191`):
+--
+--     two blocks share space unless both name courts and those court lists are disjoint
+--
+-- So "Warm-up on Court 1, 9:00–10:00" and "Free play on Courts 2–4, 9:00–10:00" are a legal
+-- morning in Swift and were refused here. That is not a stricter version of the same rule; it is
+-- a different rule, and the venue-wide one makes the narrower one **unsayable at the database** —
+-- which is the whole reason `schedule_block_courts` and `ScheduleBlockKind.assigned` exist
+-- (20260809030000). A constraint that forbids the feature two migrations built is the constraint
+-- that is wrong, not the feature.
+--
+-- ── THE CASE IT WAS ARGUED FROM NO LONGER HOLDS ───────────────────────────────────────────────
+--
+-- The previous migration's header rests on two claims about the Swift side. Both were true once
+-- and neither is true at the commit it was written against:
+--
+--   * "the only thing anywhere that refused it was `ScheduleResizePlan.init` … which clamps a
+--     dragged bottom edge at the next block's start". That clamp is gone. `ScheduleResize.swift`
+--     carries a section headed THE NEIGHBOUR IS NO LONGER A WALL explaining that a court-aware
+--     wall is worse than none, because the minute a drag stopped at would depend on which courts
+--     were ticked inside a sheet that is not open.
+--
+--   * "Mirrored in Swift as `BlockRules.overlap(with:in:)`". It is not mirrored. `overlap` calls
+--     `sharesSpace`, which returns false for court-disjoint blocks, so Swift returns *no clash*
+--     for precisely the pair the constraint refused.
+--
+-- The reasoning was sound; the reading of the code was one batch out of date.
+--
+-- ── WHAT REPLACES IT ──────────────────────────────────────────────────────────────────────────
+--
+-- Nothing, at this level, and that is deliberate. An overlap is a **flag**: `BlockRules.overlap`
+-- holds the rule, `ScheduleBlockCard` draws an amber line naming what a block runs into, the
+-- editor offers "Save it anyway", and `8k`'s canvas now draws concurrent blocks side by side in
+-- lanes so the overlap is visible rather than merely warned about. The database is not the place
+-- to hold a rule the product deliberately does not enforce.
+--
+-- The court-aware version was considered and rejected on the previous migration's own reasoning:
+-- the courts live in `schedule_block_courts`, so an EXCLUDE cannot reach them — it indexes columns
+-- of one table — and the alternative is the constraint trigger that migration correctly argues
+-- races. Neither is worth building for a rule that is meant to be advisory.
+--
+-- ── WHAT IS DELIBERATELY LEFT ALONE ───────────────────────────────────────────────────────────
+--
+-- `btree_gist` stays installed. It is unused after this, and dropping an extension is a wider
+-- action than dropping a constraint — it would fail on any other object that has since come to
+-- depend on it, and an idle extension costs nothing. If a court-aware exclusion is ever built it
+-- is what that would need.
+--
+-- The repair passes are not undone, and could not be: they shortened `ends_at` on rows that
+-- overlapped, and the previous times are gone. On this project's database they reported changing
+-- nothing — it held two blocks that day, neither overlapping — so there is nothing here to regret.
+-- Any deploy where they did fire has blocks that are shorter than somebody wrote them and no
+-- record of the difference. That is worth saying plainly rather than leaving to be discovered.
+-- `ends_after_starts`, the per-row check, is untouched and still the one time rule the column
+-- holds.
+
+do $$ begin
+  alter table public.schedule_blocks
+    drop constraint if exists schedule_blocks_no_overlap;
+end $$;

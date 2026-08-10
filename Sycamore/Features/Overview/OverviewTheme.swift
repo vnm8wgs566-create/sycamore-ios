@@ -275,8 +275,21 @@ enum OverviewTheme {
     static let ruleGap: CGFloat = 11
     /// The roster's `gap:12px`, rank column to name.
     static let rosterGap: CGFloat = 12
-    /// The roster's `gap:1px`, line to line. With `rosterRowPadding` either side of a row this is
-    /// the design's `gap:7px` between one name and the next.
+    /// The roster's `gap:1px`, line to line. With `rosterRowPadding` either side of a row the
+    /// three sum to the design's `gap:7px` between one name and the next.
+    ///
+    /// **That sum holds only where the row is drawn as a plain line.** `CourtRosterButton` grows
+    /// the same row to `HitTarget.minimum` (`CourtRosterButton.swift:45`), and every screen that
+    /// lists a court's kids wraps it that way now — the court screen had the button first
+    /// (`CourtScreen.swift:287`) and a card's roster has one since its names became taps
+    /// (`OverviewCourtCard.swift:324`). A 44pt floor swallows the ~23pt a 14pt name and 3pt either
+    /// side come to at the default setting, so what stands between two of those names is 44 and
+    /// this 1, and not 7. Only a bare `CourtRosterRow` still measures the sum, which today is that
+    /// row's own previews and nothing shipping.
+    ///
+    /// Unchanged at 1 all the same. It is the design's own figure, it is the whole gap wherever
+    /// the rows are lines, and where they are targets it is the sliver that keeps two of them from
+    /// sitting flush. It is the arithmetic that stopped describing those two screens, not the value.
     static let rosterRowGap: CGFloat = 1
     /// `width:14px` — the right-aligned rank column.
     ///
@@ -296,8 +309,18 @@ enum OverviewTheme {
     static let rosterGlyph: CGFloat = 13
     /// The 15pt caret that closes a card's header row.
     static let caretGlyph: CGFloat = 15
-    /// The roster's `gap:7px` restated as padding either side of a row, so it grows with Dynamic
-    /// Type instead of pinning a row height that larger text would spill out of.
+    /// The roster's `gap:7px` restated as padding either side of a row rather than as a row
+    /// height, so it grows with Dynamic Type instead of pinning a height larger text would spill
+    /// out of.
+    ///
+    /// Both screens that draw the row do pin something now — `CourtRosterButton` grows it to
+    /// `HitTarget.minimum` (`CourtRosterButton.swift:45`) — but what they pin is a *floor* and not
+    /// a height, and at a larger setting the two are not the same thing. Under the floor the 44 is
+    /// what a reader measures and this padding sets nothing they can see; at the type sizes where
+    /// the drawn line outgrows 44pt the minimum stops binding and the padding is what carries the
+    /// row past it. The second case is the one the note above was written for, and it is why this
+    /// stays padding: a row pinned at a flat 44 would be precisely the height larger text spills
+    /// out of.
     static let rosterRowPadding: CGFloat = 3
     /// The 30pt disc inside a coach pill.
     ///

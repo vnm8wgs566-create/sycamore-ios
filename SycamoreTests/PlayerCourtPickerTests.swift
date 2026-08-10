@@ -15,8 +15,13 @@
 //
 //      sections            -> is every court there, in an order somebody can hunt through
 //      isCurrent           -> is the kid's own court marked, and only theirs
-//      flag / meta         -> does a full court say so, and does a court with room stay quiet
+//      flag / meta         -> does a full or shut court say so, and does a court with room stay quiet
 //      hasSomewhereElse    -> and should the bar that opens all this be live at all
+//
+//  `flag` used to be a `String?` this file wrote itself — "Full" bolted onto Overview's words for
+//  the over-capacity case — and the tests below that changed shape are the ones that had been
+//  pinning the seam. It is `CourtCapacity.Flag` now: one enum, one branch, and the pill and the
+//  spoken sentence read the same value. `OverviewCapacityTests` carries the argument.
 //
 
 import Foundation
@@ -222,15 +227,26 @@ struct PlayerCourtOptionReadingTests {
 
     /// The fixture's four kids are all on Sycamore's Court 1, so at a ceiling of four it is
     /// exactly full and the other three courts are empty.
-    @Test("A court at its ceiling is flagged Full, and one with room is flagged nothing")
+    ///
+    /// **The empty court's expectation changed, and the change is not a widening of the flag.** It
+    /// used to read `flag == nil`, because "flagged" and "warned about" were the same word when the
+    /// flag was a `String?` this file wrote. A court with room is `.room(4)` now — a state, and one
+    /// Overview draws as the design's green `+` pill — so the question this row is really asking is
+    /// whether the sheet *warns* about it, which is `isWarning` and is false. Nothing about what
+    /// this sheet draws has changed: `PlayerCourtPicker` puts an amber pill on warnings and nothing
+    /// on room.
+    @Test("A court at its ceiling is flagged Full, and one with room is not warned about")
     func fullIsFlagged() {
         let camp = Courts.camp(ceiling: 4)
         let choices = PlayerCourtChoices(for: Courts.kid(camp).id, in: camp)
         let courts = choices.courts
 
-        #expect(courts[0].flag == "Full")
+        #expect(courts[0].flag == .full)
+        #expect(courts[0].flag?.label == "Full")
         #expect(courts[0].capacity?.reading == "4 of 4")
-        #expect(courts[1].flag == nil)
+
+        #expect(courts[1].flag == .room(4))
+        #expect(courts[1].flag?.isWarning == false)
         #expect(courts[1].capacity?.reading == "0 of 4")
     }
 
@@ -252,24 +268,27 @@ struct PlayerCourtOptionReadingTests {
         let full = choices.courts[0]
 
         #expect(full.capacity?.reading == "3 of 3")
-        #expect(full.flag == "Full")
+        #expect(full.flag == .full)
+        #expect(full.flag?.isWarning == true)
         #expect(!full.isCurrent)
         #expect(choices.hasSomewhereElse)
     }
 
-    /// The over-capacity wording is `CourtCapacity.pillLabel`'s, so this row and Overview's card
-    /// say the same thing about the same court rather than two things that agree today.
+    /// The over-capacity state is `CourtCapacity.Flag`'s, so this row and Overview's card say the
+    /// same thing about the same court rather than two things that agree today.
     @Test("A court past its ceiling borrows Overview's own words for it")
     func overIsFlagged() {
         let camp = Courts.camp(ceiling: 3)
         let choices = PlayerCourtChoices(for: Courts.kid(camp).id, in: camp)
 
-        #expect(choices.courts[0].flag == "1 over")
+        #expect(choices.courts[0].flag == .over(1))
+        #expect(choices.courts[0].flag?.label == "1 over")
         #expect(choices.courts[0].capacity?.isOver == true)
     }
 
     /// A ceiling of zero has nothing to measure against, so the row draws no figure at all rather
-    /// than "4 of 0" — `CourtCapacity.reading(for:capacity:)`'s own rule, restated over the graph.
+    /// than "4 of 0" — `CourtCapacity.reading(for group:)`'s own rule, which Overview's card
+    /// overload shares.
     @Test("A court with no ceiling reads nothing rather than a fraction over zero")
     func noCeiling() {
         let camp = Courts.camp(ceiling: 0)
@@ -302,9 +321,13 @@ struct PlayerCourtOptionReadingTests {
         #expect(choices.courts[1].meta == "0 of 4 · Needs a coach")
     }
 
-    /// "4 of 4" read aloud is a score or a date, which is why `CourtCapacity.spokenLabel` exists;
-    /// it is also the only place the exactly-full court says "Full" to somebody who cannot see the
-    /// pill beside it.
+    /// "4 of 4" read aloud is a score or a date, which is why `CourtCapacity.spokenReading` exists.
+    ///
+    /// **Both sentences are exactly what they were before the flag, and that is the point of
+    /// leaving them here untouched.** The row is composed out of a different set of parts now — the
+    /// figure and the flag appended separately, where it used to read `CourtCapacity.spokenLabel`'s
+    /// fold of the two — because a closed court has to be able to say `Closed` over the top of its
+    /// fill. Same words out, from one owner instead of two.
     @Test("VoiceOver hears a sentence, and hears the word Full on a court at its ceiling")
     func spokenLabel() {
         let camp = Courts.camp(ceiling: 4)
@@ -318,6 +341,11 @@ struct PlayerCourtOptionReadingTests {
     /// A kid who is away is not standing on the court, which is what `Group.isOverCapacity`
     /// measures and therefore what this reads. A numerator taken from the roll would put this row
     /// at "4 of 4 · Full" beside an Overview card calling the same court in range.
+    ///
+    /// The expectation moved from `flag == nil` to `.room(1)` for the reason `fullIsFlagged` gives:
+    /// the claim being made is "this court is not warned about", and that is `isWarning`. The kid
+    /// coming back would tip it to `.full` and the pill would appear, which is the whole point of
+    /// the numerator being today's count.
     @Test("The fill counts who is here today, the way every other capacity reading does")
     func fillCountsToday() {
         var camp = Courts.camp(ceiling: 4)
@@ -329,7 +357,134 @@ struct PlayerCourtOptionReadingTests {
         let choices = PlayerCourtChoices(for: camp.orderedPlayers[1].id, in: camp)
 
         #expect(choices.courts[0].capacity?.reading == "3 of 4")
-        #expect(choices.courts[0].flag == nil)
+        #expect(choices.courts[0].flag == .room(1))
+        #expect(choices.courts[0].flag?.isWarning == false)
+    }
+}
+
+// MARK: - A court that is out of play today
+
+/// **The defect this pass exists for.** A court with "Net down" on it was listed here exactly like
+/// a court in play — same row, same fill, no pill — on the one screen in the app where not knowing
+/// puts a child on the wrong court. Overview had said `Closed` on that court all along; this list
+/// had no closure input at all, because closure is a `today_courts` fact and a `Group` does not
+/// carry it.
+///
+/// It is handed in now, and what these pin is that it is a *flag*: the row still lists, still
+/// offers, still moves a kid on a tap. `ScheduleResize.swift:19-42` argues the rule and
+/// `fullIsStillOffered` above holds it for the other amber state.
+@Suite("A closed court is offered, and says it is closed")
+struct PlayerCourtChoicesClosureTests {
+
+    @Test("A court out of play today wears the Closed flag")
+    func closedIsFlagged() {
+        let camp = Courts.camp(ceiling: 4)
+        let shut = Courts.court(camp, venue: 0, court: 1)
+
+        let choices = PlayerCourtChoices(
+            for: Courts.kid(camp).id, in: camp, closedCourts: [shut.id]
+        )
+
+        #expect(choices.courts[1].id == shut.id)
+        #expect(choices.courts[1].isClosed)
+        #expect(choices.courts[1].flag == .closed)
+        #expect(choices.courts[1].flag?.label == "Closed")
+    }
+
+    /// Flagged, not withdrawn. A move is a roster change and a closure is a fact about this
+    /// morning, so a kid can legitimately be placed on a court that is out of play today — the
+    /// sheet's job is to make sure whoever does it knows.
+    @Test("It is still on the list, still offered, and still somewhere else to go")
+    func closedIsStillOffered() {
+        let camp = Courts.camp(ceiling: 4)
+        let shut = Courts.court(camp, venue: 0, court: 1)
+
+        let choices = PlayerCourtChoices(
+            for: Courts.kid(camp).id, in: camp, closedCourts: [shut.id]
+        )
+
+        #expect(choices.courts.count == 4)
+        #expect(!choices.courts[1].isCurrent)
+        #expect(choices.hasSomewhereElse)
+    }
+
+    /// Only the courts named are shut. A flag keyed on anything looser — the venue, the label —
+    /// would put "Closed" on LATC's Court 2 as well, and the two share nothing but a number.
+    @Test("The other courts are untouched, including the one with the same label next door")
+    func onlyTheNamedCourt() {
+        let camp = Courts.camp(ceiling: 4)
+        let shut = Courts.court(camp, venue: 0, court: 1)
+
+        let choices = PlayerCourtChoices(
+            for: Courts.kid(camp).id, in: camp, closedCourts: [shut.id]
+        )
+
+        #expect(choices.courts.filter(\.isClosed).count == 1)
+        #expect(choices.courts[3].label == "Court 2")
+        #expect(choices.courts[3].flag == .room(4))
+    }
+
+    /// **Closure beats the arithmetic.** The fixture's four kids on a ceiling of three make Court 1
+    /// one over; shut, it reads `Closed` rather than `1 over`. The question this sheet answers is
+    /// where to send a child, and a court out of play is out of play whatever its head-count —
+    /// which is also what Overview does, one card earlier, by drawing the `Closed` badge and no
+    /// reading at all.
+    @Test("A court that is shut and over its ceiling says it is shut")
+    func closureWinsOverTheFill() {
+        let camp = Courts.camp(ceiling: 3)
+        let shut = Courts.court(camp, venue: 0, court: 0)
+
+        let choices = PlayerCourtChoices(
+            for: camp.orderedPlayers[1].id, in: camp, closedCourts: [shut.id]
+        )
+
+        #expect(choices.courts[0].capacity?.isOver == true)
+        #expect(choices.courts[0].flag == .closed)
+    }
+
+    /// The edge the flag has to sit *outside* the reading to survive. A court with no ceiling has
+    /// no fill state at all — `capacity` is nil — and a `.closed` folded into `CourtCapacity` would
+    /// have gone with it, leaving the row that most needs the warning wearing nothing.
+    @Test("A shut court with no ceiling still says it is shut")
+    func closureSurvivesAMissingCeiling() {
+        let camp = Courts.camp(ceiling: 0)
+        let shut = Courts.court(camp, venue: 0, court: 0)
+
+        let choices = PlayerCourtChoices(
+            for: Courts.kid(camp).id, in: camp, closedCourts: [shut.id]
+        )
+
+        #expect(choices.courts[0].capacity == nil)
+        #expect(choices.courts[0].flag == .closed)
+    }
+
+    /// Seen and heard, off the one property. The pill says `Closed` and so does VoiceOver — where
+    /// before the pill and the spoken sentence had different owners and a row could be seen to say
+    /// one word and heard to say another.
+    @Test("VoiceOver hears the same word the pill shows")
+    func closedIsHeard() {
+        let camp = Courts.camp(ceiling: 4)
+        let shut = Courts.court(camp, venue: 0, court: 0)
+        let withCoach = Courts.putACoachOn(shut, named: "Nass", in: camp)
+
+        let choices = PlayerCourtChoices(
+            for: Courts.kid(withCoach).id, in: withCoach, closedCourts: [shut.id]
+        )
+
+        #expect(choices.courts[0].spokenLabel == "Court 1. 4 of 4 kids. Closed. Coach Nass")
+    }
+
+    /// The default, and why it is safe. Closure changes what a row says and never which rows
+    /// exist, so the one caller that asks a question about the *shape* of the list —
+    /// `PlayerScreen.canMoveElsewhere`, through `hasSomewhereElse` — cannot be wrong for want of
+    /// it. Nothing else may leave it out.
+    @Test("Left out, nothing claims to be closed")
+    func theDefaultClaimsNothing() {
+        let camp = Courts.camp(ceiling: 4)
+        let choices = PlayerCourtChoices(for: Courts.kid(camp).id, in: camp)
+
+        #expect(choices.courts.allSatisfy { !$0.isClosed })
+        #expect(choices.courts.allSatisfy { $0.flag != .closed })
     }
 }
 
