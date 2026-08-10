@@ -281,21 +281,54 @@ struct CampRemoveGroupTests {
         #expect(Fixture.courtSizes(camp, in: venueID) == [3, 3, 3])
     }
 
-    /// The last court of a venue. Nothing special happens and that is the assertion: an empty
-    /// venue holding all its kids unassigned is a state `8b` and Groups both draw.
-    @Test("Removing the only court leaves a venue with its kids and no groups")
-    func removingTheLastCourt() {
+    /// The last court of a venue, which stays.
+    ///
+    /// This asserted the opposite for as long as it existed — an empty venue *draws*, in `8b` and
+    /// in Groups, so it looked like a state. What it is not is a state anything can **set**:
+    /// `sites_group_count_range` is `check (group_count between 1 and 40)` and refuses the 0,
+    /// `VenueSheet.shaped(_:)` clamps `groupCount` into `1...12` so pressing Save on such a venue
+    /// puts a group back, and `PlayerCourtChoices` drops a venue with no courts from the move list
+    /// so its stranded kids cannot be placed from their own screen. `removeGroup`'s own header
+    /// carries the argument.
+    @Test("A venue's only court stays, and nothing else moves either")
+    func theOnlyCourtStays() {
         var camp = Self.camp(courts: 1, kids: 4)
         let venueID = camp.venues[0].id
         let only = camp.groups(in: venueID)[0].id
+        let before = camp
 
         camp.removeGroup(only, from: venueID)
 
-        #expect(camp.groups(in: venueID).isEmpty)
-        #expect(camp.venue(venueID)?.groupCount == 0)
-        #expect(camp.players(in: venueID).count == 4)
-        let allUnassigned = camp.players(in: venueID).allSatisfy { $0.groupID == nil }
-        #expect(allUnassigned)
+        // The whole camp, not just the court. A refusal that had already turned the kids out or
+        // already decremented the count would be the venue claiming a shape it does not hold —
+        // which is the exact damage the floor exists to prevent, arrived at from the other side.
+        #expect(camp == before)
+        #expect(camp.groups(in: venueID).map(\.id) == [only])
+        #expect(camp.venue(venueID)?.groupCount == 1)
+        #expect(camp.players(inGroup: only).count == 4)
+    }
+
+    /// Where the floor actually bites, which is not a venue that started with one court. A venue of
+    /// two loses its first the ordinary way and lands on a count of 1; the *second* deletion is the
+    /// one that would hand Postgres a 0.
+    @Test("The second deletion at a venue of two is the one refused")
+    func theFloorBitesOnTheSecondDeletion() {
+        var camp = Self.camp(courts: 2, kids: 6)
+        let venueID = camp.venues[0].id
+        let courts = camp.groups(in: venueID)
+
+        camp.removeGroup(courts[0].id, from: venueID)
+        #expect(camp.groups(in: venueID).map(\.id) == [courts[1].id])
+        #expect(camp.venue(venueID)?.groupCount == 1)
+
+        let survived = camp
+        camp.removeGroup(courts[1].id, from: venueID)
+
+        #expect(camp == survived)
+        // Three kids are already standing at the venue with no group, and the court left is where
+        // somebody puts them. Taking it would leave six kids and nowhere to drop them.
+        #expect(camp.players(in: venueID).count == 6)
+        #expect(camp.players(inGroup: courts[1].id).count == 3)
     }
 
     // MARK: - The denormalised counts

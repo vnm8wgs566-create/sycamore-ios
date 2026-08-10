@@ -216,6 +216,33 @@ struct AppStoreRemoveGroupTests {
         #expect(store.camp?.groups(in: away).count == 2)
     }
 
+    /// The floor, from the store's end. `GroupsView` does not offer the swipe on a venue's only
+    /// group, so this is the stale-screen route: the list drew two groups, another device took the
+    /// venue to one, and the tap arrives anyway.
+    ///
+    /// Two assertions and the first is the one worth having. The optimistic pass is
+    /// `Camp.removeGroup`, which refuses too — so the group never leaves the screen to be put back
+    /// by the rollback, and the reader sees a sentence rather than a group that vanished and
+    /// returned under one.
+    @Test("A venue's only group is left alone, and the reader is told why")
+    func theOnlyGroupIsRefused() async {
+        var camp = Fixture.camp([.init("Home", courts: 1)], players: 4)
+        camp.evenOut()
+        let store = AppStore(repository: InMemoryRepository(camps: [camp]))
+        store.camp = camp
+
+        let venueID = camp.orderedVenues[0].id
+        let only = camp.groups(in: venueID)[0].id
+
+        await store.removeGroup(only, from: venueID)
+
+        #expect(store.camp == camp)
+        #expect(store.camp?.group(only) != nil)
+        // The sentence, not `sites_group_count_range`. That is the whole reason the refusal is a
+        // `SycamoreError` and not a constraint left to fire.
+        #expect(store.errorMessage == SycamoreError.lastGroupAtVenue.errorDescription)
+    }
+
     @Test("A failed write puts every group, kid and rank back")
     func aFailedWriteRollsBack() async {
         // The repository does not hold this camp, so `updateVenue` throws `unknownCamp` — which is

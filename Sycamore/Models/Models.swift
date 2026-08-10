@@ -1859,11 +1859,48 @@ extension Camp {
     /// optional, so an assignment pointing at a court that no longer exists is a dangling row that
     /// no screen can draw.
     ///
+    /// ── Why a venue's last group stays ───────────────────────────────────────────────────────
+    ///
+    /// **A venue keeps at least one group, and the floor is a column rather than a scruple.**
+    /// `sites_group_count_range` is `check (group_count between 1 and 40)`
+    /// (`20260810040000_a_venue_knows_its_own_shape.sql:82`), so the decrement below reaching 0 is
+    /// a write Postgres refuses — and refused before there was a `deleteGroup` to be called from,
+    /// because `updateVenue` posts the same column. Clamping to 0 here and letting the database
+    /// say no produces the worst version of it: the group leaves the screen optimistically, the
+    /// write throws, `AppStore.removeGroup` puts it back, and the reader has watched a group
+    /// vanish and return under an error banner.
+    ///
+    /// **Relaxing the CHECK to `0…40` was the alternative, and it is a bigger change than it
+    /// looks.** A venue with no groups *draws* — Groups has its unassigned band, its "nothing
+    /// here" state and its "Add a group" row, and `BlockCourtPicker` has an empty row written for
+    /// exactly this. What it cannot be is *set*, or *kept*: `CampDraft.groupRange` is `1...16` and
+    /// floors Setup's stepper (`VenueCourtStepper`), `CampShape.groupRange` is `1...12` and
+    /// `VenueSheet.shaped(_:)` clamps into it — so opening the venue sheet on such a venue and
+    /// pressing Save silently puts a group back. And `PlayerCourtChoices` drops a venue with no
+    /// courts from the move list, so the kids it stranded could not be moved from their own
+    /// screen. Zero is a state three screens would each need work to hold, which is what the
+    /// migration's own note is saying in one line: a venue with no groups is indistinguishable
+    /// from one that does not exist.
+    ///
+    /// So the floor is *here*, in the one piece of arithmetic both repositories run, which is what
+    /// makes the offline build and Postgres agree about it instead of diverging.
+    /// `SycamoreRepository.deleteGroup(_:campID:)` carries the rest and is where the refusal gets
+    /// a name: both implementations throw `SycamoreError.lastGroupAtVenue` rather than calling
+    /// this and handing back a camp nothing happened to.
+    ///
+    /// ── The two ids that are ignored ─────────────────────────────────────────────────────────
+    ///
     /// A group id that is not at `venueID` is ignored rather than removed from wherever it really
     /// lives. The caller names both because it holds both, and a mismatch is a stale id from a
-    /// screen that has moved on — not permission to empty a court at another venue.
+    /// screen that has moved on — not permission to empty a court at another venue. A venue's only
+    /// group is ignored for the reason above. Both are silent because both callers ask first: the
+    /// repositories name the refusal, and `GroupsView` does not offer the swipe at all.
     mutating func removeGroup(_ groupID: Group.ID, from venueID: Venue.ID) {
         guard groups.contains(where: { $0.id == groupID && $0.venueID == venueID }) else { return }
+        // Against the groups actually held, not against `groupCount` — that field is the
+        // denormalised claim this method exists to bring back into line, so asking it whether
+        // there is a group to spare would be asking the number being corrected.
+        guard groups.contains(where: { $0.venueID == venueID && $0.id != groupID }) else { return }
 
         groups.removeAll { $0.id == groupID }
 
@@ -1885,7 +1922,12 @@ extension Camp {
         }
 
         if let index = venues.firstIndex(where: { $0.id == venueID }) {
-            venues[index].groupCount = max(0, venues[index].groupCount - 1)
+            // `max(1, …)` and not `max(0, …)`: 1 is where `sites_group_count_range` holds this
+            // column, so a 0 written here is a row Postgres will not take. The guard above already
+            // means a venue whose count agrees with its groups cannot reach the clamp; this is for
+            // one whose count has drifted below them, where rounding up to the floor is the only
+            // answer that is still writable.
+            venues[index].groupCount = max(1, venues[index].groupCount - 1)
         }
 
         reindex()

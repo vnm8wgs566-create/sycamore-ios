@@ -634,12 +634,15 @@ actor SupabaseRepository: SycamoreRepository {
     /// (`SupabaseRepository+Graph.swift:43-60`) — so the call would compute the permutation it
     /// started from and post nothing. Saying so beats spending a select to prove it.
     ///
-    /// **A venue's last group cannot be deleted against Postgres**, and could not before this
-    /// method existed either. `sites_group_count_range` is `check (group_count between 1 and 40)`,
-    /// so the count reaching 0 is rejected and this whole call throws — exactly as `updateVenue`
-    /// already did when `Camp.removeGroup` handed it a zero. `InMemoryRepository` has no CHECK and
-    /// so allows it, which is the one place the two implementations disagree about this verb. The
-    /// fix is a migration and a floor on the affordance, neither of which is this change's.
+    /// **A venue's last group cannot be deleted, and it is refused here rather than by the CHECK.**
+    /// `sites_group_count_range` is `check (group_count between 1 and 40)`, so the count reaching 0
+    /// was rejected by the `sites` PATCH at the foot of this method — after the group row had
+    /// already been dropped, which is a failure landing halfway through three writes that are not
+    /// a transaction. The guard below moves the refusal in front of all three and gives it a name
+    /// the banner can print. `InMemoryRepository` refuses the same call the same way, which is
+    /// what closed the one place these two implementations disagreed about this verb;
+    /// `SycamoreRepository.deleteGroup(_:campID:)` carries why the floor is here rather than a
+    /// migration relaxing the column.
     ///
     /// Three writes and not a transaction, which is the exposure every multi-write method in this
     /// actor carries (`updateVenue` makes four). A failure between them leaves a camp that still
@@ -650,6 +653,13 @@ actor SupabaseRepository: SycamoreRepository {
             let before = try await camp(id: campID)
             guard let doomed = before.group(groupID) else { throw SycamoreError.unknownGroup }
             let venueID = doomed.venueID
+
+            // Off the graph just read, not off the caller's screen: this is the read the writes
+            // below are built from, so a venue taken to one group by another device since the
+            // screen drew is caught here and nowhere earlier.
+            guard before.groups.count(where: { $0.venueID == venueID }) > 1 else {
+                throw SycamoreError.lastGroupAtVenue
+            }
 
             var after = before
             after.removeGroup(groupID, from: venueID)

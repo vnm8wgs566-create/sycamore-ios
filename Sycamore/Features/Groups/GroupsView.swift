@@ -370,14 +370,21 @@ struct GroupsView: View {
             // Not offered on a venue's **only** group, and the reason is a column rather than a
             // scruple: `sites_group_count_range` is `check (group_count between 1 and 40)`, so the
             // decrement `Camp.removeGroup` makes would take it to 0 and Postgres would refuse the
-            // write. The store rolls back correctly, but the reader would have watched a group
-            // vanish and come back with an error banner — an affordance that is always going to
-            // fail is worse than one that is not there.
+            // write. An affordance that is always going to fail is worse than one that is not
+            // there. `SycamoreRepository.deleteGroup(_:campID:)` is where the choice between this
+            // and a migration is argued, and both repositories now refuse the same call by name —
+            // so this gate is the reader's answer, not the only one.
             //
             // Nor is it a loss. A venue with no groups has nowhere to put anybody; emptying the
             // last one is what the age band and the drag already do, and those leave the kids
             // somewhere the screen can name.
-            onDelete: (move == nil && !isOnlyGroup(entry)) ? { requestRemoval(of: entry) } : nil
+            //
+            // The venue comes off the group rather than off `selectedVenue`. They agree — the list
+            // draws one venue — and taking it off the row is what the repositories do, which is
+            // one fewer way for the two answers to drift.
+            onDelete: (move == nil && !isOnlyGroup(at: entry.card.group.venueID))
+                ? { requestRemoval(of: entry) }
+                : nil
         ) {
             groupCard(entry)
         }
@@ -1056,6 +1063,22 @@ struct GroupsView: View {
 
     // MARK: Removing a group
 
+    /// Whether this venue is down to one group, which is the group that cannot go.
+    ///
+    /// **Off the camp, not off the drawn entries**, and that is a correction rather than a
+    /// preference. `computeGroupsSections` drops a card whose rows a search filtered away
+    /// (`AppStore.swift:847`), so counting what is on screen answered "how many groups match the
+    /// search" — and a search matching one kid at an eight-group venue took Remove off every card
+    /// in it. The camp is also the number the repositories check, so the screen and the seam
+    /// cannot disagree about which group is the last one.
+    ///
+    /// `count(where:)` over `groups` rather than `groups(in:)`, which filters *and* sorts to
+    /// answer how many there are — the cost `rankRanges(in:)` was hoisted out of `body` to stop
+    /// paying, and this runs once per card per pass.
+    private func isOnlyGroup(at venueID: Venue.ID) -> Bool {
+        (store.camp?.groups.count { $0.venueID == venueID } ?? 0) <= 1
+    }
+
     /// A swipe reached its Remove. Ask, or just do it.
     ///
     /// **The count is the group's own `playerCount`, not its drawn rows.** A search leaves three of
@@ -1067,15 +1090,6 @@ struct GroupsView: View {
     /// Nothing is asked about an empty group. There is no cost to undo — the dashed "Add a group"
     /// row directly below puts one back — and a dialog guarding a reversible nothing is what makes
     /// readers stop reading dialogs.
-    /// Whether this is the last group standing at the venue on screen.
-    ///
-    /// Read off the drawn entries rather than the camp, so it agrees with what the reader can see:
-    /// the list is already scoped to one venue, and a count taken anywhere else could disagree with
-    /// it while a load is in flight.
-    private func isOnlyGroup(_ entry: GroupsEntry) -> Bool {
-        (listEntries ?? []).count <= 1
-    }
-
     private func requestRemoval(of entry: GroupsEntry) {
         let kids = entry.card.group.playerCount
         guard kids > 0 else {
