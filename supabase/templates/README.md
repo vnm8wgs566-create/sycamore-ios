@@ -1,8 +1,8 @@
 # Auth email templates
 
-`sycamore-otp-email.html` is the message screen 2 is waiting for — the six digits a person types
-into `VerifyView`. Imported from the Claude Design project
-[`e972029f`](https://claude.ai/design/p/e972029f-505b-4082-86cd-2cf3e0c7c9d6), verbatim.
+`sycamore-otp-email.html` is the message screen 2 is waiting for — the digits a person types into
+`VerifyView`. Imported from the Claude Design project
+[`e972029f`](https://claude.ai/design/p/e972029f-505b-4082-86cd-2cf3e0c7c9d6).
 
 There is no `supabase/config.toml` in this repo, so the CLI never reads this directory. The file
 lives here to be **pasted into the dashboard** — Authentication → Emails — and to be reviewable in
@@ -34,12 +34,22 @@ in, transparent outside them — the `border-radius:9px` in the HTML is only for
 otherwise square it off). Until it is uploaded to that path, every inbox shows a broken image where
 the logo belongs.
 
-**The token has to be six characters.** The cells are `{{ slice .Token 0 1 }}` … `{{ slice .Token 5 6 }}`.
-Go's `slice` panics past the end of a string, so shortening the project's OTP length breaks the
-template outright — no email is sent at all, which surfaces as sign-in silently never arriving.
-Lengthening it is quieter and worse: the mail goes out showing the first six of eight digits, and
-the code simply never works. If the length ever has to change, use the single-plate fallback that
-ships commented out inside the file.
+**The cell count has to equal the project's OTP length, which is 8.** The cells are
+`{{ slice .Token 0 1 }}` … `{{ slice .Token 7 8 }}`, and the same 8 is spelled in
+`SupabaseConfig.codeLength`, which is what `VerifyView` draws and what its hidden field truncates
+to. All three have to agree.
+
+This is the bug that cost the most time here, so it is worth stating plainly. Go's `slice` panics
+past the end of a string, so setting the OTP length *below* the cell count breaks the template
+outright — no mail is sent at all, and sign-in simply never arrives. Setting it *above* is quieter
+and far worse: the mail goes out showing the first N digits of a longer token. It looks completely
+correct. The digits are even genuine. It just can never verify, and nothing in the app, the email,
+or the auth log says why — `/verify` only ever answers `otp_expired`.
+
+That is not hypothetical. The project ran at OTP length 8 against six cells, and the only way to
+see it was to compare `sha224(email ‖ candidate)` against `auth.users.confirmation_token`. If the
+length changes again and you would rather not maintain the count, use the single-plate fallback
+commented out inside the file: it prints `{{ .Token }}` whole and cannot go stale.
 
 **Sixty minutes is a claim about a setting.** "The code expires in 60 minutes" and the preview text
 both restate the project's OTP expiry (Supabase's default, 3600s). Change one, change the copy.
@@ -62,10 +72,11 @@ Two consequences. The `<!--[if mso]>` block is decorative here and cannot be rel
 ## Verified
 
 2026-08-10, end to end: `POST /auth/v1/otp` → delivered to a real inbox → message read back from
-Resend. `slice` works — the six cells came through as six separate digits, and `{{ .Email }}`
-interpolated in both places. The blocker that made this take a while was never the template: the
-Resend sending domain sat at `not_started` because verification had never been triggered, so every
-send died on an SMTP `550` before the body mattered.
+Resend. `slice` works — the cells came through as separate digits, and `{{ .Email }}` interpolated
+in both places. Two blockers were cleared on the way, neither of them the template: the Resend
+sending domain sat at `not_started` because verification had never been triggered, so every send
+died on an SMTP `550` before the body mattered; and the cell count disagreed with the OTP length,
+as above.
 
 Two things that test could not reach:
 

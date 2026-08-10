@@ -21,6 +21,16 @@ enum SupabaseConfig {
 
     static let publishableKey = "sb_publishable_OeUuGsWAkqusxKFmCjTzmw_nrV9c-8T"
 
+    /// How many digits a sign-in code has.
+    ///
+    /// This is not the app's choice. It mirrors the project's *Email OTP Length*, and the two
+    /// have to agree in three places at once — this constant, the cells `VerifyView` draws, and
+    /// the `slice` calls in `supabase/templates/sycamore-otp-email.html`. Disagreement is silent
+    /// in the worst way: the mail arrives looking correct with the first `length` digits of a
+    /// longer token, every code is rejected, and nothing anywhere says why. The design draws six;
+    /// the project issues eight, and the project wins because only it can mint the token.
+    static let codeLength = 8
+
     /// PostgREST. Every table and view hangs directly off this.
     static var restURL: URL { projectURL.appending(path: "rest/v1") }
 

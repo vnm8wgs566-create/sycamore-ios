@@ -14,7 +14,8 @@
   a:hover { color: #14684A; }
   @media (max-width: 620px) {
     .gutter { padding-left: 20px !important; padding-right: 20px !important; }
-    .otp-cell { width: 44px !important; height: 56px !important; font-size: 23px !important; }
+    .otp-row { border-spacing: 5px 0 !important; }
+    .otp-cell { width: 33px !important; height: 50px !important; font-size: 19px !important; }
     .title { font-size: 27px !important; }
   }
   @media (prefers-color-scheme: dark) {
@@ -33,7 +34,7 @@
 </head>
 <body class="page" style="margin:0; padding:0; background:#F6F7F9; -webkit-font-smoothing:antialiased;">
 
-<div style="display:none; font-size:1px; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all;">Your six-digit Sycamore code. It expires in 60 minutes.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+<div style="display:none; font-size:1px; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all;">Your eight-digit Sycamore code. It expires in 60 minutes.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="page" style="background:#F6F7F9;">
   <tr>
@@ -63,29 +64,35 @@
               <tr>
                 <td class="gutter" style="padding:38px 40px 0 40px;">
                   <div class="title ink" style="font-family:Georgia,'Times New Roman',serif; font-size:31px; line-height:34px; letter-spacing:-0.7px; color:#0B0B0C; mso-line-height-rule:exactly;">Your sign-in code</div>
-                  <div class="ink-soft" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14.5px; line-height:22px; color:#71757E; padding-top:10px; mso-line-height-rule:exactly;">Enter these six digits in the Sycamore app to finish signing in as <span class="ink" style="color:#0B0B0C; font-weight:600;">{{ .Email }}</span>.</div>
+                  <div class="ink-soft" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14.5px; line-height:22px; color:#71757E; padding-top:10px; mso-line-height-rule:exactly;">Enter these eight digits in the Sycamore app to finish signing in as <span class="ink" style="color:#0B0B0C; font-weight:600;">{{ .Email }}</span>.</div>
                 </td>
               </tr>
 
-              <!-- Six OTP cells. Requires Go template slicing, which Supabase supports.
-                   If your project rejects it, delete this row and use the single-plate
-                   fallback commented out below. -->
+              <!-- One cell per digit of the project's Email OTP Length, which is 8. This count
+                   is not a design choice: GoTrue mints the token and the cells only display it,
+                   so eight here, eight in SupabaseConfig.codeLength, eight cells in VerifyView.
+                   Six of eight renders a perfectly plausible code that can never verify.
+                   Requires Go template slicing, which Supabase supports. If your project rejects
+                   it, delete this row and use the single-plate fallback below. -->
               <tr>
                 <td class="gutter" style="padding:26px 40px 0 40px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; border-collapse:separate; border-spacing:9px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="otp-row" style="width:100%; border-collapse:separate; border-spacing:9px 0;">
                     <tr>
-                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 0 1 }}</td>
-                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 1 2 }}</td>
-                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 2 3 }}</td>
-                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 3 4 }}</td>
-                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 4 5 }}</td>
-                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 5 6 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 0 1 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 1 2 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 2 3 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 3 4 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 4 5 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 5 6 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 6 7 }}</td>
+                      <td class="otp-cell" align="center" width="55" height="64" style="width:55px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 7 8 }}</td>
                     </tr>
                   </table>
                 </td>
               </tr>
 
-              <!-- Fallback, if `slice` is unavailable:
+              <!-- Fallback, if `slice` is unavailable. Prints the whole token whatever its
+                   length, so this one cannot go stale against the OTP length setting:
               <tr>
                 <td class="gutter" style="padding:26px 40px 0 40px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
