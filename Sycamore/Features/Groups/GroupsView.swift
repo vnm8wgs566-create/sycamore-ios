@@ -67,13 +67,6 @@ struct GroupsView: View {
     /// The loop that walks the list towards the finger. Held so it can be cancelled the instant
     /// the finger leaves, rather than left to notice on its next tick.
     @State private var autoscroll: Task<Void, Never>?
-    /// A drop that changes the kid's court, waiting on an answer. Nil the rest of the time, which
-    /// is most drops — a reorder inside one court commits on release with nothing to read.
-    @State private var pendingLanding: PendingLanding?
-    /// The dialog's own presentation flag, kept beside `pendingLanding` rather than derived from
-    /// it. A `Binding` computed from the optional would have its setter run *before* the button
-    /// action that answered it, and cancel the move the reader had just confirmed.
-    @State private var isConfirmingCourtChange = false
     /// Whether the enrolment flow is up. Presented **here** rather than through
     /// `store.activeSheet` or a `PushedScreen` case — see `enrolmentFlow`.
     @State private var isEnrolling = false
@@ -113,30 +106,6 @@ struct GroupsView: View {
         .sheet(item: $evenOutTarget) { target in
             EvenOutSheet(store: store, venueID: target.id) { evenOutTarget = nil }
                 .environment(store)
-        }
-        .confirmationDialog(
-            pendingLanding?.question ?? "",
-            isPresented: $isConfirmingCourtChange,
-            titleVisibility: .visible,
-            presenting: pendingLanding
-        ) { pending in
-            Button("Move") { confirmPending(pending) }
-            // "Keep …", which is how the other five confirmations in this app spell their way out
-            // — `StaffSheet` keeps them, `VenueShapeSheet` and `BlockEditorSheet` keep it. The
-            // word a reader has learned to look for is worth more than a fresher sentence at the
-            // one moment they are being asked to decide quickly.
-            Button("Keep them where they are", role: .cancel) { cancelMove() }
-        } message: { _ in
-            // What moves, and what does not. The court is the visible half of this drop and the
-            // ladder is the half the row cannot say — a kid who was ninth in the camp is not
-            // ninth any more, and that is the fact worth putting in front of somebody before
-            // they agree to it. The second sentence is there because the first invites the
-            // question: a band moving usually means everybody's does.
-            Text("Their place in the camp ladder moves with them. Nobody else changes court.")
-        }
-        .onChange(of: isConfirmingCourtChange) { _, presented in
-            guard !presented else { return }
-            Task { @MainActor in resolveStrandedConfirmation() }
         }
         // The unfold at the start of a lift must land in one pass rather than slide in over a
         // quarter of a second, because the frames measured during it are what every drop slot is
@@ -680,28 +649,39 @@ struct GroupsView: View {
     @ViewBuilder
     private var liftedRow: some View {
         if let move {
-            let shape = RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+            let shape = RoundedRectangle(
+                cornerRadius: GroupsMetrics.ghostCardRadius, style: .continuous
+            )
 
-            GroupsRow(
-                rank: move.row.player.overallRank,
-                rankColor: Theme.accent,
-                name: move.row.name,
-                nameStyle: GroupsType.liftedName,
-                nameColor: Theme.ink
-            ) {
-                // Phosphor's filled grip. There is no fill axis on `line.3.horizontal`, so the
-                // weight carries what the fill did.
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: GroupsMetrics.handleGlyph, weight: .semibold))
+            HStack(spacing: Spacing.small) {
+                Text(move.row.name)
+                    .typeStyle(GroupsType.liftedName, color: Theme.accentDark)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+
+                // Phosphor's `ph-fill ph-hand-grabbing`. `hand.raised.fill` is the closest SF
+                // Symbol with a fill axis; the closed grip has no filled variant.
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: GroupsMetrics.ghostGlyph))
                     .foregroundStyle(Theme.accent)
             }
-            .padding(.horizontal, GroupsMetrics.cardPadding)
-            .padding(.vertical, Spacing.medium)
-            .background { shape.fill(Theme.surface).shadow(Shadows.liftedRow) }
-            .overlay { shape.strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.hairline) }
-            // Inset past the gutter as well, so the card carrying the kid sits proud of the
-            // cards it is travelling over rather than covering one edge to edge.
-            .padding(.horizontal, Spacing.gutter + GroupsMetrics.cardPadding)
+            .padding(.horizontal, GroupsMetrics.ghostCardHorizontal)
+            .padding(.vertical, GroupsMetrics.ghostCardVertical)
+            .background { shape.fill(Theme.accentSurface).shadow(Shadows.liftedKid) }
+            .overlay { shape.strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.input) }
+            // 70% of the row it came out of, left-aligned — the design's own width. Narrower than
+            // that row on purpose: this card has left the list, and one that still spanned it
+            // would read as the list itself moving.
+            //
+            // A real width off the measured row, **not** `.scaleEffect(x: 0.7)`. A scale squashes
+            // the name and the glyph with the plate, so the kid's name would come out condensed —
+            // the one piece of text on screen the reader is tracking.
+            .frame(width: move.origin.width * GroupsMetrics.ghostCardWidth, alignment: .leading)
+            // Pinned to the left of the overlay, which is centred by default.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, Spacing.gutter + GroupsMetrics.cardPadding)
             .offset(y: move.origin.minY + move.translation)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -722,41 +702,6 @@ struct GroupsView: View {
     /// It carries its own copy of everything the dialog says, rather than reaching back through
     /// `move` — the sentence has to survive the move being torn down by the answer that dismisses
     /// it, and a title assembled from state that is already nil reads as "Move  to ?".
-    private struct PendingLanding: Identifiable, Equatable {
-        let row: PlayerRow
-        let landing: GroupsLanding
-        /// `Court 2` — the group's own label, which is what the design calls a court everywhere
-        /// outside a rank band's "Group 2".
-        let groupName: String
-
-        var id: Player.ID { row.id }
-        var question: String { "Move \(row.name) to \(groupName)?" }
-    }
-
-    /// The teardown is `commit`'s, through `endMove()` — every path out of it reaches one, so
-    /// clearing `pendingLanding` here as well would be a second owner of one step and would read
-    /// as though the safety net below depended on it.
-    private func confirmPending(_ pending: PendingLanding) {
-        commit(pending.row, to: pending.landing)
-    }
-
-    /// The safety net for a dialog dismissed without either button — a sheet swiped away, a
-    /// scrim tapped where the platform does not route that to the cancel action.
-    ///
-    /// It matters more than it used to. There is no move bar to fall back on, so a kid left in
-    /// the air with no dialog in front of them and the tab bar hidden is a screen with nothing on
-    /// it that ends the move. The safe reading of "dismissed without answering" is the cancel:
-    /// the row goes home and nothing is written.
-    ///
-    /// Deferred by one hop, and it has to be: a dialog button's action runs *after* the dialog
-    /// has dismissed, so this would otherwise undo the "Move" that is about to run. By the next
-    /// turn of the main actor both buttons have had their say, and anything still pending was
-    /// dismissed without one.
-    private func resolveStrandedConfirmation() {
-        guard pendingLanding != nil else { return }
-        cancelMove()
-    }
-
     // MARK: - Derived
 
     /// Below eight kids there is nothing to rank, and `8g` is the whole screen.
@@ -1193,7 +1138,7 @@ struct GroupsView: View {
     ///
     /// Guarded, because two of its callers fire on every keystroke in the search field.
     private func cancelMove() {
-        guard move != nil || pendingLanding != nil else { return }
+        guard move != nil else { return }
         endMove()
     }
 
@@ -1203,8 +1148,6 @@ struct GroupsView: View {
         // Only the cards this move opened, and read before the move that knows them is cleared.
         if let unfolded = move?.unfolded { expandedGroupIDs.subtract(unfolded) }
         move = nil
-        pendingLanding = nil
-        isConfirmingCourtChange = false
         stopAutoscroll()
         // Guarded for the same reason `perform` guards `errorMessage`: `@Observable` does not
         // compare before it fires, and this is read by `MainTabView.body`.
@@ -1359,16 +1302,20 @@ struct GroupsView: View {
             return
         }
 
-        guard landing.groupID != groupID else {
-            commit(row, to: landing)
-            return
-        }
-
-        // `Group.label` rather than the card's own "Group 2" heading: the design keeps "Group"
-        // for a band of the ladder and "Court" for the place it is played on, and a question
-        // about where a kid is going is about the place.
-        pendingLanding = PendingLanding(row: row, landing: landing, groupName: card.group.label)
-        isConfirmingCourtChange = true
+        // Crossing to another court commits like any other drop — **no confirmation**.
+        //
+        // There used to be a "Move Ava R to Court 2?" dialog here, on the reasoning that a move
+        // between courts is a bigger fact than a move within one. It is, and it is still not worth
+        // a modal: crossing courts *is* the thing this gesture exists to do, so the dialog fired on
+        // the ordinary case rather than the exceptional one. Sorting a venue means thirty of these
+        // in a row, and thirty dialogs is not a sort, it is an interrogation.
+        //
+        // The design agrees and never draws one (`state1.js:449`, `applyMove` writes immediately).
+        // What it offers instead is the thing a reader actually wants after a wrong drop, which is
+        // to put the kid back — and that is one drag, in a list that has not moved, with the kid's
+        // old neighbours still on screen. A drop is cheap to undo by hand precisely because this
+        // screen keeps everything visible while you work.
+        commit(row, to: landing)
     }
 
     /// The one place an order is written, whether a finger or the rotor asked for it.

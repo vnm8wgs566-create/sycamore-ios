@@ -109,9 +109,13 @@ struct GroupCard: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: GroupsMetrics.cardRadius, style: .continuous)
 
+        // `1.5px solid #C3DFCF` against the resting `1px solid #EDEEF1` — the design's own pair
+        // (`state1.js:107`), which is `accentBorder` over `hairline` at `input` over `hairline`.
+        // Not `Theme.accent`: the strong green is what the *rule inside* the card is drawn in, and
+        // a card outlined in the same weight competes with the one line that names the landing.
         return Card(
             radius: GroupsMetrics.cardRadius,
-            borderColor: isTarget ? Theme.accent : Theme.hairline,
+            borderColor: isTarget ? Theme.accentBorder : Theme.hairline,
             borderWidth: isTarget ? BorderWidth.input : BorderWidth.hairline,
             isDivided: false
         ) {
@@ -138,7 +142,7 @@ struct GroupCard: View {
                                         onRowFrame(row.id, $0)
                                     }
                             case .ghost(let move):
-                                ghost(move)
+                                dropLine(move)
                             case .more:
                                 moreRow
                             }
@@ -152,13 +156,11 @@ struct GroupCard: View {
                 }
             }
         }
-        .overlay {
-            if isTarget {
-                shape
-                    .strokeBorder(GroupsPalette.dropHalo, lineWidth: GroupsMetrics.dropHaloWidth)
-                    .padding(-GroupsMetrics.dropHaloWidth)
-            }
-        }
+        // No halo. A 4pt accent glow outside the border was this card's answer to "is the drop
+        // coming here", back when the card was the finest thing the screen could point at. The
+        // design answers it a row at a time instead, with the rule above — and a glow around the
+        // whole card while a 2pt rule names one boundary inside it is two answers to one question,
+        // the vaguer of them drawn louder.
         .opacity(isBystander ? GroupsMetrics.bystanderOpacity : 1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(title), \(subtitle)")
@@ -270,33 +272,23 @@ struct GroupCard: View {
             onMoveCancelled: onMoveCancelled,
             onNudge: { onNudge(row, $0) }
         )
-        // Hidden rather than replaced. The row owns the gesture that is carrying the kid, and a
-        // view swapped out from under a live gesture takes the gesture with it — the drag would
-        // die halfway through itself. `.opacity(0)` leaves a view in the accessibility tree,
-        // hence the explicit hide as well: the ghost is the thing that should speak now.
+        // Dimmed rather than replaced, and it **keeps its space**. The row owns the gesture that
+        // is carrying the kid, and a view swapped out from under a live gesture takes the gesture
+        // with it — the drag would die halfway through itself.
         //
-        // What has reversed is the space. This row used to *hold its space open*, and the
-        // argument for that was that it kept every slot below it where it had been measured.
-        // The slots hold still because they were captured at lift (`GroupsMove.slots`), not
-        // because the layout did — so the row is free to give its space up, which is what lets
-        // the rows below close over it and the card the kid came from shrink by one row.
+        // The design's model, restored (`state1.js:111`): the kid's own row stays exactly where it
+        // was at `.35`, the list under the drag does not move at all, and the single green rule
+        // opening between two rows is the entire answer to "where will they land". This screen
+        // spent a version doing the opposite — the row gave its space up, the rows below closed
+        // over it and a greyed stand-in opened in the target card — which is more motion to say
+        // the same thing, and it is motion under the reader's own thumb.
         //
-        // Negative padding rather than a frame. **Deliberately not**
-        // `.frame(height: isHeld ? 0 : nil)`: `nil → 0` is not interpolable, so the row would
-        // snap shut while its neighbours slid, and the two motions are meant to be one. A
-        // `CGFloat` of padding animates.
-        //
-        // The space is given up only once there is a ghost to take it. For the frame or two a
-        // lift spends re-measuring (`isSettling`) the row is invisible but still standing in the
-        // flow, exactly as `RankView`'s lifted row does for the whole of its drag — which is what
-        // lets the frames arriving in that pass describe the list at rest. Nothing shows through
-        // the gap: the card carrying the kid is drawn directly over it at `translation` 0.
-        .opacity(isHeld ? 0 : 1)
-        .accessibilityHidden(isHeld)
-        .padding(.bottom, isHeld && !isSettling ? -(move?.ghostHeight ?? 0) : 0)
+        // A held row still reads its rank and name to VoiceOver, because it has not gone anywhere;
+        // what speaks for the *destination* is the drop line's own label.
+        .opacity(isHeld ? GroupsMetrics.heldOpacity : 1)
     }
 
-    /// The kid, greyed, in the space that has opened for them.
+    /// The green rule that says "here".
     ///
     /// This replaces a dashed empty rectangle drawn over the row the kid *left*. That drawing
     /// said "a space is being held here", which was true of where they came from and wrong
@@ -318,34 +310,20 @@ struct GroupCard: View {
     /// asserts the new one beside rows that have not been renumbered yet, so two rows in one
     /// card read `#9`. The empty numeral column is what "+N more" already uses to line up with
     /// the names above it.
-    private func ghost(_ move: GroupsCardMove) -> some View {
-        let plate = RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous)
-
-        return GroupsRow(
-            rank: nil,
-            name: move.ghostName,
-            nameColor: Theme.inkFaint
-        )
-        .padding(.leading, GroupsMetrics.cardPadding)
-        // The same trailing reservation a real row makes for the handle, so the greyed name
-        // breaks where the live one does rather than a handle's width later.
-        .padding(.trailing, HitTarget.minimum)
-        // The measured height of the row that closed — see `GroupsMetrics.ghostHeight` for why
-        // this is a measurement and the plate inside it is a token.
-        .frame(height: move.ghostHeight)
-        .background {
-            plate
-                .fill(GroupsPalette.ghostFill)
-                .overlay {
-                    plate.strokeBorder(GroupsPalette.ghostRule, lineWidth: BorderWidth.hairline)
-                }
-                .frame(height: GroupsMetrics.ghostHeight)
-                .padding(.horizontal, GroupsMetrics.cardPadding)
-        }
-        // The card carrying the kid is drawn over this, and the handle being held is elsewhere.
-        .allowsHitTesting(false)
-        .accessibilityElement()
-        .accessibilityLabel("Where \(move.ghostName) will land")
+    private func dropLine(_ move: GroupsCardMove) -> some View {
+        Rectangle()
+            .fill(Theme.accent)
+            .frame(height: GroupsMetrics.dropLineHeight)
+            // Inset to the card's own gutter so the rule starts and stops where the rows do,
+            // rather than running edge to edge like a divider between sections.
+            .padding(.horizontal, GroupsMetrics.cardPadding)
+            // Air either side, so it reads as a gap opening between two rows rather than as the
+            // row above gaining an underline.
+            .padding(.vertical, GroupsMetrics.dropLineGap)
+            // The card carrying the kid is drawn over this, and the handle being held is elsewhere.
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel("Where \(move.ghostName) will land")
     }
 
     /// `+3 more` — the folded rows, and the way back out of them.
@@ -596,7 +574,7 @@ private struct GroupPlayerRow: View {
     /// the scroll in for free, and would report nothing at all while the finger was still, which
     /// is exactly when the autoscroll needs to be believed.
     private var lift: some Gesture {
-        LongPressGesture(minimumDuration: 0.2)
+        LongPressGesture(minimumDuration: GroupsMetrics.liftHold)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
             .updating($isHolding) { _, state, _ in state = true }
             .onChanged { value in

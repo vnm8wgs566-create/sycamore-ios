@@ -198,6 +198,58 @@ enum GroupsMetrics {
     /// inside it. A literal here would be a promise this file cannot keep.
     static let ghostHeight: CGFloat = 30
 
+    /// What the kid's own row fades to while they are being carried.
+    ///
+    /// The design's `.35` (`state1.js:111`). The row **keeps its space** at that opacity rather
+    /// than giving it up: the list under a drag holds still, and the only thing that moves is the
+    /// green line saying where the drop lands. That is the whole of the design's model, and it is
+    /// why there is no greyed stand-in row any more — a list that does not shift does not need one
+    /// to explain itself.
+    static let heldOpacity: Double = 0.35
+
+    /// The green rule that opens between two rows to say "here".
+    ///
+    /// `2px solid #1A7F55` in the design (`state1.js:114`), which is `BorderWidth.focus` in
+    /// `Theme.accent`. Drawn at the boundary the drop is aimed at, and at the foot of the card
+    /// when the aim is past the last row — the design's `tailLine`, same rule, same colour.
+    static let dropLineHeight: CGFloat = BorderWidth.focus
+
+    /// The air above and below that rule, so it reads as a gap opening rather than a row gaining
+    /// an underline. Half a row's vertical padding on each side.
+    static let dropLineGap: CGFloat = 4
+
+    /// How wide the card under the finger is drawn, as a fraction of the list.
+    ///
+    /// The design's `width:70%` (`showApp.html`, the `dragGhost` region). It is narrower than the
+    /// row it came out of on purpose: a full-width card travelling over full-width cards reads as
+    /// the list scrolling, and the point of this one is that it has left the list.
+    static let ghostCardWidth: Double = 0.70
+
+    /// `border-radius:11px` on that card — a step tighter than `Radius.tile`, which is what the
+    /// rows themselves use. It is a smaller object now.
+    static let ghostCardRadius: CGFloat = 11
+
+    /// `padding:9px 12px`.
+    static let ghostCardVertical: CGFloat = 9
+    static let ghostCardHorizontal: CGFloat = 12
+
+    /// `font-size:16px` on the filled grab-hand, a touch larger than the 17pt handle in the list
+    /// because it is the only glyph on the card.
+    static let ghostGlyph: CGFloat = 16
+
+    /// How long the handle has to be held before the kid lifts.
+    ///
+    /// The hold is what wins the gesture against the enclosing scroll view's pan, so it cannot go
+    /// to zero the way the design's does — the design drags from `pointerdown` with a 4px slop
+    /// (`state1.js:480`), which is a pointer's luxury: a mouse is never also the thing that scrolls
+    /// the page. On glass, the handle column sits under the resting thumb.
+    ///
+    /// **0.1s, down from 0.2.** Sorting a venue is thirty of these in a row, and a fifth of a
+    /// second each is six seconds of a coach standing on a court waiting for their own phone. A
+    /// tenth still reads as deliberate — it is longer than any accidental brush of the glass — and
+    /// it is short enough to feel like the kid comes away with the finger.
+    static let liftHold: Double = 0.1
+
     // Six numbers used to sit here — `moveBarGap`, `moveBarPadding`, `moveBarPaddingVertical`,
     // `moveBarButtonPadding`, `cancelPadding` and `dropPadding` — for the plate `Cancel` and
     // `Drop here` sat on. The move commits when the finger leaves the handle now, so there is no

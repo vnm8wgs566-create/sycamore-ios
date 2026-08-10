@@ -458,6 +458,18 @@ enum Shadows {
     /// `0 12px 28px rgba(11,11,12,.16)` — a row lifted for dragging in Rank.
     static let liftedRow = ShadowToken(color: cast.opacity(0.28), radius: 14, y: 12)
 
+    /// `0 14px 32px rgba(26,127,85,.2)` — the kid being carried between groups.
+    ///
+    /// **Green, not the neutral cast**, which is the one place in the app a shadow is tinted. The
+    /// design does it deliberately (the `dragGhost` region of `showApp.html`): everything else that
+    /// floats casts a grey shadow because it is a surface above a surface, and this one is a kid
+    /// held above a list of kids. The tint is what makes it read as *lifted out of* the green
+    /// rules it is travelling between rather than as another card that happens to be on top.
+    ///
+    /// `0.2` in CSS becomes `0.35` here for `liftedRow`'s reason, spelled out at the head of this
+    /// enum: SwiftUI's shadow spreads what CSS concentrates.
+    static let liftedKid = ShadowToken(color: Color(hex: "1A7F55").opacity(0.35), radius: 16, y: 14)
+
     /// `0 -12px 40px rgba(11,11,12,.18)` — the cast a bottom sheet throws *up* the screen
     /// (`design/rebuild/section-t4.html:143`, and the same line on every sheet in sections 4 and 5).
     ///
