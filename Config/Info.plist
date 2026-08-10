@@ -20,6 +20,21 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!--
+	  The export-compliance answer, given once here instead of in a dialog on every upload.
+
+	  False because the app implements no encryption of its own. Everything it protects, it
+	  protects with the operating system's: `URLSession` over https to Supabase, and Sign in with
+	  Apple through `AuthenticationServices`. There is no CryptoKit, no CommonCrypto, no Security
+	  framework and no third-party package in the build — `ZIPArchive` is the one file that says
+	  the word, and only to *refuse* an encrypted member rather than to open one.
+
+	  Using Apple's encryption is exactly what the fourth answer in Xcode's dialog means by "none
+	  of the algorithms mentioned above". If the app ever hashes, signs, or seals something
+	  itself, this key stops being true and the answer has to be re-thought rather than re-typed.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
