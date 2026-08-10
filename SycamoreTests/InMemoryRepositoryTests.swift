@@ -1075,4 +1075,37 @@ struct RepositoryDeleteGroupTests {
             try await repo.deleteGroup(orphan.id, campID: Camp.ID())
         }
     }
+
+    /// **The one this file's header is really about.** `sites_group_count_range` is
+    /// `check (group_count between 1 and 40)`, so a venue's last court is a deletion Postgres
+    /// refuses — and this implementation used to allow it, which meant the previews and the
+    /// simulator did a thing the shipped app could not. Refusing it here *by name* is what closes
+    /// that, and the name is what the banner prints instead of a constraint.
+    ///
+    /// Not written as a loop down from SampleData's six courts: five successful deletions before
+    /// the assertion would make a failure in any of them read as a failure of this one.
+    @Test("A venue's only court is refused by name, and nothing is written")
+    func theLastCourtAtAVenueIsRefused() async throws {
+        var camp = Fixture.camp([.init("Home", courts: 1), .init("Away", courts: 2)], players: 6)
+        camp.partition()
+        let repo = InMemoryRepository(camps: [camp])
+        let only = try #require(camp.groups(in: camp.orderedVenues[0].id).first)
+
+        await #expect(throws: SycamoreError.lastGroupAtVenue) {
+            try await repo.deleteGroup(only.id, campID: camp.id)
+        }
+
+        // The guard is in front of `Camp.removeGroup`, so there is no half-applied graph behind the
+        // throw — no kids turned out, no count moved.
+        let untouched = try await repo.camp(id: camp.id)
+        #expect(untouched == camp)
+
+        // And the floor is the venue's, not the camp's: courts elsewhere lend nothing, and a venue
+        // that still has two loses one the ordinary way in the same breath.
+        let away = try #require(camp.groups(in: camp.orderedVenues[1].id).first)
+        let after = try await repo.deleteGroup(away.id, campID: camp.id)
+        #expect(after.group(away.id) == nil)
+        #expect(after.venue(camp.orderedVenues[1].id)?.groupCount == 1)
+        #expect(after.venue(camp.orderedVenues[0].id)?.groupCount == 1)
+    }
 }

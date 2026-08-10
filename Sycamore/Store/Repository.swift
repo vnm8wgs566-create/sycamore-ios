@@ -39,6 +39,8 @@ enum SycamoreError: LocalizedError, Equatable {
     case unknownStaff
     case unknownInviteCode
     case campNameRequired
+    /// A venue's only court cannot be removed. See `SycamoreRepository.deleteGroup(_:campID:)`.
+    case lastGroupAtVenue
     case notPermitted
     case appleSignInUnavailable
 
@@ -54,6 +56,10 @@ enum SycamoreError: LocalizedError, Equatable {
         case .unknownStaff: "We couldn't find that person."
         case .unknownInviteCode: "No camp uses that code."
         case .campNameRequired: "Give the camp a name first."
+        // "court", like `unknownGroup` above, because this enum speaks one vocabulary and a
+        // reader meeting both sentences in one session should not have to work out that they
+        // are about the same thing.
+        case .lastGroupAtVenue: "A venue keeps at least one court. Add another before removing this one."
         case .notPermitted: "Only an admin can do that."
         case .appleSignInUnavailable: "Apple sign-in isn't set up yet. Use your email instead."
         }
@@ -169,7 +175,39 @@ protocol SycamoreRepository: SectionEightData {
     /// from re-creating what was just deleted; and a coach standing on it comes off it. The ladder
     /// is untouched — nobody's place in the camp changes because a court did.
     ///
-    /// Throws `unknownGroup` for an id that is not in the camp, and writes nothing when it does.
+    /// **A venue's only group cannot go, and this is the line in the register that settles it.**
+    /// `sites_group_count_range` is `check (group_count between 1 and 40)`
+    /// (`20260810040000_a_venue_knows_its_own_shape.sql:82`), so the `groupCount` above reaching 0
+    /// is a write Postgres refuses. Until this paragraph the two implementations disagreed about
+    /// that — `InMemoryRepository` has no CHECK and let it through, so the simulator and the
+    /// previews did a thing the shipped app could not — and the disagreement is the actual defect,
+    /// not the constraint.
+    ///
+    /// Three answers were on the table and only one of them is small:
+    ///
+    ///   - **Relax the CHECK to `0…40`.** Rejected, and not because the screens cannot draw a
+    ///     venue with no groups — Groups can, and `BlockCourtPicker` has an empty row written for
+    ///     it. Rejected because zero cannot be *set* or *kept*: `CampDraft.groupRange` (`1...16`)
+    ///     floors Setup's stepper, `CampShape.groupRange` (`1...12`) floors the venue sheet's and
+    ///     `VenueSheet.shaped(_:)` clamps into it — so pressing Save on such a venue silently puts
+    ///     a group back — and `PlayerCourtChoices` drops a venue with no courts from the move
+    ///     list, stranding its kids. The migration says the same thing in one line: a venue with
+    ///     no groups is indistinguishable from one that does not exist.
+    ///   - **Leave the affordance and improve the error.** Rejected on its own: an offer that is
+    ///     always going to fail is worse than one that is not there, and a better sentence under a
+    ///     group that vanished and came back is a better sentence about the same damage.
+    ///   - **A floor on the affordance**, which is what happened. `GroupsView` does not offer the
+    ///     swipe on a venue's only group, `Camp.removeGroup(_:from:)` will not perform it, and this
+    ///     verb refuses it by name in *both* implementations — which is what makes the offline
+    ///     build and Postgres agree rather than one of them being the lenient one.
+    ///
+    /// The refusal is still reachable, which is why it is named rather than silent: the screen
+    /// decides from the camp it is holding, and another device can take the venue to one group
+    /// between that read and this write. Then the local `Camp.removeGroup` no-ops — nothing
+    /// vanishes — and the reader gets `lastGroupAtVenue`'s sentence instead of a constraint name.
+    ///
+    /// Throws `unknownGroup` for an id that is not in the camp and `lastGroupAtVenue` for a
+    /// venue's only group, and writes nothing when it throws either.
     func deleteGroup(_ groupID: Group.ID, campID: Camp.ID) async throws -> Camp
 
     /// `8t`'s "Camp name & sport".
@@ -587,9 +625,19 @@ actor InMemoryRepository: SycamoreRepository {
     /// the end of it are the same ones a reorder or a venue edit gets. `removeGroup` reindexes on
     /// its own account as well; running it twice is a sort over an already-sorted array and costs
     /// less than a second path through this actor would.
+    ///
+    /// **The last-group refusal is spelled out here rather than left to the model**, and it is the
+    /// same shape `setCampDays`' note argues for: this repository stands in for Postgres, and
+    /// `sites_group_count_range` is a refusal Postgres makes. `Camp.removeGroup` declining to
+    /// perform it would leave this returning a camp nothing happened to, which is the one answer a
+    /// caller cannot tell from success — and it is precisely the divergence that made a deletion
+    /// work in the previews and fail in the shipped app.
     func deleteGroup(_ groupID: Group.ID, campID: Camp.ID) async throws -> Camp {
         try mutate(campID) { camp in
             guard let court = camp.group(groupID) else { throw SycamoreError.unknownGroup }
+            guard camp.groups.count(where: { $0.venueID == court.venueID }) > 1 else {
+                throw SycamoreError.lastGroupAtVenue
+            }
             camp.removeGroup(groupID, from: court.venueID)
         }
     }

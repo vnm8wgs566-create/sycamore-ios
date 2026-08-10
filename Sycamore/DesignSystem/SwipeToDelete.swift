@@ -214,7 +214,14 @@ struct SwipeToDelete<ID: Hashable & Sendable, Content: View>: View {
     /// from.
     var background: Color = Theme.surface
 
-    /// `nil` switches the swipe off and hides the action entirely: the last venue cannot go.
+    /// `nil` switches the swipe off and hides the action entirely — the panel, the drag and the
+    /// named rotor action together, so nothing is offered that cannot be finished.
+    ///
+    /// This said "the last venue cannot go", which was its only caller and stopped being true when
+    /// `CreateCampView.venueRow` dropped that floor: the shape screen has an empty state to land
+    /// in now. The floor that remains is `GroupsView`'s, on a venue's only group, and that one is
+    /// a database constraint rather than a judgement — see
+    /// `SycamoreRepository.deleteGroup(_:campID:)`.
     let onDelete: (() -> Void)?
 
     @ViewBuilder var content: Content
