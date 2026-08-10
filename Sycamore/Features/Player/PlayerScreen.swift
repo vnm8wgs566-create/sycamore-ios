@@ -26,10 +26,8 @@
 //  *where*. One court up is still the common case and is now one tap inside the picker rather than
 //  the only sentence this screen could say. `PlayerCourtPicker`'s header argues it in full.
 //
-//  `AppStore.moveUpACourt` is left standing. Nothing calls it now — it was this bar's only caller
-//  — and it is four lines resolving one court up before delegating to `movePlayer`, so it is a
-//  candidate for deletion rather than something worth keeping. `AppStore.swift` belongs to another
-//  unit this wave; until then it is dead rather than wrong.
+//  `AppStore.moveUpACourt` went with it. This bar was its only caller, and the one direction it
+//  could go is a question nothing asks now that the picker offers every court in either direction.
 //
 
 import SwiftUI

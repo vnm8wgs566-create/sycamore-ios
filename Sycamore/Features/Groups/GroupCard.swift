@@ -319,7 +319,7 @@ struct GroupCard: View {
 
         return GroupsRow(
             rank: nil,
-            name: move.row.player.displayName,
+            name: move.row.name,
             nameColor: Theme.inkFaint
         )
         .padding(.leading, GroupsMetrics.cardPadding)
@@ -341,7 +341,7 @@ struct GroupCard: View {
         // The card carrying the kid is drawn over this, and the handle being held is elsewhere.
         .allowsHitTesting(false)
         .accessibilityElement()
-        .accessibilityLabel("Where \(move.row.player.displayName) will land")
+        .accessibilityLabel("Where \(move.row.name) will land")
     }
 
     /// `+3 more` — the folded rows, and the way back out of them.
@@ -434,7 +434,7 @@ private struct GroupPlayerRow: View {
     var body: some View {
         GroupsRow(
             rank: row.player.overallRank,
-            name: row.player.displayName,
+            name: row.name,
             nameColor: row.isAway ? Theme.inkFaint : Theme.inkWarm
         ) {
             marks
@@ -538,7 +538,7 @@ private struct GroupPlayerRow: View {
                     before: TapGesture().onEnded { if !isAiming { onOpen() } }
                 )
             )
-            .accessibilityLabel("Move \(row.player.displayName)")
+            .accessibilityLabel("Move \(row.name)")
             .accessibilityHint("Hold, then drag. Let go to drop them where they are.")
     }
 

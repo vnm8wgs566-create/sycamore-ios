@@ -352,42 +352,11 @@ struct OverviewCourtCard: View {
     /// `CourtCoachLine` nor `overflowRow` reaches into it, and a card where a tap in the margin
     /// beside a name opens a kid while the same tap beside the coach does nothing is a card whose
     /// edges mean two different things.
+    /// No inset: this column already sits inside the card's own padding, which is the one thing
+    /// the court screen's copy of this row disagreed about — and the reason `CourtRosterButton`
+    /// takes an inset at all.
     private func kidRow(_ row: PlayerRow) -> some View {
-        Button {
-            onOpenPlayer(row.id)
-        } label: {
-            CourtRosterRow(row: row)
-                // The drawn line keeps the height the design gives it and the touch grows around
-                // it. Grown first, shaped second — the reverse pins the target back onto the drawn
-                // line and hands out a column of ~20pt targets. It is the order `CourtCoachLine`
-                // and `MoreRow` in this same column are already written in.
-                .frame(minHeight: HitTarget.minimum)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        // Set outright rather than lifted off the row inside the label. `spokenLabel(for:)` is
-        // `static` for exactly this — see its doc for what a column of buttons all announced as
-        // "Button" costs a reader who cannot see which kid is which.
-        .accessibilityLabel(CourtRosterRow.spokenLabel(for: row))
-        // The court screen's own words for the same act (`CourtScreen.swift:300`), spelled out a
-        // second time rather than shared.
-        //
-        // **Not because it could not be shared.** The label directly above already reaches into
-        // `CourtRosterRow` for `spokenLabel(for:)`, which is `static` for exactly that reason, and
-        // a hint constant beside it would be the same move. It is that one string is not what is
-        // duplicated here: the whole of this method is `CourtScreen.kidRow` with a different
-        // inset, so the honest fix is a `CourtRosterButton` over `row`, `inset` and `action` that
-        // both screens consume.
-        //
-        // That view would live here, beside the row, in this folder — the boundary is narrower
-        // than "another feature". It is `CourtScreen.swift` itself, which is the one line that
-        // would have to change to adopt it and is under a screen this unit does not own. Landing
-        // the shared view with a single consumer would leave the court screen's copy standing
-        // *and* a view calling itself shared, which is three spellings where there are now two.
-        //
-        // So: two copies, watched. If they ever start saying different things about the same tap,
-        // that is the signal to write the third view rather than to reconcile the strings.
-        .accessibilityHint("Opens their screen")
+        CourtRosterButton(row: row) { onOpenPlayer(row.id) }
     }
 
     /// `+3 more`, indented into the rank column so it starts where the names do — and

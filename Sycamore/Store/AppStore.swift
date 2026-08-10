@@ -225,7 +225,36 @@ struct PlayerRow: Identifiable, Hashable, Sendable {
     let isAway: Bool
     let leavesAt: TimeOfDay?
 
+    /// `player.displayName`, spelled once when the row is built rather than once every time it
+    /// is drawn.
+    ///
+    /// `Player.displayName` (`Models.swift:549-558`) short-circuits on an empty surname, which is
+    /// why `SampleData` never showed the cost — but a kid off a real roster has one, and then it
+    /// builds a `PersonNameComponents` and runs a `FormatStyle` over it. A Groups drag now unfolds
+    /// the whole venue, so it draws around fifty rows, each asking twice: once for the name it
+    /// shows and once for the accessibility label it assembles whether or not anybody is
+    /// listening. At display rate that is roughly twelve thousand ICU passes a second to render
+    /// text that cannot change while a finger is down.
+    ///
+    /// Rows are built inside `computeGroupsSections`, which is memoised on `campRevision`, so this
+    /// runs once per camp write instead. It is the same repair `Player.matches(search:)` took when
+    /// the search field turned out to be formatting every kid's name on every keystroke — the
+    /// formatter is fine, asking it per frame is not.
+    let name: String
+
     var isLeavingEarly: Bool { leavesAt != nil }
+
+    /// Spelled out rather than left to the memberwise synthesis, so `name` is derived here and
+    /// cannot be passed in disagreeing with `player`. The signature is deliberately the one the
+    /// synthesised init had, so no call site changes.
+    init(id: Player.ID, player: Player, rank: Int, isAway: Bool, leavesAt: TimeOfDay?) {
+        self.id = id
+        self.player = player
+        self.rank = rank
+        self.isAway = isAway
+        self.leavesAt = leavesAt
+        self.name = player.displayName
+    }
 }
 
 struct GroupsCoachCard: Identifiable, Hashable, Sendable {
@@ -394,8 +423,12 @@ final class AppStore {
     var venueFilter: VenueFilter = .all
     var playerFilter: PlayerFilter = .everyone
     var searchText: String = ""
-    /// Coach cards start expanded; this holds the ones the user folded away.
-    var collapsedGroupIDs: Set<Group.ID> = []
+    // `collapsedGroupIDs` used to sit here, with `isCollapsed` and `toggleCollapsed` beside it,
+    // holding which coach cards the user had folded away. Groups took its folding back into the
+    // screen — `GroupsView.expandedGroupIDs` — because the design's default is the *folded* card
+    // and a set of exceptions to the wrong default is a set that starts out lying. Nothing has
+    // read these three since; they are gone rather than left as a second answer to "is this card
+    // open" for the next person to find first.
 
     // MARK: Setup filter
 
@@ -566,8 +599,6 @@ extension AppStore {
     func isAway(_ id: Player.ID) -> Bool { camp?.isAway(id, on: today) == true }
     func leavesAt(_ id: Player.ID) -> TimeOfDay? { camp?.leavesAt(id, on: today) }
     func history(for id: Player.ID) -> [HistoryEvent] { camp?.history(for: id) ?? [] }
-
-    func isCollapsed(_ id: Group.ID) -> Bool { collapsedGroupIDs.contains(id) }
 
     // MARK: Chips
 
@@ -1009,7 +1040,6 @@ extension AppStore {
         playerFilter = .everyone
         staffFilter = .all
         searchText = ""
-        collapsedGroupIDs = []
     }
 }
 
@@ -1101,9 +1131,16 @@ extension AppStore {
                 // would visibly bounce through the intermediate ladder on their way to the place
                 // they were already standing in.
                 _ = try await self.repository.reorderCamp(plan.assignments, campID: campID)
-                self.camp = try await self.repository.reorderGroup(
+                let settled = try await self.repository.reorderGroup(
                     groupID, playerIDs: plan.courtOrder, campID: campID
                 )
+                // Compared before assigning, which is not a micro-optimisation: the setter bumps
+                // `campRevision` and drops both section memos, so an unconditional write re-derives
+                // `groupsSections` and `rankSections` — twelve courts each filtering and sorting a
+                // hundred players — to arrive at the graph already on screen. The optimistic
+                // mutation ran the same model methods the repository did, so equal is the ordinary
+                // case rather than the lucky one.
+                if settled != self.camp { self.camp = settled }
             } catch {
                 self.camp = rollback
                 throw error
@@ -1131,18 +1168,11 @@ extension AppStore {
         }
     }
 
-    /// The player sheet's "Move up a court" — one court better inside the same venue.
-    func moveUpACourt(_ playerID: Player.ID) async {
-        guard let camp,
-              let player = camp.player(playerID),
-              let venueID = player.venueID,
-              let current = player.groupID,
-              let index = camp.groups(in: venueID).firstIndex(where: { $0.id == current }),
-              index > 0
-        else { return }
-        let target = camp.groups(in: venueID)[index - 1]
-        await movePlayer(playerID, toVenue: venueID, group: target.id)
-    }
+    // `moveUpACourt` used to sit here: resolve the court one better inside the same venue, and
+    // delegate to `movePlayer`. It was `8q`'s pinned bar's only caller, and that bar now opens
+    // `PlayerCourtPicker` — every court in the camp, in either direction, across venues — so the
+    // one direction it could go is a question nothing asks any more. Deleted rather than left
+    // standing: an intent with no caller is a claim about the app that nobody is checking.
 
     func partitionCamp() async {
         guard let campID = camp?.id else { return }
@@ -1469,10 +1499,6 @@ extension AppStore {
 
     func present(_ sheet: ActiveSheet) { activeSheet = sheet }
     func dismissSheet() { activeSheet = nil }
-
-    func toggleCollapsed(_ groupID: Group.ID) {
-        collapsedGroupIDs.toggle(groupID)
-    }
 
     /// Dismisses the error banner. `perform` also clears `errorMessage` the moment the
     /// next intent succeeds, so this is only for the user waving the banner away.

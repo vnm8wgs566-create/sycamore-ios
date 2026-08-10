@@ -82,7 +82,7 @@ struct GroupsView: View {
             GroupsHeader(
                 store: store,
                 selectedVenueID: venue?.id,
-                movingName: move?.row.player.displayName,
+                movingName: move?.row.name,
                 isLocked: isLocked,
                 count: headerCount
             )
@@ -439,7 +439,7 @@ struct GroupsView: View {
             GroupsRow(
                 rank: move.row.player.overallRank,
                 rankColor: Theme.accent,
-                name: move.row.player.displayName,
+                name: move.row.name,
                 nameStyle: GroupsType.liftedName,
                 nameColor: Theme.ink
             ) {
@@ -484,7 +484,7 @@ struct GroupsView: View {
         let groupName: String
 
         var id: Player.ID { row.id }
-        var question: String { "Move \(row.player.displayName) to \(groupName)?" }
+        var question: String { "Move \(row.name) to \(groupName)?" }
     }
 
     /// The teardown is `commit`'s, through `endMove()` — every path out of it reaches one, so

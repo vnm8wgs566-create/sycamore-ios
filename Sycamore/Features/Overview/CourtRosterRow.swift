@@ -44,7 +44,7 @@ struct CourtRosterRow: View {
             // Deliberately unclipped. The design's own CSS wraps this cell rather than
             // ellipsing it, and at the reader's larger sizes a truncated child's name is the
             // one thing on the row that cannot be guessed from context.
-            Text(row.player.displayName)
+            Text(row.name)
                 // `inkFaint` for a kid who is not in, which is the grey `GroupCard` fades an away
                 // name to. Colour alone is never the whole answer — the mark below says it in a
                 // glyph and `spokenRow` says it in a word.
@@ -94,7 +94,7 @@ struct CourtRosterRow: View {
     /// another. The screen sets the label outright instead, and this is what it sets it to — so
     /// there is still one spelling of a spoken roster line and not a second one that drifts.
     static func spokenLabel(for row: PlayerRow) -> String {
-        let name = row.isAway ? row.player.displayName : "\(row.rank). \(row.player.displayName)"
+        let name = row.isAway ? row.name : "\(row.rank). \(row.name)"
         var parts = [name, row.player.gender.label]
         if row.isAway {
             parts.append("Away")

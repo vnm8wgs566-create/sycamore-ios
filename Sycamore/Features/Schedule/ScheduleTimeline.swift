@@ -231,7 +231,18 @@ struct ScheduleTimeline: Equatable, Sendable {
         // minute do not swap columns between one read and the next.
         let spans = day
             .map { Self.span(of: $0, in: day) }
-            .sorted { ($0.startsAt, $0.id.uuidString) < ($1.startsAt, $1.id.uuidString) }
+            // Branched rather than written as a tuple comparison, which reads better and costs
+            // more than it looks: Swift builds both tuples before comparing either element, so
+            // `uuidString` — a UUID formatted into a fresh 36-character String — would run twice
+            // per comparison instead of only on the tie it is there to break. A twelve-block day
+            // makes about thirty-five comparisons, so that is seventy allocations to settle a
+            // question no ordinary day asks.
+            // Written long rather than as a ternary, which the type-checker would not chew through
+            // inside this chain.
+            .sorted { lhs, rhs in
+                if lhs.startsAt != rhs.startsAt { return lhs.startsAt < rhs.startsAt }
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
 
         var placements: [ScheduleBlock.ID: Placement] = [:]
         // The run being built, and how far into the day anything in it reaches. A block starting
