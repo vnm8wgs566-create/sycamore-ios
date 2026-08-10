@@ -12,12 +12,19 @@
 //  The only thing that catches any of it is the arithmetic, and the arithmetic is out of the view
 //  and in `CourtCapacity`.
 //
-//  Four questions:
+//  Five questions:
 //
-//      reading / spotsFree / pillLabel  -> what the card says
+//      reading / spotsFree / flag       -> what the card says
 //      isOver / overBy                  -> the state the design never draws
-//      reading(for:capacity:)           -> and whether the card says anything at all
+//      Flag                             -> which states are worth flagging, and what they are called
+//      reading(for:) x2                 -> and whether the card says anything at all
 //      capacities(in:venueID:)          -> where the denominator comes from
+//
+//  `pillLabel` used to be the first of those and is gone. It was a `String?` whose nil carried a
+//  drawing decision — no pill at exactly the ceiling — which meant Overview and the move sheet each
+//  reached their own conclusion about the boundary and drifted at it. `CourtCapacity.Flag` is that
+//  decision as a state; the tests below that changed shape are the ones that had been pinning the
+//  drift, and each says so where it stands.
 //
 
 import Foundation
@@ -50,30 +57,48 @@ struct CourtCapacityTests {
 
     /// `8i`'s own three open courts, in the order it draws them. The whole point of the change: a
     /// head-count with nothing to measure it against cannot answer "where is there room".
+    ///
+    /// **The first row changed.** It used to expect no pill at 8 of 8, which was `8i` transcribed
+    /// faithfully and is the behaviour `fullIsFlagged` below now overturns; see that test for the
+    /// argument. The reading itself is untouched, which is what this case is really for.
     @Test(
         "The design's own three readings",
         arguments: [
-            (8, 8, "8 of 8", nil),
+            (8, 8, "8 of 8", "Full"),
             (6, 8, "6 of 8", "2 spots"),
             (7, 8, "7 of 8", "1 spot"),
-        ] as [(Int, Int, String, String?)]
+        ] as [(Int, Int, String, String)]
     )
-    func theDesignsReadings(here: Int, capacity: Int, reading: String, pill: String?) {
+    func theDesignsReadings(here: Int, capacity: Int, reading: String, pill: String) {
         let subject = CourtCapacity(here: here, capacity: capacity)
 
         #expect(subject.reading == reading)
-        #expect(subject.pillLabel == pill)
+        #expect(subject.flag.label == pill)
     }
 
-    /// A full court draws the figure and no pill. The pill is "there is room", not "here is the
-    /// count again", so a court with none has nothing to put in that slot.
-    @Test("A full court offers no pill")
-    func fullDrawsNoPill() {
+    /// **This test used to say the opposite, and the reversal is the point of the change.**
+    ///
+    /// It read "A full court offers no pill", on the argument that the pill means "there is room"
+    /// and a court with none has nothing to put in that slot. That argument holds for *that* pill —
+    /// the dashed green one with a `+` in it — and it is why `.full` is not drawn as one. What it
+    /// could not justify was the slot going empty altogether, because two other things were already
+    /// true: the move sheet drew an amber `Full` on the same court, and `spokenLabel` said "Full"
+    /// to VoiceOver from the same struct. So on Overview the eye saw no flag while the ear heard
+    /// one, and the two screens disagreed about the one boundary that matters most — a court with
+    /// nowhere left to put a child.
+    ///
+    /// Full is now a warning, on both screens, in the amber `8i` spends on "somebody's problem this
+    /// morning". That overrides a state the design does draw, which is worth being explicit about;
+    /// `CourtCapacity`'s header carries the whole argument.
+    @Test("A full court wears the same amber the move sheet gives it")
+    func fullIsFlagged() {
         let subject = CourtCapacity(here: 8, capacity: 8)
 
         #expect(subject.spotsFree == 0)
-        #expect(subject.pillLabel == nil)
         #expect(!subject.isOver)
+        #expect(subject.flag == .full)
+        #expect(subject.flag.label == "Full")
+        #expect(subject.flag.isWarning)
     }
 
     @Test("Spots left is the gap, and never negative", arguments: 0...12)
@@ -88,8 +113,9 @@ struct CourtCapacityTests {
     /// then sits on the busiest screen in the app all season.
     @Test("One place left is a spot, not spots")
     func oneIsSingular() {
-        #expect(CourtCapacity(here: 7, capacity: 8).pillLabel == "1 spot")
-        #expect(CourtCapacity(here: 6, capacity: 8).pillLabel == "2 spots")
+        #expect(CourtCapacity(here: 7, capacity: 8).flag == .room(1))
+        #expect(CourtCapacity(here: 7, capacity: 8).flag.label == "1 spot")
+        #expect(CourtCapacity(here: 6, capacity: 8).flag.label == "2 spots")
     }
 
     // MARK: The state the design never draws
@@ -104,7 +130,8 @@ struct CourtCapacityTests {
         #expect(subject.isOver)
         #expect(subject.overBy == here - 8)
         #expect(subject.spotsFree == 0)
-        #expect(subject.pillLabel == "\(here - 8) over")
+        #expect(subject.flag == .over(here - 8))
+        #expect(subject.flag.label == "\(here - 8) over")
     }
 
     /// `isOver` / `overBy` are `Group.isOverCapacity` / `Group.overCapacityBy` restated over this
@@ -129,23 +156,100 @@ struct CourtCapacityTests {
 
     /// Exactly at the ceiling is not over it. The boundary either side of `capacity` is the one
     /// place an off-by-one would put an amber warning on a perfectly ordinary court.
+    ///
+    /// The three flags around it are asserted here as well, because this is the boundary the two
+    /// screens spent a wave disagreeing at: `.room(1)` one short of the ceiling, `.full` on it,
+    /// `.over(1)` past it, and no gap between them for a court to fall through unflagged.
     @Test("The boundary is inclusive")
     func theBoundary() {
         #expect(!CourtCapacity(here: 8, capacity: 8).isOver)
         #expect(CourtCapacity(here: 9, capacity: 8).isOver)
         #expect(CourtCapacity(here: 8, capacity: 8).overBy == 0)
+
+        #expect(CourtCapacity(here: 7, capacity: 8).flag == .room(1))
+        #expect(CourtCapacity(here: 8, capacity: 8).flag == .full)
+        #expect(CourtCapacity(here: 9, capacity: 8).flag == .over(1))
+    }
+
+    /// Every fill has exactly one state and it is never `.closed`. A `CourtCapacity` is a
+    /// head-count against a ceiling; whether the court is out of play this morning is a
+    /// `today_courts` fact it was not built from, and the callers that hold both name that state
+    /// themselves — see `PlayerCourtOption.flag`.
+    @Test("The arithmetic never claims a court is closed", arguments: 0...12)
+    func theArithmeticNeverCloses(here: Int) {
+        #expect(CourtCapacity(here: here, capacity: 8).flag != .closed)
     }
 
     // MARK: What VoiceOver hears
 
     /// "8 of 8" read aloud is a score or a date. The spoken form says what the numbers are, and
-    /// folds the pill in rather than leaving it as a second fragment after it.
+    /// folds the flag in rather than leaving it as a second fragment after it.
     @Test("The spoken label is a sentence, and pluralises")
     func theSpokenLabel() {
         #expect(CourtCapacity(here: 8, capacity: 8).spokenLabel == "8 of 8 kids. Full")
         #expect(CourtCapacity(here: 7, capacity: 8).spokenLabel == "7 of 8 kids. 1 spot left")
         #expect(CourtCapacity(here: 6, capacity: 8).spokenLabel == "6 of 8 kids. 2 spots left")
         #expect(CourtCapacity(here: 9, capacity: 8).spokenLabel == "9 of 8 kids. 1 over capacity")
+    }
+
+    /// The head of that sentence on its own, which is what the move sheet composes its own row
+    /// around. Pinned against the fold above so the two cannot end up with two spellings of the
+    /// same figure — the exact split the flag was introduced to close.
+    @Test("The spoken figure is the head of the spoken sentence")
+    func theSpokenReading() {
+        let subject = CourtCapacity(here: 6, capacity: 8)
+
+        #expect(subject.spokenReading == "6 of 8 kids")
+        #expect(subject.spokenLabel == "\(subject.spokenReading). \(subject.flag.spokenLabel)")
+    }
+}
+
+// MARK: - Which states are worth flagging
+
+/// The enum both screens now branch on, and the reason they can no longer disagree about a court.
+///
+/// Overview reads it in `CourtCapacityBadge.pill(_:)` and the move sheet in
+/// `PlayerCourtPicker.rowBody`; each maps it to its own plate, and neither invents a state. What is
+/// pinned here is the vocabulary itself — the words, and which of them are warnings — because that
+/// is the half neither screen's own tests can see.
+@Suite("CourtCapacity.Flag")
+struct CourtCapacityFlagTests {
+
+    @Test(
+        "Each state has one word for the eye and one sentence for the ear",
+        arguments: [
+            (CourtCapacity.Flag.room(1), "1 spot", "1 spot left"),
+            (.room(2), "2 spots", "2 spots left"),
+            (.full, "Full", "Full"),
+            (.over(1), "1 over", "1 over capacity"),
+            (.over(3), "3 over", "3 over capacity"),
+            (.closed, "Closed", "Closed"),
+        ] as [(CourtCapacity.Flag, String, String)]
+    )
+    func theWords(flag: CourtCapacity.Flag, label: String, spoken: String) {
+        #expect(flag.label == label)
+        #expect(flag.spokenLabel == spoken)
+    }
+
+    /// The rule that keeps the two screens honest: a warning is seen and heard, or neither. Room is
+    /// the only state that is not somebody's problem this morning, and so the only one a screen may
+    /// draw as nothing — which is exactly what the move sheet does with it.
+    @Test("Everything but room is a warning")
+    func whatIsAmber() {
+        #expect(!CourtCapacity.Flag.room(1).isWarning)
+        #expect(!CourtCapacity.Flag.room(8).isWarning)
+        #expect(CourtCapacity.Flag.full.isWarning)
+        #expect(CourtCapacity.Flag.over(1).isWarning)
+        #expect(CourtCapacity.Flag.closed.isWarning)
+    }
+
+    /// `Closed` is `CourtStatus.badge`'s word restated, for the reason `CourtCapacity.isOver`
+    /// restates `Group.isOverCapacity`. A court that is shut *and* over shows this pill in the move
+    /// sheet while Overview shows `CourtStatusBadge` on the same court the same morning, so two
+    /// spellings would land an inch apart. This is what holds them equal.
+    @Test("A closed court is called what the status is called")
+    func closedBorrowsTheStatusWord() {
+        #expect(CourtCapacity.Flag.closed.label == CourtStatus.closed(reason: "Net down").badge)
     }
 }
 
@@ -164,6 +268,12 @@ struct CourtCapacityReadingTests {
     /// `8i` gives Court 4 a `Closed` badge in this slot and no numbers whatsoever. There is nobody
     /// on a closed court and no room on it either, so a reading would be two claims that are both
     /// beside the point.
+    ///
+    /// Unchanged by the flag, and worth saying why it did not become `.closed` here. Overview
+    /// already draws closure — `CourtStatusBadge` is in the slot beside this one — so a reading
+    /// carrying the state as well would put the same amber twice on one header row, and would have
+    /// to suppress its own figure to obey "no numbers whatsoever". The state belongs to whoever has
+    /// no other way to say it, which is the move sheet.
     @Test("A closed court reads nothing, whatever the graph says is on it")
     func aClosedCourtReadsNothing() {
         let shut = card(here: 6, status: .closed(reason: "Net down"))
@@ -190,7 +300,64 @@ struct CourtCapacityReadingTests {
         let reading = CourtCapacity.reading(for: card(here: 0), capacity: 8)
 
         #expect(reading?.reading == "0 of 8")
-        #expect(reading?.pillLabel == "8 spots")
+        #expect(reading?.flag == .room(8))
+    }
+}
+
+// MARK: - The same question asked of the graph
+
+/// The sibling that took the `capacity > 0` guard off `PlayerCourtChoices`.
+///
+/// It had been written out there a second time, beside a comment asking for this — one copy over a
+/// `CourtCard` for Overview and one over a `Group` for the move sheet, agreeing on the day they
+/// were written and free to stop. What this suite pins is that they are now the same rule with two
+/// front doors, and that the front doors differ in exactly one thing: closure.
+@Suite("CourtCapacity.reading(for group:)")
+struct CourtCapacityGroupReadingTests {
+
+    private func court(here: Int, capacity: Int) -> Group {
+        var group = Group(
+            venueID: UUID(), number: 1, label: "Court 1", rankOrder: 1, coachID: nil,
+            capacity: capacity
+        )
+        group.presentCount = here
+        return group
+    }
+
+    /// `presentCount` and not `playerCount`: the two differ by whoever is away, and
+    /// `Group.isOverCapacity` measures against today's count on purpose. A reading built on the
+    /// roll would put a row at "8 of 8 · Full" beside a court the rest of the app calls in range.
+    @Test("A court reads its present count against its own ceiling")
+    func aCourtReads() {
+        var group = court(here: 6, capacity: 8)
+        group.playerCount = 8
+
+        #expect(CourtCapacity.reading(for: group) == CourtCapacity(here: 6, capacity: 8))
+    }
+
+    @Test("A ceiling of zero or less reads nothing here too", arguments: [0, -1])
+    func aZeroCeilingReadsNothing(capacity: Int) {
+        #expect(CourtCapacity.reading(for: court(here: 4, capacity: capacity)) == nil)
+    }
+
+    /// The one guard, reached both ways. Not "these two agree today" — the private core they both
+    /// call is the reason they cannot stop agreeing, and this walks the boundary either side of it.
+    @Test("The two entry points answer the same question the same way", arguments: [-1, 0, 1, 8])
+    func theGuardHasOneOwner(capacity: Int) {
+        let fromTheGraph = CourtCapacity.reading(for: court(here: 6, capacity: capacity))
+        let fromTheCard = CourtCapacity.reading(for: card(here: 6), capacity: capacity)
+
+        #expect(fromTheGraph == fromTheCard)
+    }
+
+    /// The difference between the two, stated. A `Group` carries no closure — it is a court in the
+    /// camp, not a row of `today_courts` — so this overload cannot and does not take a view on it,
+    /// and a shut court still reads its fill here. Saying so out loud is what stops somebody
+    /// "fixing" the asymmetry by teaching this one to return nil, which would take the fill off the
+    /// move sheet's row without putting the closure anywhere.
+    @Test("It takes no view of closure, because a group cannot hold one")
+    func closureIsNotItsQuestion() {
+        #expect(CourtCapacity.reading(for: court(here: 8, capacity: 8)) != nil)
     }
 }
 

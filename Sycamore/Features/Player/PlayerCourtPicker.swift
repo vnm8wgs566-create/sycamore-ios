@@ -22,14 +22,21 @@
 //  next door and with no view in it, so it can be tested. This file draws what that decides and
 //  commits the write. `PlayerCourtChoices.swift` argues why it lives apart.
 //
-//  ── A full court is flagged, not blocked ─────────────────────────────────────────────────────
+//  ── A full or closed court is flagged, not blocked ───────────────────────────────────────────
 //
-//  A court at or over its ceiling wears a `WarningPill` and is still tappable. This is the app's
-//  standing answer, argued at length for the schedule's overlaps in `ScheduleResize.swift:19-42`
-//  and `BlockEditorDraft.swift:96-125`: the camp may legitimately go over, somebody wants to *see*
-//  it rather than be stopped at seven in the morning with a car park filling up, and a refusal
-//  here would be a second opinion about a rule `Group.isOverCapacity` already holds. Overview
-//  draws the same amber for the same court and does not disable anything either.
+//  A court at its ceiling, past it, or out of play today wears a `WarningPill` and is still
+//  tappable. This is the app's standing answer, argued at length for the schedule's overlaps in
+//  `ScheduleResize.swift:19-42` and `BlockEditorDraft.swift:96-125`: the camp may legitimately go
+//  over, somebody wants to *see* it rather than be stopped at seven in the morning with a car park
+//  filling up, and a refusal here would be a second opinion about a rule `Group.isOverCapacity`
+//  already holds. Overview draws the same amber for the same court and does not disable anything
+//  either.
+//
+//  Closure is the one of the three this sheet could not say at all until now. A court with "Net
+//  down" on it was listed here exactly like a court in play, on the screen somebody uses to decide
+//  where to send a child — the one place in the app where not knowing has a child standing on the
+//  wrong court. It comes in through `store.closedCourts`; see that property for what it can and
+//  cannot see.
 //
 //  ── They land at the bottom ──────────────────────────────────────────────────────────────────
 //
@@ -107,7 +114,9 @@ struct PlayerCourtPicker: View {
         // Resolved once and read from there. `SheetChrome` builds its content eagerly, so a
         // computed property would walk every venue, every court and every coach lookup twice in
         // one pass — which is the note `CourtCoachPicker.body` leaves about its own pool.
-        let choices = PlayerCourtChoices(for: playerID, in: store.camp)
+        let choices = PlayerCourtChoices(
+            for: playerID, in: store.camp, closedCourts: store.closedCourts
+        )
         let firstSection = choices.sections.first?.id
 
         return SheetChrome(
@@ -190,11 +199,19 @@ struct PlayerCourtPicker: View {
 
             Spacer(minLength: Spacing.small)
 
-            // The flag a full court wears. `WarningPill` rather than a drawing of one: it is the
-            // plate Overview's `1 over` and `Closed` badges already wear, and this is the same
-            // amber about the same court.
-            if let flag = court.flag {
-                WarningPill(label: flag)
+            // This sheet's whole treatment table, and it is one line: everything amber, nothing
+            // else. `WarningPill` rather than a drawing of one — it is the plate Overview's
+            // `1 over` and `Closed` badges already wear, and this is the same amber about the same
+            // court.
+            //
+            // `isWarning` and not `!= nil`, because a court with room is `.room(2)` rather than
+            // nothing at all. Overview draws that state as the design's green `+` pill; this row
+            // draws it as the "6 of 8" already in the line under the court's name, and a sheet of
+            // twelve green pills would be noise on a list somebody is scanning for one court.
+            // `CourtCapacity`'s header argues why the two screens are allowed to differ there and
+            // nowhere amber.
+            if let flag = court.flag, flag.isWarning {
+                WarningPill(label: flag.label)
             }
 
             if court.isCurrent {
@@ -262,10 +279,10 @@ struct PlayerCourtPicker: View {
 
 // MARK: - Previews
 
-/// The scrim, the plate and the frame all four previews stand in, written once.
+/// The scrim, the plate and the frame all five previews stand in, written once.
 ///
-/// The design draws its sheets over a 700pt frame and this one opens 0.88 of it; four copies of
-/// that arithmetic would be four places to edit the day the detent moves.
+/// The design draws its sheets over a 700pt frame and this one opens 0.88 of it; five copies of
+/// that arithmetic would be five places to edit the day the detent moves.
 ///
 /// `@MainActor` because `AppStore.preview` is, and a default argument is evaluated wherever the
 /// function is declared — the shape `pickupPreviewStore` and `lockedPreviewStore` already take.
@@ -280,11 +297,54 @@ private func courtPickerPreview(_ store: AppStore = .preview) -> some View {
     .background(Theme.canvas)
 }
 
+/// A store whose Overview read has landed with a court shut on it — the state `store.courts` is in
+/// on any morning somebody has taken a net down, and the one every other preview here is *not* in.
+///
+/// Written out rather than taken from a fixture because `AppStore.preview` holds no `courts` at
+/// all: section 8's three reads are loaded lazily by the screens that need them, and
+/// `AppStore.swift:405-407` says why. So a preview of this sheet gets an empty array and, quite
+/// correctly, flags nothing — which is exactly why the closed row needs a frame of its own. It is
+/// invisible in the default preview not because it is drawn wrong but because nothing has read it.
+@MainActor
+private func shutCourtPreviewStore() -> AppStore {
+    let store = AppStore.preview
+    guard let camp = store.camp,
+          let venue = camp.orderedVenues.first,
+          // Somewhere Austin Z is not, so the frame carries the closed row and the ticked one at
+          // once — a court that is both would draw only the tick, which is `row(_:)`'s rule and
+          // not this preview's question.
+          let court = camp.groups(in: venue.id).first(where: { $0.id != SampleData.austinZ.groupID })
+    else { return store }
+
+    store.courts = [
+        CourtCard(
+            id: court.id,
+            venueID: court.venueID,
+            groupName: court.label,
+            courtLabel: court.label,
+            rankOrder: court.rankOrder,
+            coachID: court.coachID,
+            coachName: camp.coach(forGroup: court.id)?.name,
+            playersHere: court.presentCount,
+            activity: nil,
+            status: .closed(reason: "Net down")
+        )
+    ]
+    return store
+}
+
 /// Austin Z is on Court 1 at Sycamore, and Court 2 there is the nine-kid court `SampleData` seeds
 /// to make "1 over" real — so one frame carries the tick, the amber and ten plain rows across two
-/// venues, which is every state a row has.
+/// venues. Every state but one; `Closed` needs a read behind it and has the frame below.
 #Preview("Where does this kid go") {
     courtPickerPreview()
+}
+
+/// The row that could not be drawn at all until this pass: a court out of play today, listed and
+/// offered like any other and wearing the same amber Overview gives it. One shut court among
+/// eleven open ones, which is the arrangement that matters — the eye has to find it.
+#Preview("Where does this kid go — a court is shut") {
+    courtPickerPreview(shutCourtPreviewStore())
 }
 
 /// Every colour here is a `Theme` token, so the dark scheme is a check rather than a second
