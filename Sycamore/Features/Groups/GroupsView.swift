@@ -1117,10 +1117,14 @@ struct GroupsView: View {
 
     /// The write. Scoped to the venue on screen, which is the only venue this list draws.
     ///
-    /// `AppStore.removeGroup` carries the round trip. It used to be bad news — the only door was
-    /// `updateVenue`, whose `syncGroups` trims a venue's *last* court and re-seats the orphans, so
-    /// deleting any other group deleted the wrong one the moment anything reloaded. There is a
-    /// `deleteGroup` verb now and the graph that comes back agrees with the one on screen.
+    /// `AppStore.removeGroup` carries what does and does not survive the round trip, written down
+    /// there rather than discovered here. It is good news now: all of it does. The named group
+    /// goes and stays gone, the survivors renumber, the kids it stood down are still unassigned
+    /// when the camp comes back, and the venue's count agrees with the cards on screen.
+    ///
+    /// The repository grew a `deleteGroup` for that. Deletion is a thing the store can say
+    /// outright, rather than a court count left for something else to reconcile, so a reload
+    /// shows the reader what they just did instead of a different group missing.
     private func remove(_ groupID: Group.ID) async {
         guard let venueID = selectedVenue?.id else { return }
         deleteTarget = nil
