@@ -1,0 +1,122 @@
+-- ---------------------------------------------------------------------------------------------
+-- A court taken out of play stays out of play.
+-- ---------------------------------------------------------------------------------------------
+--
+-- ── WHY ───────────────────────────────────────────────────────────────────────────────────────
+--
+-- `CourtStatus.closed(reason:)` has existed in the model since section 8 was drawn
+-- (`Sycamore/Models/SectionEight.swift:88-110`), `setCourtStatus` has been on the repository
+-- protocol just as long (`Store/SectionEightRepository.swift:29-31`), and both work. What has
+-- never existed is anywhere to put the answer. `SupabaseRepository` held it in a dictionary on the
+-- actor and said so plainly in two places — its own file header ("there is no
+-- `groups.closed_reason`, so a court taken out of play is held on this actor for the life of the
+-- process") and again over `setCourtStatus` itself ("a reason survives the screen but not the
+-- app"). Neither is quotable by line any more: the change this column made possible is the change
+-- that deleted both. This is that column.
+--
+-- The gap is not theoretical and it is not small. Two designs draw the closed state directly —
+-- 4e's schedule row and 5b's block editor both write `Court 4 · Closed — net down` — and
+-- `PlayerCourtChoices` refuses to offer a shut court as a destination for a child
+-- (`Features/Player/PlayerCourtPicker.swift:118`). All three read `AppStore.closedCourts`, which
+-- derives from a repository that forgot on relaunch. A net goes down on Tuesday morning; the app
+-- is force-quit at lunch; the afternoon opens with the court reading Open, offered to the kid
+-- being moved, and the reason nobody typed twice gone. That is worse than never having drawn it:
+-- the badge is a claim about a physical court, and a claim that quietly expires is one that will
+-- be believed at exactly the wrong moment.
+--
+-- ── WHY ON `groups`, AND NOT A TABLE OF ITS OWN ───────────────────────────────────────────────
+--
+-- A closure is one fact about one court, held until somebody takes it back. It is not a set, it
+-- has no second key, and there is nothing else to record beside it — which is the test
+-- `20260808201645` applies in the opposite direction to reach a table for a block's coaches ("that
+-- is a set of coaches, so it is a table"). A `court_closures` table would need a row lifetime, an
+-- is-current flag or an end timestamp, and a rule about which of several rows the badge means. All
+-- of that would be inventing a history nobody asked for: 4e draws the current state and nothing in
+-- section 8 draws when a court was shut or by whom.
+--
+-- It also costs nothing to read. `SupabaseRepository+SectionEight.courts(forVenue:campID:)`
+-- already selects `groups.*`, so the reason arrives in a request that was being made anyway and
+-- the closed state stops being a fifth thing joined onto the card. `groups.activity`
+-- (`20260806031106:33-57`) is the exact precedent: a per-court text column the Overview card
+-- draws, added the same way, for the same screen.
+--
+-- ── NULL IS OPEN, AND THE EMPTY STRING IS NOT NULL ────────────────────────────────────────────
+--
+-- One column carries both halves of `CourtStatus`, because the model's two cases are "no reason"
+-- and "a reason": NULL is `.open`, and any value at all — including `''` — is `.closed(reason:)`.
+-- A separate `is_closed boolean` beside it would be a second column that can disagree with the
+-- first, and the disagreement (`is_closed = true, closed_reason = null`) is a state the Swift enum
+-- cannot even hold.
+--
+-- Which is why the CHECK below admits the empty string, and deliberately breaks the shape of its
+-- own nearest neighbour. `groups_activity_len` is `between 1 and 80`; this one is `<= 80`. A court
+-- shut with no reason typed is `.closed(reason: "")` — a real state, reachable from any sheet with
+-- an optional text field — and a `between 1 and` here would refuse it with a `23514` at the moment
+-- somebody was trying to take a court out of play. The two spellings say different things and both
+-- are wanted: NULL is "this court is in play", `''` is "this court is shut and nobody said why".
+--
+-- 80 characters, matching `groups.activity` and `schedule_blocks.title`. "Net down", "Tom is on
+-- it", "Sprinklers" — a closure reason is the same kind of short noun phrase, and the app's own
+-- badge truncates long before this.
+--
+-- ── ADDITIVE, AND CANNOT REJECT A ROW THAT IS ALREADY HERE ────────────────────────────────────
+--
+-- Nullable with no default, so adding it is a catalogue change and not a heap rewrite, and every
+-- one of the 48 `groups` rows on this project reads exactly as it did — as an open court, which is
+-- what all 48 of them are. Nothing is backfilled and there is nothing to backfill *from*: the only
+-- record of which courts were shut was the dictionary described above, and it lives in a process
+-- that has since exited. `20260806031106:19-22` made the same call about `players.last_name` ("C"
+-- is not "Chu") and `20260808201645:53-63` about `inbox_items.pinned` — a column that starts empty
+-- is telling the truth; one filled in from a guess is not.
+--
+-- The CHECK is written `closed_reason is null or …`, so it evaluates to true and not to NULL over
+-- every existing row. A CHECK that answers NULL passes, but only by accident of three-valued
+-- logic, and `20260808201645:181-184` is the note in this schema about not leaving that to luck.
+
+alter table public.groups add column if not exists closed_reason text;
+
+alter table public.groups drop constraint if exists groups_closed_reason_len;
+alter table public.groups add constraint groups_closed_reason_len
+  check (closed_reason is null or char_length(closed_reason) <= 80);
+
+comment on column public.groups.closed_reason is
+  'Why this court is out of play. NULL is open; any value including the empty string is closed. '
+  'Mirrors CourtStatus in Swift, where NULL is .open and a value is .closed(reason:).';
+
+-- ── NO INDEX, STATED RATHER THAN OVERLOOKED ───────────────────────────────────────────────────
+--
+-- This schema indexes foreign keys on sight, and has written down twice why (`20260805074039:43-44`
+-- and `20260805141707:134-135`: an unindexed FK makes `on delete cascade` scan the table). None of
+-- that applies here. `closed_reason` is a `text` column, references nothing, and no cascade can
+-- reach it.
+--
+-- Nor is it ever a driving predicate. Every read of it comes through `groups` rows already
+-- selected by `site_id` — `courts(forVenue:campID:)` filters `.eq("site_id", venueID)` and the
+-- camp graph filters `.within("site_id", siteIDs)` — so the closure is a residual test over a
+-- dozen rows the venue's own index has already found, and `AppStore.closedCourts` derives its set
+-- in Swift from exactly those. A partial index `where closed_reason is not null` would be the
+-- shape `inbox_items_pinned_idx` takes for a genuinely selective flag; here it would serve a query
+-- nobody writes, and Supabase's own advisor would report it as unused.
+--
+-- ── NO POLICY CHANGE, AND THAT IS THE DECISION ────────────────────────────────────────────────
+--
+-- `groups_update_member` (`20260806013152:393-397`) already lets any member of the camp update a
+-- court at their venues, and this column rides on it. Taking a court out of play is running-the-day
+-- work — the class `20260806013152:17-18` lists attendance, ratings, the ladder and the inbox in —
+-- and the person who finds the net down is the coach standing on it, not an admin at a desk. It
+-- would also be incoherent to gate: the same policy lets that coach rename the court and change its
+-- activity, so admin-only closure would mean they could retitle Court 4 but not say it was shut.
+--
+-- Reading needs nothing either. `groups_select_member` (`:380-383`) is `select` over the whole row,
+-- and a column added to a table does not change a table-level privilege — `20260808201645:366-367`
+-- makes the same note about `inbox_items.pinned`.
+--
+-- ── IF THE CLIENT CANNOT SEE THE COLUMN AFTER THIS APPLIES ────────────────────────────────────
+--
+-- It is PostgREST's schema cache, not this migration. `GroupRecord.closedReason` is declared
+-- optional (`Store/Supabase/SupabaseDTOs.swift:94-111`), so a client running ahead of the database
+-- decodes every court as open rather than failing the read — the tolerance `CampRecord.campDays`
+-- argues for — but a PATCH naming a column PostgREST has not introspected is a `PGRST204`. The
+-- nudge, as `20260808201645:405-413` records:
+--
+--     notify pgrst, 'reload schema';

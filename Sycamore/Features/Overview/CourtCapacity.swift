@@ -20,13 +20,13 @@
 //
 //  The numerator is deliberately the card's and not the group's `presentCount`, even though the
 //  two are the same count derived the same way (`SectionEightRepository.swift:342-343` against
-//  `Camp.reindex` in `Models.swift:1116`). `playersHere` is what everything else on this card is
+//  `Camp.reindex` in `Models.swift:1224`). `playersHere` is what everything else on this card is
 //  already drawn from — the roster under it adds up to exactly this figure, which is the invariant
 //  `OverviewRosterTests.theListAddsUpToTheHeadcount` exists to hold — so taking the head-count from
 //  anywhere else would let the line above the list disagree with the list.
 //
 //  What `Group` still owns is `capacity`, and the two predicates over it. `isOver` and `overBy`
-//  below are `Group.isOverCapacity` and `Group.overCapacityBy` (`Models.swift:497-498`) restated
+//  below are `Group.isOverCapacity` and `Group.overCapacityBy` (`Models.swift:596-597`) restated
 //  against this type's own numerator rather than delegated to, because delegating would reintroduce
 //  precisely the disagreement the paragraph above avoids: a card reading "8 of 8" while a badge
 //  beside it claimed one over.
@@ -228,10 +228,11 @@ extension CourtCapacity {
     ///     amber `.closed` wears on Overview.
     ///   - the camp graph has no group for the card. A `today_courts` row the graph cannot match
     ///     is a read that has got ahead of the camp, not a court with a ceiling of zero.
-    ///   - the ceiling is zero or less. `SampleData` derives capacity as
-    ///     `venue.playerMax / venue.groupCount` (`Models.swift:1377`), which is guarded to at
-    ///     least 1 — so this is defence against a graph that has been edited, and "of 0" is not a
-    ///     sentence.
+    ///   - the ceiling is zero or less. Nothing in the app produces one: `SampleData` seeds a flat
+    ///     `courtCapacity = 8` (`SampleData.swift:176`), and every court a camp *grows* takes
+    ///     `max(1, venue.playerMax / max(1, venue.groupCount))` from `Camp.syncGroups(for:)`
+    ///     (`Models.swift:1514`), which is guarded to at least 1 at both ends of the division — so
+    ///     this is defence against a graph that has been edited, and "of 0" is not a sentence.
     static func reading(for card: CourtCard, capacity: Int?) -> CourtCapacity? {
         guard !card.isClosed else { return nil }
         return reading(here: card.playersHere, capacity: capacity)
@@ -244,7 +245,7 @@ extension CourtCapacity {
     /// `capacity > 0` test written out beside a comment asking for exactly this.
     ///
     /// `presentCount` is the numerator, not `playerCount`, and the two differ by whoever is away.
-    /// `Group.isOverCapacity` measures against today's count on purpose — `Models.swift:495-498`
+    /// `Group.isOverCapacity` measures against today's count on purpose — `Models.swift:594-597`
     /// argues it, and `Group.capacityBanner` and Overview's amber both follow it — so a reading
     /// built on the roll would let a row say "8 of 8 · Full" beside a court the rest of the app
     /// calls in range. One numerator, or the figure and the flag drift apart the first day somebody

@@ -13,16 +13,19 @@
 //  already the thing `InMemoryRepository` obeys. Reimplementing any of it in SQL would be two
 //  copies of the rules and one of them would be wrong.
 //
-//  Three places where the schema cannot say what the model says, all of them called out at the
+//  Two places where the schema cannot say what the model says, both of them called out at the
 //  code below:
 //
 //  1. There is no `players.overall_rank`. `ratings.rating` is the only column holding an order
 //     over players, so it is what a drag writes — as a permutation of the values already there,
 //     which moves the kids without inventing a rating.
-//  2. There is no `groups.closed_reason`, so a court taken out of play is held on this actor for
-//     the life of the process. See `SupabaseRepository+SectionEight.swift`.
-//  3. `sites.name` is globally unique and `camps.invite_code` is too, which the app's own
+//  2. `sites.name` is globally unique and `camps.invite_code` is too, which the app's own
 //     "Venue 1" naming walks straight into. Both inserts retry with a disambiguated value.
+//
+//  There were three. The second used to read "there is no `groups.closed_reason`, so a court taken
+//  out of play is held on this actor for the life of the process" — and it was the only one of the
+//  three that was a gap rather than a translation. A column closed it; see `setCourtStatus` in
+//  `SupabaseRepository+SectionEight.swift`.
 //
 //  And two things PostgREST's own verbs cannot express, both of which are therefore functions
 //  called over `rpc/` rather than a request against a table:
@@ -52,8 +55,12 @@ actor SupabaseRepository: SycamoreRepository {
     let auth: SupabaseAuth
     let db: PostgRESTClient
 
-    /// Courts taken out of play, and why. See the file header — nothing in the schema holds this.
-    var closedCourts: [Group.ID: String] = [:]
+    // `closedCourts: [Group.ID: String]` stood here — courts taken out of play, held for the life
+    // of the process because nothing in the schema said a court was shut. It is
+    // `groups.closed_reason` now (`20260810030000_a_closed_court_stays_closed`), read off the row
+    // `courts(forVenue:campID:)` was already fetching and written by one PATCH. Nothing replaces
+    // it on this actor: a dictionary beside the column would be a second answer to a question the
+    // row now settles, and the one that lost would be the one that survived a relaunch.
 
     /// Camps with a write in flight, and whoever is queued behind them.
     private var busyCamps: Set<Camp.ID> = []

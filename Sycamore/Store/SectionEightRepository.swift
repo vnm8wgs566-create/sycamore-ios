@@ -269,19 +269,47 @@ enum BlockKidSpread: Hashable, Sendable, CaseIterable {
     /// three into them.
     case evenly
 
+    /// The title of each option in the editor's picker, under the label "Kids".
+    ///
+    /// Every one of them names the *kids*, which is the change `5b` made
+    /// (`design/rebuild/section-t5.html:113-116`). "Leave them where they are" and "Put every kid
+    /// on these courts" sat under a heading that supplied the noun for the first and not the
+    /// second, so the two rows disagreed about what "them" was; and VoiceOver reads a row without
+    /// its heading. "Spread" over "Put" for the same reason the sentence below names the courts:
+    /// this deals children across several courts, and "put every kid on these courts" reads as
+    /// though they all go on all of them.
     var displayName: String {
         switch self {
-        case .leaveThem: "Leave them where they are"
-        case .allKids: "Put every kid on these courts"
+        case .leaveThem: "Leave kids where they are"
+        case .allKids: "Spread every kid over these courts"
         case .evenly: "Divide the kids on them evenly"
         }
     }
 
-    /// The one line under each option in the editor's picker.
-    var detail: String {
+    /// The one line under each option in the editor's picker, over the courts that are ticked.
+    ///
+    /// A function of the courts rather than a property, which is `5b`'s doing: it draws
+    /// "Deals the ranked groups across Courts 1, 2 and 5." — the courts named, in the sentence
+    /// that says what will happen to them. That is the half this line was missing. "Everybody at
+    /// the venue, dealt top-down by rank" told somebody the *rule* and left them to look up the
+    /// card above to find out what it would run over, which on a six-court venue is the only part
+    /// they cannot already guess.
+    ///
+    /// `courts` is `ScheduleBlock.courtSummary(in:)`'s phrase — "Court 1", "Courts 1–3",
+    /// "Courts 1, 2 and 5" — and nil when it cannot be spelled, which the sentence then simply
+    /// does without. Nothing here composes court labels: that speller follows the camp's sport, so
+    /// a swim camp reads "Lanes 1–3", and a second one here would be the second answer to a
+    /// question the model already has one for.
+    ///
+    /// `.leaveThem` and `.evenly` ignore it, and neither is an oversight. Leaving the kids alone is
+    /// not an operation on any courts at all; and the levelling rule's whole point is what it does
+    /// *not* touch, so its line stays about the courts it will leave out.
+    func detail(across courts: String?) -> String {
         switch self {
-        case .leaveThem: "Nothing moves."
-        case .allKids: "Everybody at the venue, dealt top-down by rank."
+        case .leaveThem: "Nothing moves when you save."
+        case .allKids:
+            courts.map { "Deals the ranked groups across \($0)." }
+                ?? "Deals the ranked groups across the courts above."
         case .evenly: "Nobody is pulled in from a court this block does not use."
         }
     }
@@ -419,7 +447,17 @@ extension InMemoryRepository: SectionEightData {
             .sorted { $0.startsAt.id < $1.startsAt.id }
             .map { block in
                 var block = block
-                if let liveCourts { block.courtIDs = block.courtIDs.filter(liveCourts.contains) }
+                if let liveCourts {
+                    block.courtIDs = block.courtIDs.filter(liveCourts.contains)
+                    // `staffing` is keyed by court, so it goes the same way and for the same
+                    // reason: `schedule_block_coaches.group_id` cascades on delete, so a court
+                    // removed in Setup takes its per-court staffing rows with it and Postgres
+                    // simply stops returning them. Nothing does that here, and without this line
+                    // the offline build would go on naming who is on a court the camp no longer
+                    // has — which is the divergence this method has already been caught in twice,
+                    // in the one direction only the real database can show you.
+                    block.staffing = block.staffing.filter { liveCourts.contains($0.courtID) }
+                }
                 block.notes = (notesByBlock[block.id] ?? [])
                     .map { item in
                         BlockNote(

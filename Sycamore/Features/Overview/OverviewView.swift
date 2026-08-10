@@ -72,12 +72,24 @@ struct OverviewView: View {
             courts: store.courts,
             now: runningBlock(in: blocks ?? []),
             pinnedNotes: pinnedNotes,
+            needsYou: needsYou,
             // Nil is "nobody has looked yet", which draws neither the card nor the invitation.
             dayIsUnscheduled: blocks?.isEmpty == true,
-            venueLine: venueLine
+            venueName: venueID.flatMap { store.venue($0)?.name },
+            dateLine: dateLine
         )
         .task(id: key) {
             await store.loadOverview()
+            // Guarded, because `.task(id:)` cancels the run it is replacing rather than *waiting*
+            // for it — and nothing inside `loadOverview` checks: the in-memory repository is an
+            // actor, so an `await` on it never throws `CancellationError` and a superseded run
+            // still finishes and still reaches this line. Landing after the run that replaced it,
+            // it would stamp the *old* key, and `todaysBlocks(for:)` would then answer nil for as
+            // long as the new key stood — no running-block card, `dayIsUnscheduled` pinned false,
+            // until the venue or the day moved again. `ScheduleView`'s own
+            // `.task(id: ScheduleLoad(…))` (`ScheduleView.swift:254-260`) guards the same hand-off
+            // for the same reason — "a slow Tuesday landing after a fast Wednesday".
+            guard !Task.isCancelled else { return }
             // The key `body` computed, not one read back off the store: the venue can be switched
             // from another tab while this is in flight, and recording the new one against the old
             // one's rows is exactly the staleness the marker exists to catch.
@@ -103,7 +115,7 @@ struct OverviewView: View {
     ///
     /// **The day filter is not belt and braces.** Even once loaded, `store.scheduleBlocks` is not
     /// guaranteed to be *this* day's: `addScheduleBlock` answers with `scheduleBlocks(forVenue:day:)`
-    /// for **the block's** day (`SectionEightRepository.swift:323`), and the composer this screen now
+    /// for **the block's** day (`SectionEightRepository.swift:514`), and the composer this screen now
     /// opens lets somebody change the day before saving. Write a block onto Friday from here and the
     /// store comes back holding Friday while the marker still says today — so without this, Overview
     /// would name a Friday block as the one running now, on a Tuesday afternoon.
@@ -186,23 +198,39 @@ struct OverviewView: View {
         store.inboxItems.filter { $0.pinned && !$0.resolved }.newestFirst
     }
 
-    /// `Sycamore · 4 courts` — what the header says when no block is running.
+    /// Everything waiting on a decision, newest first — the row under the block.
     ///
-    /// This used to be half of a `nowLine` that returned the block's line when there was one and
-    /// this when there was not. Both halves then travelled to the screen: `now` for the card and
-    /// the composed string for the header, and the screen could not tell that the second already
-    /// contained the first. Only the fallback crosses now, and `OverviewScreen` composes
-    /// `now?.headerLine ?? venueLine` where it draws it — one fact, one place.
+    /// `needsAction` and unresolved, which is `AppStore.openInboxCount`'s own predicate written as
+    /// a list rather than a number: the screen needs both the count and the newest one's words, and
+    /// deriving the two separately is how a count of two comes to be drawn beside a sentence about
+    /// a third thing.
     ///
-    /// An admin can be responsible for more than one venue and every venue numbers its courts from
-    /// 1, so which one this is is the most useful thing the line can say. It is no longer the *only*
-    /// thing said about an unscheduled day — that quiet fallback is what `OverviewEmptyDayHero` now
-    /// answers — but it stays, because it is also true on the other day this line is reached on:
-    /// one whose blocks have all finished.
-    private var venueLine: String? {
-        guard let venue = venueID.flatMap({ store.venue($0) }) else { return nil }
-        let count = store.courts.count
-        return "\(venue.name) · \(count) court\(count == 1 ? "" : "s")"
+    /// Camp-wide, and not narrowed to `readVenueID`, for the reason `pinnedNotes` gives directly
+    /// above about pins: the Inbox is the one screen in section 8 that is not about a venue, and
+    /// the caret on this row leads straight to it. A count here that disagreed with the count there
+    /// would be this screen quietly keeping its own books.
+    private var needsYou: [InboxItem] {
+        store.inboxItems.filter { $0.kind == .needsAction && !$0.resolved }.newestFirst
+    }
+
+    /// `Tuesday, 12 August · day 2 of 5` — the line under the screen's title.
+    ///
+    /// This slot used to hold `now?.headerLine ?? venueLine` — the running block's "Skills rotation
+    /// · until 10:30", or "Sycamore · 4 courts" when nothing was running. Both halves have somewhere
+    /// better to be under 4a: the block is the card at the head of the scroll, with a button on it,
+    /// and the venue is the pill above the title, with the court count in the sheet behind it. What
+    /// is left is the one fact the screen carries nowhere else — where the camp has got to in its
+    /// own run, which is the thing a coach on day two and a coach on day five want to know
+    /// differently.
+    ///
+    /// **`store.clock.now` rather than `.now`**, and it is not fussiness: `store.today` is derived
+    /// from that same instant (`AppClock.refresh(to:)`), and a line that spelled the weekday from
+    /// one clock and the date from another could read "Tuesday, 13 August" for the minute either
+    /// side of midnight. Reading it here costs nothing this view was not already paying — it reads
+    /// `store.timeOfDay` off the same clock to resolve the running block, so this pass is already
+    /// subscribed to the tick.
+    private var dateLine: String {
+        OverviewHeader.dateLine(for: store.today, on: store.clock.now, days: store.camp?.days)
     }
 }
 

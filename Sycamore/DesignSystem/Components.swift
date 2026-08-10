@@ -300,6 +300,20 @@ struct ChipMetrics: Sendable {
     static let role = ChipMetrics(font: .chipMedium, horizontalPadding: 0, verticalPadding: 11,
                                   radius: Radius.chipSquare, spacing: 6, unselectedBorder: Theme.strokeAlt,
                                   emojiSize: 12.5)
+    /// The block editor's Mon–Fri row — `600 13.5`, `10` vertical, **pill**, equal widths.
+    ///
+    /// A second day preset rather than a retune of `day` above, which `ScheduleView` and
+    /// `EarlyPickupSheet` both take: section 5a redraws this one row as pills
+    /// (`border-radius:999`, `padding:10px 0`, `gap:7px`, unselected `#E6E7EB` on `#3F4A44`)
+    /// and says nothing about the other two. Retuning `day` would have moved a day picker on
+    /// two screens this section does not draw, which is the failure the whole label pass is
+    /// trying to avoid — one screen's answer imposed on screens nobody looked at.
+    ///
+    /// `strokeChip` rather than `strokeAlt` for the same reason `venue` and `attribute` take it:
+    /// a pill's border is the one that has to hold its own against a fully round edge.
+    static let dayPill = ChipMetrics(font: .timelineTitle, horizontalPadding: 0, verticalPadding: 10,
+                                     radius: Radius.pill, spacing: 7, unselectedBorder: Theme.strokeChip,
+                                     emojiSize: 13.5)
 }
 
 /// A selectable chip: optional leading emoji, a label, and an optional trailing count drawn at
@@ -374,7 +388,7 @@ struct Chip: View {
                 // Order matters and is the whole fix. `.contentShape` before `.frame` pins the
                 // hit region to the drawn plate and the added height is inert — which is what
                 // three call sites had already worked around by hand
-                // (`ScheduleView.swift:293`, `EarlyPickupSheet.swift:181`) and five had not.
+                // (`ScheduleView.swift:336`, `EarlyPickupSheet.swift:182`) and five had not.
                 // Growing here rather than at the call site is what makes those workarounds
                 // unnecessary rather than merely redundant.
                 //
@@ -422,11 +436,32 @@ struct Chip: View {
 // MARK: - Buttons
 
 /// Fill and label tone shared by `Pill` and `PrimaryButton`.
+///
+/// Three of the six are outlines, and they are three because the design draws three. What varies
+/// between them is not decoration: it is how loudly the button asks. `.outline` is the way out of
+/// a screen, `.quietOutline` is a third answer beside two louder ones, `.accentOutline` is the
+/// second-choice version of something you can also do outright.
 enum ButtonTone: Sendable {
     case dark
     case accent
     /// White fill, `hairline` border, `inkSecondary` label — "Sign out".
     case outline
+    /// White fill, the heavier `stroke` rule, `inkWarm` label — `4c`'s "About even"
+    /// (`design/rebuild/section-t4.html:198`).
+    ///
+    /// A sibling of `.outline` rather than a retune of it. `.outline` is a `hairline` box holding
+    /// a grey word and it is right where it is used, at the foot of Profile; this is a firmer rule
+    /// (`#E4E5E9`, drawn at 1.5) around the design's warm ink, and it has to be, because it sits
+    /// between two full-height cards that are themselves buttons. A `hairline` box there reads as
+    /// a caption rather than as the third thing you may press.
+    case quietOutline
+    /// White fill, `accentBorder` rule, `accent` label — `4d`'s second-choice "Assign", for a
+    /// coach who is free later rather than free now.
+    ///
+    /// Deliberately the same word in the same place as the filled `.accent` Assign, one step back.
+    /// The two tiers of that row differ by *when*, not by what pressing them does, so they must
+    /// read as one control at two strengths and not as two controls.
+    case accentOutline
     /// White fill, `dangerBorder` border, `danger` label — "Delete account".
     case danger
 }
@@ -436,18 +471,20 @@ private extension ButtonTone {
         switch self {
         case .dark: Theme.ink
         case .accent: Theme.accent
-        case .outline, .danger: Theme.surface
+        case .outline, .quietOutline, .accentOutline, .danger: Theme.surface
         }
     }
 
     var foreground: Color {
         switch self {
         // `.dark` fills with `ink`, which inverts, so `surface` inverts with it and the pair
-        // stays legible. `.accent` fills with a blue that does *not* invert, so its label has
-        // to be pinned or it turns dark-on-blue in the dark scheme.
+        // stays legible. `.accent` fills with a green that does *not* invert, so its label has
+        // to be pinned or it turns dark-on-green in the dark scheme.
         case .dark: Theme.surface
         case .accent: Theme.onAccent
         case .outline: Theme.inkSecondary
+        case .quietOutline: Theme.inkWarm
+        case .accentOutline: Theme.accent
         case .danger: Theme.danger
         }
     }
@@ -456,7 +493,32 @@ private extension ButtonTone {
         switch self {
         case .dark, .accent: nil
         case .outline: Theme.hairline
+        case .quietOutline: Theme.stroke
+        case .accentOutline: Theme.accentBorder
         case .danger: Theme.dangerBorder
+        }
+    }
+
+    /// How thick that rule is drawn, where the tone draws one at all.
+    ///
+    /// **Beside the colour, because the two are one decision.** `.quietOutline` is `#E4E5E9` *at
+    /// 1.5* and `.accentOutline` is `accentBorder` *at 1.5*; drawn at a hairline they are not
+    /// quieter versions of themselves, they are a different control — a caption-weight box round a
+    /// 13.5pt label, which is what both of them exist not to be. The width lived on `Pill` as an
+    /// argument the caller had to remember, and the two tones that need it are exactly the two a
+    /// caller has no reason to suspect: forgetting it produced a hairline silently, on the quieter
+    /// half of a pair the reader is choosing between.
+    ///
+    /// The old comment argued the width could not live here because `PrimaryButton` shares this
+    /// enum and draws every border at a hairline, so a tone-carried width would be honoured by one
+    /// consumer and not the other. That is true and is not an argument against the property — it is
+    /// an argument for the override being written down, which it now is
+    /// (`PrimaryButton.body`, `:650-663`). A default a consumer overrides deliberately is a
+    /// contract; a value every caller must supply from memory is not.
+    var borderWidth: CGFloat {
+        switch self {
+        case .dark, .accent, .outline, .danger: BorderWidth.hairline
+        case .quietOutline, .accentOutline: BorderWidth.input
         }
     }
 }
@@ -469,6 +531,21 @@ struct Pill: View {
     var font: TypeStyle = .chipMedium
     var horizontalPadding: CGFloat = 15
     var verticalPadding: CGFloat = 9
+    /// An override for the rule's thickness. Nil — the usual case — takes the tone's own
+    /// (`ButtonTone.borderWidth`, `:502-524`).
+    ///
+    /// This was a plain `CGFloat` defaulting to `hairline`, and the two tones that are drawn at
+    /// `1.5` — `4c`'s "About even" and `4d`'s outlined "Assign" — had to be told so at every call
+    /// site. That is a contract nothing enforced: forget the argument and the pill still compiles,
+    /// still draws, and is silently the wrong control. The tone carries its own width now and the
+    /// two call sites that state it are stating what they would get anyway.
+    ///
+    /// Kept as a parameter rather than removed, because a width is a fair thing for one caller to
+    /// want — the shape it was added for is a pill that is *not* one of the design's tones — and
+    /// because removing it would break call sites this change does not own. Nil rather than a
+    /// defaulted `hairline`, so "said nothing" and "asked for a hairline" stay different requests:
+    /// under the old default, a tone's own width could never win.
+    var borderWidth: CGFloat?
     let action: () -> Void
 
     init(
@@ -478,6 +555,7 @@ struct Pill: View {
         font: TypeStyle = .chipMedium,
         horizontalPadding: CGFloat = 15,
         verticalPadding: CGFloat = 9,
+        borderWidth: CGFloat? = nil,
         action: @escaping () -> Void
     ) {
         self.title = title
@@ -486,6 +564,7 @@ struct Pill: View {
         self.font = font
         self.horizontalPadding = horizontalPadding
         self.verticalPadding = verticalPadding
+        self.borderWidth = borderWidth
         self.action = action
     }
 
@@ -505,7 +584,8 @@ struct Pill: View {
             .background(tone.background, in: Capsule(style: .continuous))
             .overlay {
                 if let border = tone.border {
-                    Capsule(style: .continuous).strokeBorder(border, lineWidth: BorderWidth.hairline)
+                    Capsule(style: .continuous)
+                        .strokeBorder(border, lineWidth: borderWidth ?? tone.borderWidth)
                 }
             }
             // Same order, same reason as `Chip`: the capsule is drawn at ~33pt and the target is
@@ -568,6 +648,16 @@ struct PrimaryButton: View {
             .padding(.vertical, height == nil ? 13 : 0)
             .background(tone.background, in: shape)
             .overlay {
+                // Pinned, and it overrides `tone.borderWidth` (`:502-524`) on purpose. A tone's
+                // width is drawn for a capsule about 33pt tall holding a 13.5pt label, where 1.5
+                // is what stops the rule reading as a caption; this button is 56pt tall at radius
+                // 16 under a 17pt label, and the design draws every bordered one of those —
+                // "Sign out", "Delete account" — at a hairline. Two shapes, two answers, and the
+                // one that disagrees with the tone says so here rather than leaving the enum
+                // holding a width that means something different depending on who read it.
+                //
+                // Nothing is currently drawn as a `PrimaryButton` in either of the 1.5 tones, so
+                // this changes no pixel today. It is the statement that keeps it that way.
                 if let border = tone.border {
                     shape.strokeBorder(border, lineWidth: BorderWidth.hairline)
                 }
@@ -678,11 +768,98 @@ struct SycamoreToggle: View {
     }
 }
 
+// MARK: - Progress
+
+/// The design's 4pt track with its figure alongside — `20 of 22` on `8m Attendance`,
+/// `30 of 42 placed` on `4c`'s first sort (`design/rebuild/section-t4.html:182`).
+///
+/// Lifted out of `AttendanceHeader.swift` unchanged the day a second screen asked for it. Two
+/// arguments came with it, and they are why this is a component rather than eight lines copied:
+///
+/// The fill is **scaled rather than measured**. At 4pt tall the capsule's 2pt ends distort by well
+/// under a point, and that keeps the bar free of a `GeometryReader` — which matters more here than
+/// it did in one file, because both screens redraw this on every single answer.
+///
+/// And the curve is **gated on Reduce Motion**. Both callers pin this bar in a header that stays
+/// on screen while the list under it churns, so it is the one piece of motion a reader cannot look
+/// away from.
+///
+/// That is also why it is no longer a spring. What came over from `AttendanceHeader` was
+/// `.snappy(duration: 0.25)`, and `.snappy` is `bounce: 0.15` — so the fill ran *past* the fraction
+/// and settled back to it. On a 4pt track that is not a bounce anybody reads as one; it is a
+/// wobble, and it is a bar overshooting the very number written beside it. The hoist is what
+/// promoted the curve to shared code and put it on `4c`, where it is driven on every single answer
+/// rather than on a mark here and there, and the design system's rule for this app is no bounce and
+/// no spring overshoot. `.easeOut` at 0.24 instead — the app's one fold duration (`Motion.fold`),
+/// so the bar moves for as long as everything else does and stops where it says it stopped.
+///
+/// `labelStyle` and `labelColor` carry no defaults on purpose. The two screens that draw this
+/// disagree — `8m` sets its figure `.metaSmall`/`inkSecondary`, `4c` sets it `.metaStrong`/`inkWarm`
+/// — so any default here would be one screen's answer quietly imposed on the other's.
+struct ProgressTrack: View {
+    let value: Int
+    let total: Int
+    /// The figure beside the bar, composed by the caller: `8m` writes `20 of 22` and `4c`
+    /// `30 of 42 placed`. Not derived from `value`/`total`, because those two spellings are the
+    /// only thing the design varies between the screens.
+    let label: String
+    let labelStyle: TypeStyle
+    let labelColor: Color
+    /// What VoiceOver calls the bar — `Marked` on `8m`, `Placed` on `4c`. Required rather than
+    /// derived from `label`, which is the *value* ("20 of 22") and not the name of anything.
+    let accessibilityLabel: String
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// `height:4px`. `OnTheDayTokens.progressHeight` is the same number arrived at from the same
+    /// CSS; it is restated rather than borrowed because a design-system primitive reaching up into
+    /// `Features/` is a dependency pointing the wrong way.
+    private let trackHeight: CGFloat = 4
+
+    /// Guarded rather than trusted: an empty roll and an empty ladder both reach this view before
+    /// anything has been loaded into them, and `0/0` is a bar of width NaN.
+    private var fraction: Double {
+        total == 0 ? 0 : Double(value) / Double(total)
+    }
+
+    var body: some View {
+        HStack(spacing: Spacing.row) {
+            Capsule()
+                .fill(Theme.hairline)
+                .frame(height: trackHeight)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.accent)
+                        .scaleEffect(x: fraction, y: 1, anchor: .leading)
+                }
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.24), value: fraction)
+
+            Text(label)
+                .typeStyle(labelStyle, color: labelColor)
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue("\(value) of \(total)")
+        // Read out as the count moves rather than only when the header is swiped to, so a coach
+        // running VoiceOver hears the list shrink without leaving the row they are on.
+        .accessibilityAddTraits(.updatesFrequently)
+    }
+}
+
 // MARK: - Avatar
 
 enum AvatarTone: Sendable {
     /// `fillAlt` disc, `inkMuted` initials — the default.
     case neutral
+    /// The same `fillAlt` disc one step firmer: `inkSecondary` initials.
+    ///
+    /// `#EFF0F3` / `#5C6068` is what the design draws wherever a set of initials is *large* — 52pt
+    /// on `4c`'s player cards (`design/rebuild/section-t4.html:187`) and 34pt on `4d`'s coach rows
+    /// (`:229`). `.neutral`'s `inkMuted` is a step lighter and was read off the 36–46pt discs,
+    /// where there is less of it on screen to carry. Two sizes asking for the firmer ink is what
+    /// makes this a tone rather than a colour argued at one call site.
+    case neutralStrong
     /// Black disc, white initials — admins in Setup's staff list.
     case dark
     /// `accentTint` disc, `accent` initials — the trainer.
@@ -717,7 +894,7 @@ struct InitialsAvatar: View {
 
     private var background: Color {
         switch tone {
-        case .neutral: Theme.fillAlt
+        case .neutral, .neutralStrong: Theme.fillAlt
         case .dark: Theme.ink
         case .tinted: Theme.accentTint
         }
@@ -726,9 +903,65 @@ struct InitialsAvatar: View {
     private var foreground: Color {
         switch tone {
         case .neutral: Theme.inkMuted
+        case .neutralStrong: Theme.inkSecondary
         case .dark: Theme.surface
         case .tinted: Theme.accent
         }
+    }
+}
+
+// MARK: - Venue letter tile
+
+/// The 44pt tile a venue wears in a list — its initial, not its emoji.
+///
+/// `44 × 44; border-radius:14px; background:#EDF6F1; font:600 17px; color:#14684A`
+/// (`design/rebuild/section-t4.html:149`).
+///
+/// Neither of the two shapes already here fits. `VenueIconTile` is the 52pt *emoji* tile a venue
+/// wears where it is being set up or edited; `InitialsAvatar` is a circle, and circles belong to
+/// people. This is the third thing: a place, in a list of places you might be standing.
+///
+/// A venue with an emoji still draws its letter here, which is the point — the emoji tile is
+/// decoration a venue *chose*, and three tennis venues choose the same 🎾. A column of distinct
+/// letters is what makes the list scannable at the speed somebody opens it: once, at 8am, to say
+/// where they are.
+///
+/// The tint does not vary by venue either, where `Theme.color(for:)` varies it on the emoji tile.
+/// One accent family down the column leaves the selected row's green border and tick as the only
+/// colour on screen that means anything.
+struct VenueLetterTile: View {
+    /// The venue's name. Only its first character is drawn.
+    let name: String
+    var size: CGFloat = 44
+    /// `600 17`, untracked. `.venueHeading` is the same size and weight and carries `-.03em`,
+    /// which is right for a run of words and wrong for one glyph: SwiftUI's tracking trails the
+    /// last character as well as sitting between them, so a tracked single letter sits fractionally
+    /// off the centre of its own tile. The design authors this one with no `letter-spacing` at all.
+    var font: TypeStyle = .venueHeading.tracking(em: 0)
+
+    init(_ name: String, size: CGFloat = 44, font: TypeStyle = .venueHeading.tracking(em: 0)) {
+        self.name = name
+        self.size = size
+        self.font = font
+    }
+
+    /// Uppercased, so a venue somebody typed in lower case still draws a capital.
+    private var letter: String {
+        name.first.map { String($0).uppercased() } ?? ""
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+            .fill(Theme.accentTint)
+            .frame(width: size, height: size)
+            .overlay {
+                Text(letter)
+                    .typeStyle(font, color: Theme.accentDark)
+            }
+            // The venue's full name is always the next thing in the row, so the letter is an
+            // initial of something already being read out. Hidden rather than left to announce
+            // "S" ahead of "Sycamore".
+            .accessibilityHidden(true)
     }
 }
 
@@ -1261,6 +1494,31 @@ private struct ControlsPreviewHarness: View {
                     Pill("Even out") {}
                 }
 
+                // The three outlines together, which is the only way to see that they are three
+                // different answers and not one drawn three ways. Both of the new pair draw the
+                // design's 1.5pt rule and neither is told to: `ButtonTone.borderWidth` (`:502-524`)
+                // carries it, and this preview asks for nothing but the tone precisely so that a
+                // width that failed to arrive would show up here as a hairline.
+                HStack(spacing: 8) {
+                    Pill("Sign out", tone: .outline) {}
+                    Pill("Assign", tone: .accentOutline, font: .chip,
+                         horizontalPadding: Spacing.large) {}
+                    Pill("Assign", tone: .accent, font: .chip,
+                         horizontalPadding: Spacing.large) {}
+                }
+                Pill("About even", tone: .quietOutline, font: .timelineTitle,
+                     horizontalPadding: 24, verticalPadding: 11) {}
+                    .frame(maxWidth: .infinity)
+
+                // Both callers' labels, so a change to either style shows up as a difference here
+                // rather than on one screen.
+                ProgressTrack(value: 20, total: 22, label: "20 of 22",
+                              labelStyle: .metaSmall, labelColor: Theme.inkSecondary,
+                              accessibilityLabel: "Marked")
+                ProgressTrack(value: 30, total: 42, label: "30 of 42 placed",
+                              labelStyle: .metaStrong, labelColor: Theme.inkWarm,
+                              accessibilityLabel: "Placed")
+
                 Card {
                     CardRow(horizontalPadding: 14, verticalPadding: 14) {
                         VStack(alignment: .leading, spacing: 1) {
@@ -1295,6 +1553,23 @@ private struct ControlsPreviewHarness: View {
                     InitialsAvatar("DA", size: 46, tone: .tinted)
                     InitialsAvatar("HU", size: 44)
                     InitialsAvatar("MA", size: 36, tone: .dark)
+                }
+
+                // `.neutralStrong` at both sizes the design draws it, next to the `.neutral` it is
+                // a step firmer than. The 52pt disc also takes the design's `600 16`, one point over
+                // what `.initials(forAvatarSize:)` returns for that diameter.
+                HStack(spacing: 12) {
+                    InitialsAvatar("SC", size: 52, tone: .neutralStrong,
+                                   font: .initials(forAvatarSize: 52).size(16))
+                    InitialsAvatar("SC", size: 52)
+                    InitialsAvatar("HU", size: 34, tone: .neutralStrong)
+                    InitialsAvatar("HU", size: 34)
+                }
+
+                HStack(spacing: 12) {
+                    VenueLetterTile("Sycamore")
+                    VenueLetterTile("LATC")
+                    VenueLetterTile("Westside")
                 }
 
                 PrimaryButton("Continue with Apple", tone: .dark, systemImage: "apple.logo") {}

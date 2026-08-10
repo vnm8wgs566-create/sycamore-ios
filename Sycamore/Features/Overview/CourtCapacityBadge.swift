@@ -4,31 +4,31 @@
 //
 //  "6 of 8" and the dashed green pill beside it saying "2 spots".
 //
-//  `8i`'s header row, third and fourth cells:
+//  4a's header row, third and fourth cells:
 //
 //      <div style="font:400 12.5px 'Instrument Sans';color:#A2A6AE">6 of 8</div>
 //      <div style="display:flex;align-items:center;gap:5px;background:#F6FAF7;
-//                  border:1px dashed #C3DFCF;border-radius:99px;padding:3px 9px 3px 4px">
-//        <div style="width:18px;height:18px;border-radius:99px;background:#fff;
-//                    border:1px solid #E4EDE7;…"><i class="ph ph-plus" …></i></div>
+//                  border:1px dashed #C3DFCF;border-radius:999px;padding:3px 10px">
 //        <span style="font:600 11px 'Instrument Sans';color:#1A7F55">2 spots</span>
 //      </div>
 //
-//  ── The `+` is drawn, and it is not a control ────────────────────────────────────────────────
+//  ── The `+` was drawn, was not a control, and is now not drawn ───────────────────────────────
 //
-//  It looks like one, and that is a genuine tension worth stating rather than resolving quietly.
-//  The design gives this pill the same dashed-green-with-a-plus treatment it gives the empty coach
-//  slot two rows down, which *is* the way to fill the court — so the vocabulary says "press me".
+//  `8i` put an 18pt white disc with an 11pt `+` inside this pill, and this file argued at length
+//  that it had to stay inert: the vocabulary said "press me" — it is the same dashed-green-with-a-
+//  plus the empty coach slot wears two rows down, and *that* one fills the court — but there was
+//  nothing on the other side of the press. Putting a kid on a court is enrolment, which is
+//  `Camp.move(_:to:)` behind Groups' drag-and-drop, and a `+` here would have to guess which kid.
 //
-//  It stays inert because there is nothing on the other side of the press. Putting a kid on a court
-//  is enrolment: it is `Camp.move(_:to:)` behind Groups' own drag-and-drop, on a screen built to
-//  weigh one court against another, and a `+` here would have to guess *which* kid. Overview offers
-//  two writes and their whole justification is that each fixes the exact state it is drawn beside
-//  (`OverviewScreen.swift:23-31`); "there is room here" is not a defect to fix, it is a fact.
+//  4a removes the glyph, which is a better answer than the paragraph. The pill is one child now:
+//  the count, in a dashed green capsule with symmetric padding. Nothing on it looks like a button,
+//  so nothing has to be explained away — "there is room here" is a reading, and it now looks like
+//  one. The dashed rule stays, because a dash is still this screen's way of drawing a space with
+//  nothing in it yet.
 //
-//  So the pill is one accessibility element with one label, carries no button trait, and cannot be
-//  focused as a control — which is what stops it lying to a reader who cannot see that nothing
-//  happens. `CourtStatusBadge` makes the same call about the `Closed` badge for the same reason.
+//  It remains one accessibility element with one label and no button trait, which is what stopped
+//  it lying to a reader who could not see that nothing happened. `CourtStatusBadge` makes the same
+//  call about the `Closed` badge for the same reason.
 //
 //  ── And the amber half is not in the design at all ───────────────────────────────────────────
 //
@@ -54,12 +54,6 @@ import SwiftUI
 struct CourtCapacityBadge: View {
 
     let capacity: CourtCapacity
-
-    /// The disc rides the `+` inside it, and both ride `.caption` — the band the 11pt label sits
-    /// in — so the pill keeps its proportions at every type size instead of the glyph outgrowing
-    /// the circle around it.
-    @ScaledMetric(relativeTo: .caption) private var discSize = OverviewTheme.capacityPillDisc
-    @ScaledMetric(relativeTo: .caption) private var plusSize = OverviewTheme.capacityPillGlyph
 
     var body: some View {
         HStack(spacing: OverviewTheme.capacityReadingGap) {
@@ -96,28 +90,25 @@ struct CourtCapacityBadge: View {
         }
     }
 
-    /// The design's own pill: a `+` in a disc, a count, and a dashed green plate around both.
+    /// The design's own pill: a count, in a dashed green plate. See the file header for the disc
+    /// that used to sit in front of it.
+    ///
+    /// Deliberately not `Badge` — which is `700 9.5` uppercase and tracked (`Components.swift:1001`)
+    /// where this is `600 11` sentence case — and deliberately not `Chip`, which is a control with a
+    /// selected state this pill has no version of. But the reason neither could take it even retuned
+    /// is the `dash:`. `Badge` draws its plate with `.background(_:in:)` and no stroke at all
+    /// (`Components.swift:1005`); `Chip` strokes a solid hairline whose only variable is a colour
+    /// picked from its tone (`Components.swift:376`). Neither exposes a `StrokeStyle`, and a dashed
+    /// border is not a colour or a metric — it is a different way of drawing the edge, so there is no
+    /// parameter either could grow short of one for this caller. Its exact counterpart
+    /// `VenuePickerSheet.shortfallBadge` (`VenuePickerSheet.swift:314-318`) carries the same note,
+    /// and carried it alone until now.
     private func roomPill(_ label: String) -> some View {
-        HStack(spacing: OverviewTheme.capacityPillGap) {
-            // `surface` and a solid ring rather than the coach slot's tinted, dashed disc: this
-            // one is inside a plate that is already `accentSurface` and dashed, so a second
-            // dash within a dash reads as fraying. The design draws it `#fff` on a solid
-            // `#E4EDE7` for the same reason.
-            PlusDisc(
-                size: discSize,
-                glyphSize: plusSize,
-                fill: Theme.surface,
-                border: Theme.accentSurfaceBorder,
-                isDashed: false
-            )
-
-            Text(label)
-                .typeStyle(OverviewTheme.capacityPill, color: Theme.accent)
-                .lineLimit(1)
-        }
-        .padding(.leading, OverviewTheme.capacityPillLeading)
-        .padding(.trailing, OverviewTheme.capacityPillTrailing)
-        .padding(.vertical, OverviewTheme.capacityPillVertical)
+        Text(label)
+            .typeStyle(OverviewTheme.capacityPill, color: Theme.accent)
+            .lineLimit(1)
+            .padding(.horizontal, OverviewTheme.capacityPillHorizontal)
+            .padding(.vertical, OverviewTheme.capacityPillVertical)
         .background(Theme.accentSurface, in: capsule)
         // `dash:` on the stroke, which is the design's `border:1px dashed`. The same
         // vocabulary as the empty coach slot below it — a dashed outline is this screen's
@@ -137,8 +128,8 @@ struct CourtCapacityBadge: View {
 
 #Preview("Room on a court") {
     VStack(alignment: .trailing, spacing: Spacing.medium) {
-        // `8i`'s three readings, in the order it draws them — the first of which now wears the
-        // amber the design leaves it without. See the file header for why.
+        // 4a's three readings, in the order it draws them — the first of which now wears the
+        // amber the design leaves it without. See `CourtCapacity`'s header for why.
         CourtCapacityBadge(capacity: CourtCapacity(here: 8, capacity: 8))
         CourtCapacityBadge(capacity: CourtCapacity(here: 6, capacity: 8))
         CourtCapacityBadge(capacity: CourtCapacity(here: 7, capacity: 8))
@@ -151,8 +142,8 @@ struct CourtCapacityBadge: View {
     .background(Theme.surface)
 }
 
-/// The size the app caps Dynamic Type at. The disc and the `+` in it ride one ramp, so the pill
-/// should grow without the glyph breaking out of the circle.
+/// The size the app caps Dynamic Type at. The pill is one label in a capsule now, so it should
+/// simply get longer.
 #Preview("Room on a court — accessibility1") {
     VStack(alignment: .trailing, spacing: Spacing.medium) {
         CourtCapacityBadge(capacity: CourtCapacity(here: 6, capacity: 8))

@@ -18,6 +18,12 @@
 //      flag / meta         -> does a full or shut court say so, and does a court with room stay quiet
 //      hasSomewhereElse    -> and should the bar that opens all this be live at all
 //
+//  And a fifth, which is where the closure input *comes from*. `PlayerCourtChoices` takes the shut
+//  courts as an argument and cannot check them; `AppStore.closedCourts` is what the sheet passes,
+//  and it used to be one venue's — so on a two-venue camp half the list said nothing about closure
+//  and nothing about it looked wrong. `AppStore.closedCourts is the camp's` at the foot of this
+//  file is that half, tested from the store because that is where it can be got wrong.
+//
 //  `flag` used to be a `String?` this file wrote itself — "Full" bolted onto Overview's words for
 //  the over-capacity case — and the tests below that changed shape are the ones that had been
 //  pinning the seam. It is `CourtCapacity.Flag` now: one enum, one branch, and the pill and the
@@ -539,5 +545,181 @@ struct PlayerCourtChoicesBarTests {
 
         #expect(kid.groupID == topCourt.id)
         #expect(PlayerCourtChoices(for: kid.id, in: camp).hasSomewhereElse)
+    }
+}
+
+// MARK: - Where the closed set comes from
+
+/// The other half of the closure defect, on the side the sheet cannot check.
+///
+/// `PlayerCourtChoices` believes whatever set it is handed, so a set that is *right about one
+/// venue* produces a list that is silently wrong about the other half of a two-venue camp — the
+/// failure the suite above cannot see, because every test in it hands the set in by hand.
+/// `AppStore.closedCourts` was that set, derived from `courts`, which `courts(forVenue:campID:)`
+/// loads for `readVenueID` and one venue only.
+///
+/// It is derived from `camp.groups` now, because `groups.closed_reason` (`20260810030000`) put the
+/// reason on the row and the camp graph already reads every venue's rows. These pin the three
+/// things that fixes and the one it must not cost.
+@MainActor
+@Suite("AppStore.closedCourts is the camp's")
+struct StoreClosedCourtsTests {
+
+    /// Two venues, and the shut court is at the **second** one — the venue `readVenueID` does not
+    /// answer with. Under the old derivation this camp produced an empty set.
+    ///
+    /// `throws` and `try #require` rather than a `!`, which is what this was. A nil here is not a
+    /// failing assertion about the subject — it is the fixture having come apart, `Courts.court`
+    /// having handed back a group the camp does not hold — and the two want different reporting: a
+    /// force unwrap traps the whole run at a line inside a helper, where `#require` fails the one
+    /// test and names the helper. `noCourtYet` (`:206`) already asks for the same index this way.
+    private static func campWithAShutCourtAtTheOtherVenue() throws -> (Camp, Group) {
+        var camp = Courts.camp()
+        let shut = Courts.court(camp, venue: 1, court: 1)
+        let index = try #require(camp.groups.firstIndex { $0.id == shut.id })
+        camp.groups[index].closedReason = "Net down"
+        return (camp, camp.groups[index])
+    }
+
+    private static func store(_ camp: Camp) -> AppStore {
+        let store = AppStore(repository: InMemoryRepository(camps: [camp]))
+        store.camp = camp
+        return store
+    }
+
+    @Test("A court shut at the venue nobody is looking at is still in the set")
+    func theOtherVenuesClosureCounts() throws {
+        let (camp, shut) = try Self.campWithAShutCourtAtTheOtherVenue()
+        let store = Self.store(camp)
+
+        // The premise: the store is reading the *first* venue, and `courts` — what this used to be
+        // derived from — has never been loaded at all.
+        #expect(store.readVenueID == camp.orderedVenues[0].id)
+        #expect(store.courts.isEmpty)
+
+        #expect(store.closedCourts == [shut.id])
+    }
+
+    @Test("Nothing shut is an empty set, and no camp is an empty set")
+    func nothingShutSaysNothing() {
+        #expect(Self.store(Courts.camp()).closedCourts.isEmpty)
+        #expect(AppStore(repository: InMemoryRepository()).closedCourts.isEmpty)
+    }
+
+    /// The words, for the screens that print them rather than counting. `Camp.closedReason(for:)`
+    /// answers for any venue's court, which is the whole reason the block editor can stop deriving
+    /// its own from `store.courts`.
+    @Test("The reason comes back with the court, for either venue")
+    func theReasonIsReadable() throws {
+        let (camp, shut) = try Self.campWithAShutCourtAtTheOtherVenue()
+
+        #expect(camp.closedReason(for: shut.id) == "Net down")
+        #expect(camp.closedReason(for: Courts.court(camp, venue: 0, court: 0).id) == nil)
+        #expect(camp.closedReason(for: Group.ID()) == nil)
+    }
+
+    /// An empty reason is a court somebody shut without typing why — `CourtStatus.closed(reason:
+    /// "")`, drawn as a bare "Closed". It must not read as open, which is exactly what a
+    /// `reason?.isEmpty == false` test somewhere would do to it.
+    @Test("A court shut with no reason typed is still shut")
+    func anEmptyReasonIsStillAClosure() throws {
+        var camp = Courts.camp()
+        let shut = Courts.court(camp, venue: 0, court: 0)
+        let index = try #require(camp.groups.firstIndex { $0.id == shut.id })
+        camp.groups[index].closedReason = ""
+
+        #expect(Self.store(camp).closedCourts == [shut.id])
+        #expect(camp.closedReason(for: shut.id) == "")
+    }
+
+    /// What deriving from the graph would otherwise have cost. `setCourtStatus` writes the row and
+    /// is answered with the venue's cards, not with the camp — so the graph is brought into step by
+    /// the intent itself. Without that, closing a court on Overview would leave this sheet calling
+    /// it open until the whole camp was read again.
+    @Test("Closing a court on Overview is visible to the picker straight away, and re-opening it too")
+    func theWriterKeepsTheGraphInStep() async throws {
+        let camp = Courts.camp()
+        let court = Courts.court(camp, venue: 0, court: 1)
+        let store = Self.store(camp)
+
+        await store.setCourtStatus(.closed(reason: "Net down"), forGroup: court.id)
+
+        #expect(store.errorMessage == nil)
+        #expect(store.closedCourts == [court.id])
+        #expect(store.camp?.closedReason(for: court.id) == "Net down")
+
+        await store.setCourtStatus(.open, forGroup: court.id)
+
+        #expect(store.closedCourts.isEmpty)
+        #expect(store.camp?.closedReason(for: court.id) == nil)
+    }
+
+    /// A refused write leaves the graph alone. Provoked the way the store suites provoke failure —
+    /// by naming a court the repository does not hold — because the assignment happens after the
+    /// call and inside the same `perform`.
+    @Test("A refused close does not shut the court in the graph")
+    func arefusedWriteChangesNothing() async {
+        let camp = Courts.camp()
+        let store = Self.store(camp)
+
+        await store.setCourtStatus(.closed(reason: "Net down"), forGroup: Group.ID())
+
+        #expect(store.errorMessage != nil)
+        #expect(store.closedCourts.isEmpty)
+    }
+}
+
+// MARK: - And where the row gets it from
+
+@Suite("groups.closed_reason arrives on the court")
+struct GroupClosureDecodingTests {
+
+    /// The column is `closed_reason` and the property is `closedReason`, which only agree because
+    /// the decoder converts from snake case (`SupabaseCoding.swift:22-23`). Decoded from JSON
+    /// rather than built with the memberwise initialiser so that the mapping is what is under test
+    /// and not just the assignment.
+    ///
+    /// The domain hop is the second half: `Group.init(_:number:capacity:)` has to carry the reason
+    /// across, and it was the line that did not exist — the migration, the record and the
+    /// repository all landed and the court still arrived open.
+    @Test("The column is decoded and carried into the camp graph")
+    func theReasonSurvivesTheWire() throws {
+        let json = """
+        {
+          "id": "\(UUID().uuidString)",
+          "site_id": "\(UUID().uuidString)",
+          "name": "Court 2",
+          "court_label": "Court 2",
+          "rank_order": 2,
+          "activity": "Drills",
+          "closed_reason": "Net down"
+        }
+        """
+
+        let record = try SupabaseCoding.decoder().decode(GroupRecord.self, from: Data(json.utf8))
+        #expect(record.closedReason == "Net down")
+
+        let court = Group(record, number: 2, capacity: 8)
+        #expect(court.closedReason == "Net down")
+        // The precedent it rides beside, checked in the same breath: two nullable `text` columns
+        // about this morning, and only one of them used to make the trip.
+        #expect(court.activity == "Drills")
+    }
+
+    /// A court in play, and a build talking to a database one migration behind — the same absent
+    /// key either way, which is why the property is optional on both sides.
+    @Test("A missing column is an open court rather than a failed decode")
+    func anAbsentColumnReadsOpen() throws {
+        let json = """
+        {
+          "id": "\(UUID().uuidString)",
+          "site_id": "\(UUID().uuidString)",
+          "name": "Court 1",
+          "rank_order": 1
+        }
+        """
+
+        let record = try SupabaseCoding.decoder().decode(GroupRecord.self, from: Data(json.utf8))
+        #expect(Group(record, number: 1, capacity: 8).closedReason == nil)
     }
 }

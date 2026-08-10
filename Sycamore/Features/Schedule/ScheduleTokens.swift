@@ -13,7 +13,7 @@
 //
 //  It declares no type of its own any more either, for the same reason. `ScheduleType` survives as
 //  a set of aliases onto `TypeStyle` so the call sites keep reading in this screen's vocabulary —
-//  `blockTitle`, `courtBadge`, `emptyCopy` — while the numbers behind them live in one place.
+//  `blockTitle`, `pickRowTitle`, `emptyCopy` — while the numbers behind them live in one place.
 //
 //  The geometry below is still local, and every value is a hoist candidate the moment a second
 //  feature draws the same thing.
@@ -119,13 +119,27 @@ enum ScheduleMetrics {
 
     // MARK: The resize handle
 
-    /// `28 × 3` — the grabber on a card's bottom edge.
+    /// `26 × 4` — the grabber on a card's bottom edge
+    /// (`design/rebuild/section-t5.html:170`).
     ///
     /// `SheetGrabber`'s 38×4 (`Components.swift:37-47`) at the scale of a card rather than of a
-    /// screen: deliberately the same vocabulary for "this edge moves", one step quieter, because
-    /// it is drawn on every upcoming block rather than once at the top of a sheet. It takes that
-    /// component's `Theme.grabber` too, rather than a colour of its own.
-    static let resizeGrab = CGSize(width: 28, height: 3)
+    /// screen: deliberately the same vocabulary for "this edge moves", narrower because it is drawn
+    /// on every upcoming block rather than once at the top of a sheet. It takes that component's
+    /// `Theme.grabber` too, rather than a colour of its own.
+    ///
+    /// It was `28 × 3`, chosen by eye before the design drew one. 5c draws one, and the two points
+    /// it moves are both in the same direction: shorter across and a full point thicker, which is
+    /// the sheet's own bar at the sheet's own weight rather than a fainter cousin of it. A 3pt
+    /// capsule in `Theme.grabber` on white is at the edge of visible; the whole affordance is that
+    /// somebody notices it.
+    static let resizeGrab = CGSize(width: 26, height: 4)
+    /// `12` — how far the grabber sits above the card's bottom border.
+    ///
+    /// `Spacing.medium`, and the design's arithmetic rather than a coincidence: `bottom:6px` on a
+    /// row with `padding:6px 18px` around the capsule puts 12 between the capsule and the border.
+    /// It was `Spacing.tight` (6), which put the grabber inside the descenders of the last line a
+    /// `.compact` card has room for.
+    static let grabberLift: CGFloat = Spacing.medium
     /// How much of a block's bottom edge takes a resize drag rather than a move.
     ///
     /// A rule rather than a number, and it replaces the `76`-point column this used to be. That
@@ -138,13 +152,48 @@ enum ScheduleMetrics {
     /// keeps a fifteen-minute block's title tappable, which no fixed height could — 44pt does not
     /// fit inside 30pt, and a handle taller than its card would sit over the block below it.
     ///
-    /// The grabber's lift off the bottom border and the readout's lift off the grabber are
-    /// `Spacing.tight` and `Spacing.small`, taken from the shared scale rather than restated here.
-    /// They landed on 6 and 8 by eye, which is exactly the case this file's header warns about: a
-    /// chosen number that happens to equal a shared step is a second name for that step.
+    /// The grabber's lift off the bottom border is `grabberLift` above. The readout no longer sits
+    /// off the grabber at all — 5c centres it *on* the moving edge, out at the card's trailing
+    /// corner, so the two are no longer stacked and no longer have a gap between them to name.
     static func resizeHitHeight(in blockHeight: CGFloat) -> CGFloat {
         min(HitTarget.minimum, blockHeight / 2)
     }
+
+    // MARK: The live drag
+
+    /// `34` — how far above the card's bottom border the amber line is pinned while a block is
+    /// being dragged (`design/rebuild/section-t5.html:169`).
+    ///
+    /// The design's own stack read upwards: `grabberLift` (12) + the grabber (4) + 18 of air. Out
+    /// of the card's flow and against its bottom edge, because a dragged card is 358pt of white
+    /// with two lines at the top of it and the fact somebody needs is at the edge they are moving.
+    static let dragClashBottom: CGFloat = 34
+
+    /// `0.6` — how far the block being run into recedes while a finger is over it
+    /// (`opacity:.6`, `design/rebuild/section-t5.html:162`).
+    ///
+    /// **One neighbour, not the rest of the day.** The design's frame dims the block being dragged
+    /// onto and leaves the other resting card at full strength, which is the difference between
+    /// "this is the one you are about to run into" and "everything recedes while you drag" — the
+    /// second says nothing, and on a canvas whose whole subject is what else is on the morning it
+    /// says it by hiding the morning.
+    static let runIntoDim: Double = 0.6
+
+    /// `10` — the live readout's inset from the card's trailing edge
+    /// (`right:10px`, `design/rebuild/section-t5.html:172`).
+    ///
+    /// Measured off the card rather than off the lane. The design draws them in the same place
+    /// because its dragged card is the full width of the lane area; on a morning with two blocks
+    /// running at once a card is half of that, and a readout pinned to the lane would float away
+    /// from the edge it is reporting on.
+    static let readoutInset: CGFloat = 10
+    /// `15` — the readout capsule's horizontal padding, against `Spacing.small` (8) vertical
+    /// (`padding:8px 15px`).
+    ///
+    /// Not on the shared scale, and it is a capsule rather than a box: the horizontal padding has
+    /// to clear the curve before the first glyph starts, which is why every pill in this design is
+    /// drawn wider than it is tall by more than its type needs.
+    static let readoutPadding: CGFloat = 15
 
     // MARK: A card's note line
 
@@ -174,12 +223,19 @@ enum ScheduleMetrics {
     /// `10` — `gap:10px` between the court card's copy and its badge, and between the notes
     /// row's glyph and its label.
     static let rowGap: CGFloat = 10
-    /// `10` — the badge's vertical padding. Its horizontal is `Spacing.large`.
-    static let badgePadding: CGFloat = 10
-    /// `4` — `margin-top:4px` on "8 players · rotate at 10:30am".
+    /// `4` — `margin-top:4px` under the header's times, which is where `5d` hangs the amber clash
+    /// line. It was transcribed off "8 players · rotate at 10:30am" on the old court card and kept
+    /// its name when that card was redrawn.
     static let courtMetaGap: CGFloat = 4
-    /// `6` — `padding:6px 4px 0` above "WHO IS WHERE".
-    static let overlineTop: CGFloat = 6
+
+    // `badgePadding` (`10`, the "Open" badge's vertical padding) and `overlineTop` (`6`, the
+    // `padding:6px 4px 0` above "WHO IS WHERE") used to sit in this run. Both were transcribed off
+    // drawings `5d` deleted — the badge went with `BlockCourtCard`'s "Your court" body, because
+    // court status is Overview's write and `5d` draws no badge; the overline went with
+    // `BlockAssigneeList`'s, because `5d` distils five section headers into flat labels and no new
+    // screen introduces tracked caps. A number nothing draws is not a token, it is a measurement
+    // of something that is gone.
+
     /// `30` — the avatar in "Who is where".
     static let assigneeAvatar: CGFloat = 30
     /// `52` — "Take attendance".
@@ -187,9 +243,21 @@ enum ScheduleMetrics {
     /// `20` — `bottom:20px`, which is two points tighter than the tab bar's own inset because
     /// `8l` draws no tab bar to sit above.
     static let ctaBottom: CGFloat = 20
-    /// `17` — the tick beside a coach in the block editor's picker, and beside a note's `⋯`.
+    /// `17` — the `⋯` beside a pinned note.
     /// A glyph rather than copy, so it is sized in points and not through the type table.
+    ///
+    /// It used to be the block editor's tick as well, and the two are no longer one number:
+    /// `5a`/`5b` draw every pick row's tick and empty ring at `21`
+    /// (`design/rebuild/section-t5.html:70-77`) against this 17. Two glyphs on two screens that
+    /// happened to agree, rather than one glyph — so the editor's is `pickTick` below and this
+    /// keeps the size it was transcribed at.
     static let pickerCheck: CGFloat = 17
+    /// `21` — the tick, and the empty ring beside it, on every row of a card you choose from.
+    ///
+    /// `font-size:21px` on the filled `check-circle` and `21×21` on the unpicked `border-radius:99px`
+    /// (`design/rebuild/section-t5.html:70-77`), which is the design saying the two are one control
+    /// in two states rather than a glyph and a hole the same size by luck.
+    static let pickTick: CGFloat = 21
 
     // MARK: The block editor
 
@@ -200,16 +268,49 @@ enum ScheduleMetrics {
     /// Here rather than on `ActiveSheet.detentFraction`, which is a property of a slot this sheet
     /// deliberately does not occupy — see `BlockEditorSheet`'s header.
     static let editorDetent: Double = 0.92
-    /// `18` — between the editor's sections, matching the gap `VenueSheet` leaves between its own.
-    static let editorSectionGap: CGFloat = 18
-    /// `9` — between two fields inside one section.
-    static let editorFieldGap: CGFloat = 9
-    /// `52` — the editor's commit bar, and the delete below it.
+    /// `9` — between the Starts and Ends columns, and from a field to the amber line under it
+    /// (`design/rebuild/section-t5.html:82, 89`).
     ///
-    /// The same number as `ctaHeight` and stated separately rather than borrowed: that one is
-    /// `8l`'s pinned "Take attendance", and the day the design moves one it will not have moved
-    /// the other.
-    static let editorButtonHeight: CGFloat = 52
+    /// `editorSectionGap` used to sit beside it: `18`, "matching the gap `VenueSheet` leaves
+    /// between its own". There are no sections left to space. `5a` labels each *field* rather than
+    /// heading a group of them, and `SheetFieldLabel` carries its own `14` above and `7` below
+    /// (`SheetChrome.swift:220-238`) — so the gap between one field and the next is now a property
+    /// of the label that opens it, and a token restating it from outside would be a second number
+    /// for one distance.
+    static let editorFieldGap: CGFloat = 9
+    /// `10` — `margin-top:10px` from "Save changes" down to "Delete block"
+    /// (`design/rebuild/section-t5.html:126`).
+    ///
+    /// A point off `editorFieldGap` and stated separately rather than rounded onto it. Two fields
+    /// side by side are one control split in half; two full-width bars stacked are a commit and an
+    /// irreversible write, and the design keeps the second pair a point further apart.
+    static let editorDeleteGap: CGFloat = 10
+    /// `7` — `gap:7px` between the Mon–Fri pills (`design/rebuild/section-t5.html`, 5a's Day row).
+    ///
+    /// A point off `Spacing.tight` (6), which is what this row used while the chips were squared.
+    /// Not snapped back onto it: a pill's round ends already read as a gap, so the design opens
+    /// the real one slightly to stop five of them reading as one bar. `ChipMetrics.dayPill`
+    /// carries the *inside* of a chip; this is the space between them, and `Chip` spends
+    /// `metrics.spacing` on its own emoji-to-label gap (`Components.swift:358`), so the two
+    /// cannot be the same number.
+    static let editorDayGap: CGFloat = 7
+    /// `13` — `padding:0 13px` on the two lines that explain a card rather than sit inside one.
+    ///
+    /// `CardRow`'s own horizontal gutter (`Components.swift:216`), which is the point: the hint
+    /// under the Kids card starts where the copy in the row above it starts, so it reads as a
+    /// footnote to that card rather than as a line of the sheet.
+    static let editorHintInset: CGFloat = 13
+    /// `56` — the editor's commit bar, and the delete below it.
+    ///
+    /// Stated separately from `ctaHeight` rather than borrowed: that one is `8l`'s pinned "Take
+    /// attendance", and the day the design moves one it will not have moved the other. They were
+    /// both `52` and this is `56` now — `height:56px` on both bars of `4e` and `5b` — which is the
+    /// day arriving.
+    ///
+    /// It is also `PrimaryButton`'s own default (`Components.swift:606-610`), and is passed explicitly
+    /// anyway. The button is drawn at four heights across the app; a call site that says which one
+    /// it wants cannot be moved by a change made for somebody else's screen.
+    static let editorButtonHeight: CGFloat = 56
 
     // MARK: `8f`
 
@@ -245,18 +346,37 @@ enum ScheduleMetrics {
 
 enum ScheduleShadows {
 
-    /// `0 8px 22px rgba(26,127,85,.08)` — the lift under `8l`'s court card.
+    // `courtCard` used to open this enum: `0 8px 22px rgba(26,127,85,.08)`, the lift under `8l`'s
+    // court card. `5d` redrew that card without it and `BlockCourtCard` draws a flat `Card`, so
+    // nothing was reading it. The argument it carried is not lost with it — the day's rule about
+    // what is allowed to lift is restated on `draggedBlock` below, which is the one case that rule
+    // was ever making an exception for.
+
+    /// `0 14px 34px rgba(26,127,85,.16)` — the card with a finger on it
+    /// (`design/rebuild/section-t5.html:166`).
     ///
-    /// Only that card. `8k`'s running block wears the same green border at a point thinner and
-    /// no shadow at all, which is what keeps the day reading as one plane with one card marked
-    /// on it rather than as a card that has come loose. That is worth more on a canvas than it was
-    /// on a list: cards there sit *beside* each other as well as under, and a lifted one would read
-    /// as being in front of its neighbour rather than at the same hour as it.
+    /// **The day's only shadow.** A resting `8k` block gets none: the running block wears the same
+    /// green border a point thinner and nothing else, so the day reads as one plane with one card
+    /// marked on it rather than as a card that has come loose — which is worth more on a canvas
+    /// than it was on a list, because cards here sit *beside* each other as well as under, and a
+    /// lifted one reads as being in front of its neighbour rather than at the same hour as it.
     ///
-    /// Built from `Theme.accent` rather than from the design's literal `rgba(26,127,85,…)` so
-    /// the glow follows the accent into the dark scheme. It is a *tint*, not a cast shadow —
-    /// see `Shadows.cast` for why the ordinary ones are pinned to black instead.
-    static let courtCard = ShadowToken(color: Theme.accent.opacity(0.08), radius: 11, y: 8)
+    /// 5c is the case that rule was never about. A card under a finger genuinely *is* in front of
+    /// its neighbours — it already draws over them (`ScheduleView.swift:733-736`), it already overhangs
+    /// its own slot, and on a three-deep morning it is about to be carried across a column. So the
+    /// rule the day keeps is "nothing is lifted for a state it is merely *in*", and a hand on a
+    /// block is not a state.
+    ///
+    /// Built from `Theme.accent` rather than from the design's literal `rgba(26,127,85,…)`, so the
+    /// glow follows the accent into the dark scheme. It is a *tint*, not a cast shadow — see
+    /// `Shadows.cast` for why the ordinary ones are pinned to black instead. Halved from the CSS
+    /// blur per `ShadowToken`'s note (`Theme.swift:434-435`), so `34px` is `radius: 17`.
+    ///
+    /// Green rather than `Shadows.cast`'s near-black, and that is the design's choice rather than
+    /// this file's convenience: the readout capsule three lines away *is* cast in near-black
+    /// (`Shadows.liftedRow`), so the two are deliberately different marks — one says "this thing is
+    /// live", the other says "this thing is floating over the day".
+    static let draggedBlock = ShadowToken(color: Theme.accent.opacity(0.16), radius: 17, y: 14)
 
     /// `0 12px 30px rgba(26,127,85,.24)` — under `8l`'s "Take attendance".
     static let cta = ShadowToken(color: Theme.accent.opacity(0.24), radius: 15, y: 12)
@@ -278,6 +398,13 @@ enum ScheduleType {
 
     /// `400 13` — the time beside a block.
     static let blockTime = TypeStyle.sheetSubtitle
+    /// `400 12` — the hour down the gutter (`design/rebuild/section-t5.html:144-149`).
+    ///
+    /// A point under `blockTime`, which is what this used to be and what section 8's list drew:
+    /// there, every entry in the column was a *block's* start and belonged to the card beside it.
+    /// The column labels the grid now — thirteen fixed hours the blocks are placed against — so it
+    /// is scenery, and the design sets scenery a size down.
+    static let gutterHour = TypeStyle.meta
     /// `600 13` — the time beside the block running now.
     static let blockTimeNow = TypeStyle.countdown
     /// `500 14.5` — "Drop-off · done", the one line a finished block gets. `body` without its
@@ -300,22 +427,33 @@ enum ScheduleType {
     /// `600 10.5`, `+.14em`, uppercase — "YOUR COURT", "WHO IS WHERE". `8f`'s "OR START FROM A
     /// SHAPE" is the same style a hair wider, which it asks for with `.tracking(em: 0.15)`.
     static let overline = TypeStyle.overlineSmall
-    /// `600 19`, `-.035em` — "Court 1 – Drills". The one size on these three screens the design
-    /// draws once and nowhere else, so it stays a style of its own.
-    static let courtTitle = TypeStyle(size: 19, weight: .semibold, trackingEm: -0.035)
-    /// `400 13` — "8 players · rotate at 10:30am".
-    static let courtMeta = TypeStyle.sheetSubtitle
-    /// `600 13.5` — the "Open" badge on the court card.
-    static let courtBadge = TypeStyle.timelineTitle
+    // `courtTitle` (`600 19`, "Court 1 – Drills"), `courtMeta` (`400 13`, "8 players · rotate at
+    // 10:30am") and `courtBadge` (`600 13.5`, the "Open" badge) used to sit here. All three were
+    // `8l`'s green "Your court" plate, and `5d` deleted that plate — the card is drawn once per
+    // court now, headed by a flat label, and its status badge went because court status is
+    // Overview's write and this screen owns none of it. `courtTitle` was the only one of the three
+    // that was a style rather than an alias, which is worth noting because it means nothing is
+    // left in this enum that the shared table does not already carry.
+
     /// `500 12.5` — a pinned note, which is written a shade heavier on `8l`'s plate than it is
     /// on `8k`'s card.
     static let pinnedNote = TypeStyle.rowSubtitle
     /// `400 12` — the `+2` beside it, a half-point smaller than `8k`'s.
     static let noteCount = TypeStyle.meta
-    /// `600 14`, `-.02em` — a person's name in "Who is where". The " · you" after it is this
-    /// style at `400`, which is why the qualifier asks for `.weight(.regular)` rather than for a
-    /// style of its own.
-    static let assigneeName = TypeStyle.rowTitleSm
+    // `assigneeName` (`600 14`, `-.02em`) used to sit here: a person's name in `8l`'s "Who is
+    // where" list. That list is gone — `5d` asks "is Court 2 covered" and answers it per court, so
+    // the names moved into `BlockCourtCard`'s coach rows and `CourtCoachLine` sets them. Its only
+    // remaining readers were two doc comments comparing themselves to it, which is how a deleted
+    // style goes on looking alive.
+
+    /// `600 14.5`, `-.02em` — the title of a row you can pick: a kind, a court, a kid spread, a
+    /// coach (`design/rebuild/section-t5.html:70, 104, 113, 118`).
+    ///
+    /// Half a point over `TypeStyle.rowTitleSm`, which is what `8l` set a *reported* name at, and
+    /// the half point is the whole distinction: every row on the editor's four cards is a control.
+    /// The design sets them at the size it sets `8f`'s day-shape tiles, which are the other thing
+    /// on these screens you tap to choose.
+    static let pickRowTitle = TypeStyle.rowLabel
     /// `400 12.5` — their role, and the court they are on.
     static let assigneeMeta = TypeStyle.rowDetail
     /// `500 13.5` — "3 notes on this block". The design's single use of 500 at this size.
@@ -325,16 +463,44 @@ enum ScheduleType {
 
     // MARK: The block editor
 
-    /// `500 14` — what somebody has typed into one of the editor's fields, and what its two time
-    /// menus read back.
+    /// `400 26/1.05 Newsreader`, `-.02em` — "New block" and "Edit block" at the head of the sheet
+    /// (`design/rebuild/section-t4.html:274`, `design/rebuild/section-t5.html:62`).
+    ///
+    /// `sheetTitle` at four points larger, asked for by name rather than transcribed again, so the
+    /// family, the weight and the tracking stay the shared table's and only the size is this
+    /// sheet's. The block editor is the one sheet in the app the design draws over 22, and it
+    /// earns it: `VenueSheet` and `StaffSheet` open onto three fields, and this one opens onto
+    /// nine controls and a delete.
+    static let editorTitle = TypeStyle.sheetTitle.size(26).lineHeight(1.05)
+
+    /// `600 16`, `-.02em` — what somebody has typed into one of the block editor's fields, and what
+    /// its two time menus read back (`design/rebuild/section-t5.html:66, 82`).
+    ///
+    /// A value at the weight of a row title rather than at `editorValue`'s `500 14`, and the box
+    /// around it grew with it — see `FormFieldMetrics.sheetBoxLarge`. The design draws the name and
+    /// the two times as the *answers* on this sheet, at the size the block's own card will draw
+    /// them, so what you type reads back as what will be on the timetable.
+    static let editorFieldValue = TypeStyle.rowTitle.tracking(em: -0.02)
+    /// `400 16` — the prompt in those fields. A placeholder is one weight lighter than a value in
+    /// this design, so the two read apart before the colour difference lands.
+    static let editorFieldPlaceholder = editorFieldValue.weight(.regular)
+    /// `400 14.5/1.5` — the description, which is prose and takes a paragraph's leading rather than
+    /// a field's (`design/rebuild/section-t5.html:68`).
+    static let editorDescription = TypeStyle.body.weight(.regular)
+
+    /// `500 14` — a value in a *sheet-sized* field on these screens.
     ///
     /// `bodyAlt` without its 1.5 line-height multiple, which is `VenueSheet`'s expression and its
     /// reasoning: that multiple is for wrapped copy, and on a one-line field it only adds 7pt of
-    /// leading under a single line. The description field *does* wrap, and takes its leading from
-    /// the same place every other paragraph in the app does rather than from a field style.
+    /// leading under a single line.
+    ///
+    /// It used to be the block editor's too, and the header of that sheet said so. `5a` draws it a
+    /// size up in `.sheetBoxLarge`, so the editor takes `editorFieldValue` above and this is left
+    /// to its other reader — `BlockNotesCard`'s composer (`:136-137`), which `8l` still draws at
+    /// 14 in the smaller box. One name, one remaining screen, rather than a rename that would move
+    /// a file this change has no other reason to touch.
     static let editorValue = TypeStyle.bodyAlt.lineHeight(nil)
-    /// `400 14` — the prompt in those fields. A placeholder is one weight lighter than a value in
-    /// this design, so the two read apart before the colour difference lands.
+    /// `400 14` — the prompt in that field.
     static let editorPlaceholder = TypeStyle.rowValue
 
     // MARK: `8f`
@@ -351,4 +517,11 @@ enum ScheduleType {
     static let shapeDetail = TypeStyle.meta
     /// `600 12.5` — "Reassign", "Copy Monday instead".
     static let inlineAction = TypeStyle.chipSoft
+    /// `600 13` — "All courts", "No courts", and the caret row that opens a card
+    /// (`design/rebuild/section-t5.html:102`).
+    ///
+    /// Half a point over `inlineAction`, which is `8f`'s word-as-a-button sitting *beside* copy.
+    /// These two are a row of their own inside a card and have nothing next to them to be quieter
+    /// than, so the design sets them at the size of the copy they act on.
+    static let cardAction = TypeStyle.countdown
 }

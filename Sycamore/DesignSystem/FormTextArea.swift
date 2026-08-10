@@ -68,6 +68,14 @@ struct FormTextArea: View {
     /// The prompt's own style, where the design draws it a step off the value. `nil` follows the
     /// value, which is what SwiftUI does unaided.
     var promptType: TypeStyle?
+    /// The ink the typed value is drawn in.
+    ///
+    /// `Theme.ink` was hard-coded here until section 5a, which sets the block editor's
+    /// description in the warm ink (`#3F4A44` — `Theme.inkWarm`) the design system reserves for
+    /// body copy, keeping `ink` for titles and names. Both are right for their own field: a
+    /// pick-up note is a fact about one kid and reads as a title, a block description is a
+    /// paragraph. So it is a parameter defaulted to what every existing caller already drew.
+    var valueColor: Color
     /// How tall the box is allowed to get, in lines. It opens at the lower bound and grows to the
     /// upper one before the text starts scrolling inside it — a range rather than a single number
     /// because a description field that is one line tall reads as a single-line field, and one
@@ -84,6 +92,7 @@ struct FormTextArea: View {
         metrics: FormFieldMetrics = .sheetBox,
         type: TypeStyle = .fieldValue,
         promptType: TypeStyle? = nil,
+        valueColor: Color = Theme.ink,
         lineLimit: ClosedRange<Int> = 3...6,
         focus: FocusState<Bool>.Binding
     ) {
@@ -93,6 +102,7 @@ struct FormTextArea: View {
         self.metrics = metrics
         self.type = type
         self.promptType = promptType
+        self.valueColor = valueColor
         self.lineLimit = lineLimit
         self.focus = focus
     }
@@ -111,7 +121,7 @@ struct FormTextArea: View {
         TextField("", text: $text, prompt: promptText, axis: .vertical)
             .lineLimit(lineLimit)
             .textFieldStyle(.plain)
-            .typeStyle(type, color: Theme.ink)
+            .typeStyle(type, color: valueColor)
             .focused(focus)
             .accessibilityLabel(label)
     }
@@ -152,8 +162,8 @@ extension View {
     /// Done button: the reader has been told there is a way out and there is not.
     ///
     /// And two of these on one screen would declare the bar twice. It does not happen today — the
-    /// editor draws one (`BlockEditorSheet.swift:176`) and the notes composer draws one
-    /// (`BlockNotesCard.swift:131`), on different screens — but `FormTextAreaGallery` below puts
+    /// editor draws one (`BlockEditorSheet.swift:164`) and the notes composer draws one
+    /// (`BlockNotesCard.swift:169`), on different screens — but `FormTextAreaGallery` below puts
     /// two side by side, which is what a screen doing the same would look like.
     ///
     /// So the closure is the caller's, and it clears every focus that screen owns. The cost is that

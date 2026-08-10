@@ -143,22 +143,26 @@ struct PlayerCourtPicker: View {
                 }
             }
         }
-        // Fetch the courts this sheet reads, rather than hoping somebody else already did.
+        // **No `.task`, and that is the fix rather than an omission.**
         //
-        // `store.courts` — which `closedCourts` is derived from — had exactly one writer on the
-        // way in here: `OverviewView`'s own `.task`. Overview is the tab the app opens on, so in
-        // practice it usually had run, and this sheet usually knew which courts were shut. Usually
-        // is the wrong word for it. Deep-link to a kid, open this from a coach's own screen, or
-        // reach it on a session that has not been to Overview, and `closedCourts` is empty — at
-        // which point the sheet does not say a court is closed, it says nothing, and nothing reads
-        // as open. A warning that silently degrades to no warning is worse than no warning at all,
-        // because the absence looks like an answer.
+        // A `.task { await store.loadCourts() }` stood here, and the comment under it argued that
+        // this sheet had to fetch `store.courts` itself because `closedCourts` was derived from
+        // that array and `OverviewView` was its only writer — so a deep link to a kid, or a route
+        // in from a coach's own screen, left the set empty and every shut court drawn as open.
         //
-        // One fetch per open, which is the same shape `CampPickerView` uses for its memberships:
-        // the screen that needs the rows asks for them. The wider repair is a `courts(forCamp:)`
-        // that does not need a venue chosen first — see `AppStore.loadCourts`, which narrows to
-        // `readVenueID` and says so.
-        .task { await store.loadCourts() }
+        // That was true and is not. Closure landed on the camp graph as `Group.closedReason`
+        // (`Models.swift:563-582`), and `AppStore.closedCourts`
+        // (`AppStore+SectionEight.swift:141-178`) now reads `camp.groups` rather than `courts`.
+        // The camp graph is loaded before any route into this sheet exists — there is no kid to
+        // open a picker for until it is — and it carries *every* venue's courts in one request,
+        // which the per-venue `courts(forVenue:campID:)` never did. `loadCourts` also narrows to
+        // `readVenueID`, so on a two-venue camp the fetch this used to make could not have answered
+        // for the other venue anyway.
+        //
+        // What is left is a round trip that overwrites `courts` — a different screen's array,
+        // scoped to a different venue — to populate a set that no longer looks at it. The words
+        // come from `Camp.closedReason(for:)` (`Models.swift:1075-1086`) by the same route.
+        // `PlayerCourtPickerTests`' "AppStore.closedCourts is the camp's" suite is what holds this.
     }
 
     /// `Move Austin Z`. Read from the graph per pass rather than handed in, so a sheet left open
@@ -274,12 +278,12 @@ struct PlayerCourtPicker: View {
     /// just had no way in from here.
     ///
     /// **The kid lands at the bottom of the court they arrive on, and that is correct.**
-    /// `Camp.movePlayer` (`Models.swift:1203-1213`) sets `courtRank = Int.max / 2` and lets
+    /// `Camp.movePlayer` (`Models.swift:1340-1350`) sets `courtRank = Int.max / 2` and lets
     /// `reindex()` close the gap, so a mover sinks to the back of their new court rather than
     /// keeping a rank that meant something on the court they left. Position on a court is the
     /// coach's ordering of the kids *on that court*; carrying it across would drop a newcomer into
     /// the middle of somebody else's ladder. `applyRankOrder` does the identical thing for the
-    /// same reason (`Models.swift:1196`). **Do not "fix" this into a rank-preserving move** — the
+    /// same reason (`Models.swift:1333`). **Do not "fix" this into a rank-preserving move** — the
     /// sheet's subtitle promises this behaviour, and re-ordering afterwards is what `8p` is for.
     ///
     /// Closed before the write rather than after it. A sheet that sits open through a round trip
@@ -313,14 +317,20 @@ private func courtPickerPreview(_ store: AppStore = .preview) -> some View {
     .background(Theme.canvas)
 }
 
-/// A store whose Overview read has landed with a court shut on it — the state `store.courts` is in
-/// on any morning somebody has taken a net down, and the one every other preview here is *not* in.
+/// A camp with a net down on one court — the state the graph is in on any morning somebody has
+/// shut a court, and the one every other preview here is *not* in.
 ///
-/// Written out rather than taken from a fixture because `AppStore.preview` holds no `courts` at
-/// all: section 8's three reads are loaded lazily by the screens that need them, and
-/// `AppStore.swift:405-407` says why. So a preview of this sheet gets an empty array and, quite
-/// correctly, flags nothing — which is exactly why the closed row needs a frame of its own. It is
-/// invisible in the default preview not because it is drawn wrong but because nothing has read it.
+/// **Written onto `camp.groups`, which is where closure lives.** This used to build a `CourtCard`
+/// with `.closed(reason:)` on it and assign `store.courts`, because `closedCourts` was derived from
+/// that array. It is not any more — `AppStore.closedCourts`
+/// (`AppStore+SectionEight.swift:141-178`) reads `Group.closedReason` off the camp — so the old
+/// preview set a field nothing looks at and drew twelve open courts while claiming one was shut.
+/// A preview that quietly stops showing the state it is named for is worse than no preview: it is a
+/// frame somebody checks and passes.
+///
+/// One line of graph rather than a fixture, and it is the same write `setCourtStatus` applies once
+/// the repository has accepted the change (`AppStore+SectionEight.swift:135-137`) — so this frame
+/// is the state the app is genuinely in, and not an arrangement only a preview can reach.
 @MainActor
 private func shutCourtPreviewStore() -> AppStore {
     let store = AppStore.preview
@@ -329,23 +339,11 @@ private func shutCourtPreviewStore() -> AppStore {
           // Somewhere Austin Z is not, so the frame carries the closed row and the ticked one at
           // once — a court that is both would draw only the tick, which is `row(_:)`'s rule and
           // not this preview's question.
-          let court = camp.groups(in: venue.id).first(where: { $0.id != SampleData.austinZ.groupID })
+          let court = camp.groups(in: venue.id).first(where: { $0.id != SampleData.austinZ.groupID }),
+          let index = camp.groups.firstIndex(where: { $0.id == court.id })
     else { return store }
 
-    store.courts = [
-        CourtCard(
-            id: court.id,
-            venueID: court.venueID,
-            groupName: court.label,
-            courtLabel: court.label,
-            rankOrder: court.rankOrder,
-            coachID: court.coachID,
-            coachName: camp.coach(forGroup: court.id)?.name,
-            playersHere: court.presentCount,
-            activity: nil,
-            status: .closed(reason: "Net down")
-        )
-    ]
+    store.camp?.groups[index].closedReason = "Net down"
     return store
 }
 

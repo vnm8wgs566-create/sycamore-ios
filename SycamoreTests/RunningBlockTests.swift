@@ -18,10 +18,14 @@
 //  worth one test; it is the property that broke, and it should break these tests everywhere at
 //  once if it breaks again.
 //
-//  Where two blocks tie on `startsAt` the answer is compared as a `Set`. The tie is broken on
-//  `id.uuidString` and the ids are freshly minted here, so *which* of two tied blocks sorts first
-//  is not a fact about the rule — only that the same one always does, which is what the two-orders
-//  check already covers.
+//  Where two blocks tie on `startsAt` the answer is compared as a `Set`. The tie is broken on the
+//  id and the ids are freshly minted here, so *which* of two tied blocks sorts first is not a fact
+//  about the rule — only that the same one always does, which is what the two-orders check already
+//  covers.
+//
+//  That tie-break is `UUID.precedes(_:)` now rather than `id.uuidString <`, which is a change to
+//  how it is computed and not to what it decides. `TheTieBreak` at the foot of this file is where
+//  that claim is checked instead of argued.
 //
 
 import Foundation
@@ -342,5 +346,65 @@ struct RunningOnACourtTests {
             ScheduleBlock.running(on: stranger, in: withLunch, at: TimeOfDay(12, 30))?.title
                 == "Lunch"
         )
+    }
+}
+
+// MARK: - The deciding vote between two blocks that tie
+
+/// `UUID.precedes(_:)` (`Models.swift:27-64`), which is the sort's tie-break.
+///
+/// It replaced `id.uuidString < id.uuidString` for cost — that spelling renders a 36-character
+/// `String` on each side of every comparison, and `CoachAvailability.map` runs this sort once per
+/// keystroke in the block editor's title field. The replacement is only safe if it is the *same*
+/// total order, because a different one would silently reshuffle every list that ties, and nothing
+/// on screen would look wrong.
+///
+/// It is: `uuidString` is the sixteen bytes as fixed-width upper-case hex, hex digits order the
+/// way the nibbles they stand for do, both strings are the same length, and the dashes sit at the
+/// same four positions in both. That is an argument, so here is the check.
+@Suite("The tie-break")
+struct TheTieBreak {
+
+    /// Random ids rather than a handful of literals, because the interesting pairs are the ones
+    /// that agree for the first several bytes and the digit-versus-letter boundary (`9` next to
+    /// `A`) which a hand-picked pair would have to be chosen to hit.
+    @Test("It is the order `uuidString` gives, over a thousand pairs")
+    func uuidStringOrderMatchesBytes() {
+        for _ in 0..<1_000 {
+            let left = UUID()
+            let right = UUID()
+            #expect(left.precedes(right) == (left.uuidString < right.uuidString))
+        }
+    }
+
+    /// The three laws a `sorted(by:)` predicate has to obey, and the one that bites: an id must
+    /// not precede itself, or a tie between a block and itself becomes a strict ordering and the
+    /// sort is free to do anything.
+    @Test("Irreflexive, asymmetric, and total over distinct ids")
+    func itIsAStrictTotalOrder() {
+        let id = UUID()
+        #expect(!id.precedes(id))
+
+        for _ in 0..<100 {
+            let left = UUID()
+            let right = UUID()
+            #expect(left.precedes(right) != right.precedes(left))
+        }
+    }
+
+    /// The property the sort actually needs, stated where a reader of this file will look for it:
+    /// two blocks tied on the minute come back in the same order however the day was handed over.
+    @Test("Two blocks starting on the same minute hold their order between reads")
+    func tiedBlocksDoNotSwap() {
+        let day = [
+            block("Warm-up", TimeOfDay(9, 0), TimeOfDay(10, 0), on: [court1]),
+            block("Free play", TimeOfDay(9, 0), TimeOfDay(10, 0), on: [court2]),
+        ]
+
+        let forwards = ScheduleBlock.running(in: day, at: TimeOfDay(9, 30)).map(\.id)
+        let backwards = ScheduleBlock.running(in: day.reversed(), at: TimeOfDay(9, 30)).map(\.id)
+
+        #expect(forwards == backwards)
+        #expect(forwards == day.map(\.id).sorted { $0.precedes($1) })
     }
 }

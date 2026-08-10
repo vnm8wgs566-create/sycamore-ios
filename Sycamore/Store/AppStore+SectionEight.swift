@@ -34,10 +34,65 @@ extension AppStore {
     /// coupling nobody asked for, through a filter the redesign otherwise removed. `venueFilter`
     /// also has an `.all` case that no per-venue relation can answer, and every screen privately
     /// correcting for a state the model should not hold is a symptom, not a fix.
+    ///
+    /// **Four steps now, not three, and the new one is first.** 4a's header pill and 4b's venue
+    /// sheet both let the reader say which venue they are looking at, and this was a computed
+    /// property with no setter — a rule about where somebody is posted, being asked a question
+    /// about where they are *looking*. `chosenVenueID` (`AppStore.swift:427-440`) is that answer
+    /// and nil until somebody gives one, so the three fallbacks below are untouched and a reader
+    /// who never taps the pill still opens on their own court.
+    ///
+    /// A choice outranks a posting rather than the other way round, which is the whole of the
+    /// answer to "may a coach posted to Sycamore look at LATC?". They may: 4b draws the control
+    /// with no lock, the reads it retargets are all `select` and all already scoped by RLS to the
+    /// camps the reader is a member of, and a switch that silently snapped back to their own venue
+    /// would be a control that does nothing.
     var readVenueID: Venue.ID? {
-        myStaffRecord?.venueID
+        chosenVenueID
+            ?? myStaffRecord?.venueID
             ?? todayAssignment?.venueID
             ?? camp?.orderedVenues.first?.id
+    }
+
+    /// 4b's "Switch" — the reader picks a venue, and section 8's three tabs follow.
+    ///
+    /// **Clears before the read it sets off, which is the point of the intent existing at all.**
+    /// `loadOverview` assigns into `courts`, `scheduleBlocks` and `inboxItems` only once each read
+    /// has returned, and never clears first — `OverviewView.swift:50-55` records that staleness
+    /// deliberately, because on a *reload of the same venue* an empty grid flashing between two
+    /// identical answers is worse than a moment of yesterday's numbers. Switching venue inverts
+    /// that: the stale rows are another venue's courts, drawn under the new venue's name, and a
+    /// coach reading them has no way to tell. So the clear happens here, where the venue actually
+    /// changed, rather than in the load, where it usually has not.
+    ///
+    /// `inboxItems` is deliberately not cleared. The Inbox is camp-wide (`loadInbox`), so its rows
+    /// are as true after the switch as before and blanking them would be a flicker with nothing
+    /// behind it.
+    ///
+    /// **Reads nothing, deliberately, and that is the half this used to get wrong.** It ended in
+    /// `await loadOverview()` under a comment claiming Overview needed the push because "the other
+    /// two screens key their own `.task` on `readVenueID` … Overview is the one the sheet is
+    /// presented over". That is inverted: `readVenueID` is a member of `OverviewLoad`
+    /// (`OverviewView.swift:67`), so writing `chosenVenueID` moves Overview's `.task(id:)` key
+    /// exactly as it moves Schedule's and the Inbox's. The push was a *second* wave over the first
+    /// — one tap on 4b costing six round trips to draw three lists, with two `perform` blocks
+    /// overlapping, which is precisely the `isWorking` interleaving `loadOverview` below says its
+    /// single `perform` exists to prevent.
+    ///
+    /// So `.task(id:)` is the sole owner of the reload and this is the sole owner of the choice.
+    /// `chosenVenueID` is written **last** because it is the write the reload hangs off: the two
+    /// clears are already in place by the time anything can observe the new venue, so no pass can
+    /// pair the new name with the old rows.
+    ///
+    /// Synchronous, now that nothing here is awaited. `VenuePickerSheet.select(_:)` was wrapping
+    /// this in a `Task` to say "and then reload"; there is no "and then" left, and a picker whose
+    /// tap took effect on some later turn of the runloop would be one the sheet could out-race on
+    /// the way down.
+    func selectVenue(_ id: Venue.ID) {
+        guard chosenVenueID != id else { return }
+        courts = []
+        scheduleBlocks = []
+        chosenVenueID = id
     }
 
     // MARK: Overview
@@ -70,34 +125,71 @@ extension AppStore {
         }
     }
 
+    /// Overview's "Close this court", and the only write in this file that moves two things.
+    ///
+    /// `courts` is what the repository answers with and what Overview redraws from. The camp graph
+    /// carries the same fact now — `Group.closedReason` (`Models.swift:563-582`) — and
+    /// `closedCourts` below is derived from *that*, so a graph left holding the old value would
+    /// have `PlayerCourtPicker` calling a court open a second after somebody shut it, on the one
+    /// screen in the app where not knowing puts a child on the wrong court.
+    ///
+    /// Applied locally rather than re-read. Both repositories write the row and hand back the
+    /// venue's cards; neither returns the camp, and asking for the whole graph again to learn one
+    /// nullable string would be a round trip to fetch what the write has already established.
+    /// `status.closureReason` is assigned rather than a reason being appended or cleared by hand,
+    /// so `.open` and `.closed(reason:)` are one statement and cannot fall out of step.
+    ///
+    /// Inside `perform` and *after* the call, which is what makes it safe: a refused write throws
+    /// before this line and leaves the graph exactly as it was.
     func setCourtStatus(_ status: CourtStatus, forGroup groupID: Group.ID) async {
         guard let campID = camp?.id else { return }
         await perform {
             self.courts = try await self.repository.setCourtStatus(
                 status, forGroup: groupID, campID: campID
             )
+            if let index = self.camp?.groups.firstIndex(where: { $0.id == groupID }) {
+                self.camp?.groups[index].closedReason = status.closureReason
+            }
         }
     }
 
-    /// Which courts are out of play this morning, for the screens that hold a `Group` and need to
-    /// know. `PlayerCourtChoices` is the caller: a court with "Net down" on it must not be offered
-    /// unmarked in the sheet somebody uses to decide where to send a child.
+    /// Which courts are out of play this morning, across the whole camp, for the screens that hold
+    /// a `Group` and need to know. `PlayerCourtChoices` is the caller: a court with "Net down" on
+    /// it must not be offered unmarked in the sheet somebody uses to decide where to send a child.
     ///
-    /// Derived rather than stored. `courts` is the one read of `today_courts` the app keeps and
-    /// this is a question about it, so a second collection to keep in step is a second collection
-    /// to get wrong — the same call `AppStore.openInboxCount` makes about the count it derives from
-    /// `inboxItems` rather than banking beside them.
+    /// Derived rather than stored, which is unchanged and is the same call `AppStore.openInboxCount`
+    /// makes about the count it derives from `inboxItems` rather than banking beside them. What
+    /// changed is *what it is derived from*.
     ///
-    /// **It knows about one venue, and that is `readVenueID`'s.** `courts(forVenue:campID:)` is a
-    /// per-venue relation and `loadOverview` asks it for the venue Overview is drawing, so on a
-    /// two-venue camp a court shut at the *other* venue is not in here and its row in the picker
-    /// says nothing. That is a narrower answer than the question deserves and it is stated rather
-    /// than hidden: the sheet lists the whole camp. Widening it means a camp-wide read — a
-    /// `courts(forCamp:)` on `SectionEightData` with both repositories behind it, and a load on a
-    /// screen that currently needs no round trip of its own — which is a change worth making on
-    /// purpose rather than smuggling in behind a `Set`.
+    /// **It reads `camp.groups`, and so it is every venue's.** This used to be
+    /// `Set(courts.lazy.filter(\.isClosed))`, and the comment here argued at length that a
+    /// per-venue answer was all the app could give: `courts(forVenue:campID:)` is a per-venue
+    /// relation, `loadOverview` asks it for the venue Overview is drawing, and on a two-venue camp
+    /// a court shut at the *other* venue was simply not in here — its row in the picker said
+    /// nothing, which reads as open. The block editor is scoped to `draft.venueID` and 4a's venue
+    /// pill moves `readVenueID` under both, so the set could also change venue between two draws of
+    /// one sheet.
+    ///
+    /// That argument ended the moment the reason landed on the row. `groups.closed_reason`
+    /// (`20260810030000`) is on `groups`, the camp graph already selects every venue's `groups`
+    /// rows in one request (`SupabaseRepository+Graph.swift:33`), and `Group.closedReason`
+    /// (`Models.swift:563-582`) is that column in the model — so the camp-wide answer costs no
+    /// round trip at all. `courts(forCamp:)` on `SectionEightData`, which this comment used to name
+    /// as the eventual fix, is not needed and would be the more expensive of the two: a camp-wide
+    /// read, both repositories behind it, and a load on screens that now need none.
+    ///
+    /// **The freshness that was lost with `courts` is bought back at the writer**, not here.
+    /// `courts` was updated by `setCourtStatus` on the way past, and the graph is not returned by
+    /// that write — so `setCourtStatus` above applies the same change to `camp.groups` once the
+    /// repository has accepted it. Deriving from a graph nobody updated would have traded a
+    /// one-venue answer for a stale one.
+    ///
+    /// A `Set` rather than the reasons, because that is the whole of what the caller asks: closure
+    /// changes what a row *says* and never which rows exist. A screen that needs the words asks
+    /// `Camp.closedReason(for:)` (`Models.swift:1075-1086`), which answers for any venue's court.
     var closedCourts: Set<Group.ID> {
-        Set(courts.lazy.filter(\.isClosed).map(\.id))
+        guard let camp else { return [] }
+        return Set(camp.groups.lazy.filter { $0.closedReason != nil }.map(\.id))
     }
 
     // MARK: Schedule

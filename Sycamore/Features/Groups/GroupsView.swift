@@ -199,7 +199,7 @@ struct GroupsView: View {
     /// Presented from this view rather than through the store, and there are two rejected
     /// alternatives worth naming.
     ///
-    /// **Not `ActiveSheet`.** That slot is presented by `MainTabView` (`RootView.swift:95`), and
+    /// **Not `ActiveSheet`.** That slot is presented by `MainTabView` (`RootView.swift:138`), and
     /// Camp settings — the other entry point — is itself presented by `MainTabView`. Asking it to
     /// present would open the flow *behind* the screen that asked for it. `BlockEditorSheet`
     /// (`:26-33`) reached the same conclusion for the same reason.
@@ -208,7 +208,7 @@ struct GroupsView: View {
     /// that Camp settings already occupies, and evicting it is survivable — but with two entry
     /// points the *return address* varies, and carrying it in the payload would make
     /// `PushedScreen.id` encode a destination as well as a screen, which is not what the comment
-    /// at `AppStore.swift:109-112` says `id` is for.
+    /// at `AppStore.swift:120-124` says `id` is for.
     ///
     /// The venue is the selected chip's, which is what makes "add kids" mean "add kids *here*".
     @ViewBuilder
@@ -243,6 +243,7 @@ struct GroupsView: View {
                     nothingHere
                 }
 
+                firstSortRow
                 addGroupRow(venue)
                 addKidsRow
             }
@@ -359,6 +360,135 @@ struct GroupsView: View {
             isRefreshScheduled = false
             refreshDragGeometry()
         }
+    }
+
+    // MARK: - The first sort
+
+    /// The way into `4c`, and the only one.
+    ///
+    /// **Why Groups.** `4c`'s crumb reads "Groups" and its scope is one venue, which is this
+    /// screen's scope exactly — the chip row is exclusive and always has one venue lit
+    /// (`GroupsHeader.swift:110-118`). It is also the screen the sort is *for*: what a first sort
+    /// produces is the ladder the bands under these card headings are cut from, so the control
+    /// belongs at the foot of the list it will rearrange. `PushedScreen.rank`
+    /// (`AppStore.swift:84-90`) used to say ranking had no home in the new navigation until Groups
+    /// absorbed it; this is that home, and the drag ladder stays beside it rather than under it —
+    /// one edits an order that exists, this builds the first one there has ever been.
+    ///
+    /// **Why not one of the dashed rows.** It sits with them and is deliberately not one of them.
+    /// A dashed accent border in this design means an empty slot to fill — "Add a group", "Add
+    /// kids" — and the first sort adds nothing; it is a pass over children who are already here.
+    /// So it takes the solid hairline card every other row on this screen wears, and it sits
+    /// *above* the two add rows, next to the courts it is about.
+    ///
+    /// **Why it can resume.** `4c` holds its session in `store.firstSort` and nothing writes it
+    /// down (`AppStore.swift:148-152`), so the back arrow on that screen leaves the value standing
+    /// rather than spending forty answers on one tap — see `FirstSortView.leave()`. This is the
+    /// other half of that: a sort of *this* venue still in flight is reopened, and only a venue
+    /// with no sort behind it seeds a new one. Asking `beginFirstSort` unconditionally would
+    /// re-seed on every entry and make the back arrow destructive after all.
+    ///
+    /// Reading `store.firstSort` here does mean this `body` re-runs on every answer given on a
+    /// screen that is covering it, and that is accepted rather than overlooked: a sort is forty
+    /// taps spread over minutes, where a single drag on this screen runs `body` sixty times a
+    /// second — the thing all the memoisation above exists for. The row is worth it, because
+    /// "30 of 42 placed" on the way back in is what tells somebody the sort they left is still
+    /// there to be picked up.
+    ///
+    /// Hidden mid-move for the reason the two rows below it are: nothing new appears under a kid
+    /// in the air.
+    @ViewBuilder
+    private var firstSortRow: some View {
+        if move == nil, let venue = selectedVenue, let offer = firstSortOffer(for: venue) {
+            firstSortButton(venue, offer: offer)
+        }
+    }
+
+    /// What the row says, or nil when there is nothing to sort.
+    ///
+    /// Two kids is the floor. `FirstSort.seeded` (`Models/FirstSort.swift:117`) settles
+    /// immediately on a venue of one — a single kid *is* a ladder — so below two the row would
+    /// open a screen with no question on it.
+    ///
+    /// The count is the venue's roll and not the camp's, which is the same scope the sort itself
+    /// takes: `beginFirstSort(in:)` seeds from `camp.players(in:)`.
+    ///
+    /// Counted rather than asked of `camp.players(in:)`. That call allocates the venue's roll and
+    /// *sorts* it (`Models.swift:1094-1096`) to answer a question about how many there are, and
+    /// this runs on every pass of `body` — which is the same cost `rankRanges(in:)` was hoisted out
+    /// of `body` to stop paying.
+    ///
+    /// `count(where:)` rather than `lazy.filter { … }.count`, which is what this said before and is
+    /// the same walk written the long way round: one call, no `LazySequence` in between, and the
+    /// spelling four other counts in the app already use (`AttendanceView.swift:59`,
+    /// `InboxView.swift:107`, `SetupView.swift:436`, `OverviewNow.swift:214`).
+    private func firstSortOffer(for venue: Venue) -> (title: String, detail: String)? {
+        guard let camp = store.camp else { return nil }
+        let roll = camp.players.count { $0.venueID == venue.id }
+        guard roll >= 2 else { return nil }
+
+        // A settled-but-uncommitted sort is offered as a resume too. It is one tap from being
+        // written and re-seeding would throw it away, which is the one thing this branch exists
+        // to stop.
+        if let sort = store.firstSort, sort.venueID == venue.id {
+            return ("Resume the first sort", "\(sort.placed) of \(sort.total) placed")
+        }
+        return ("Start the first sort", "\(roll) kids in \(venue.name)")
+    }
+
+    /// `Card`, and not `dashedRow`'s chrome copied a second time.
+    ///
+    /// This row was written by copying `dashedRow` below (`:516-518`), whose own comment says "the
+    /// chrome is written once so they cannot drift a point apart" — and then the copy did the one
+    /// thing that comment was written to prevent, in the one place it could not reach. `dashedRow`
+    /// itself genuinely cannot use `Card`:
+    /// it needs a `StrokeStyle(dash:)`, which `Card` has no parameter for and should not grow one
+    /// for a single caller. This row draws a **solid** `Theme.hairline` rule, which is `Card`'s
+    /// default border, over `Theme.surface`, which is its default background, at
+    /// `BorderWidth.hairline`, which is its default width (`Components.swift:130-163`). Every
+    /// default already matches; the radius is the one thing worth saying out loud.
+    ///
+    /// `isDivided: false` for `NeedsYouRow`'s reason — one block of content, nothing to rule
+    /// between. `Card` supplies the `.frame(maxWidth: .infinity, alignment: .leading)` this used to
+    /// state for itself, so only the 44pt floor and the padding stay on the content.
+    private func firstSortButton(_ venue: Venue, offer: (title: String, detail: String)) -> some View {
+        Button {
+            if store.firstSort?.venueID == venue.id {
+                store.pushedScreen = .firstSort(venue.id)
+            } else {
+                store.beginFirstSort(in: venue.id)
+            }
+        } label: {
+            Card(radius: GroupsMetrics.cardRadius, isDivided: false) {
+                HStack(spacing: GroupsMetrics.addGroupGap) {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.system(size: GroupsMetrics.addGroupGlyph, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: Spacing.hairGap) {
+                        Text(offer.title)
+                            .typeStyle(GroupsType.addGroup, color: Theme.ink)
+                        Text(offer.detail)
+                            .typeStyle(.rowDetail, color: Theme.inkMuted)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    // Decorative, like the glyph at the head of this same row and every other
+                    // caret in the app. Left visible it is not silent: this button composes its
+                    // label from its descendants, so VoiceOver would read the two lines and then
+                    // announce the chevron's image on the end of them.
+                    DisclosureChevron()
+                        .accessibilityHidden(true)
+                }
+                .padding(GroupsMetrics.cardPadding)
+                .frame(minHeight: HitTarget.minimum)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Ranks the kids in \(venue.name) two at a time")
     }
 
     /// The dashed row under the last group. Not offered mid-move: a card appearing under a kid

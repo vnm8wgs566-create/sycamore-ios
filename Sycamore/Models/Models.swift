@@ -25,6 +25,45 @@ enum Initials {
     }
 }
 
+extension UUID {
+
+    /// The arbitrary-but-fixed order this app breaks ties with, without spelling either id out.
+    ///
+    /// Three sorts in the app tie on a real key and then need *some* deciding vote that does not
+    /// change between two reads of the same list: `ScheduleBlock.running(in:at:)`
+    /// (`SectionEight.swift:459`), `ScheduleTimeline`'s lane assignment
+    /// (`ScheduleTimeline.swift:245`) and `OverviewNow.resolve`'s `min`
+    /// (`OverviewNow.swift:288`). All three wrote it as `id.uuidString < id.uuidString`, and that
+    /// is not free: `uuidString` renders a fresh 36-character `String` on **each side of every
+    /// comparison**, so an n·log n sort over a day's blocks allocates a few hundred short-lived
+    /// strings to answer a question about sixteen bytes. `CoachAvailability.map` runs the first of
+    /// those sorts once per keystroke in the block editor's title field, which is what made it
+    /// worth writing down.
+    ///
+    /// **The same total order, not merely a stable one**, so adopting it moves nothing that was
+    /// already sorted. `uuidString` is the sixteen bytes rendered as fixed-width upper-case hex
+    /// with dashes at fixed positions; hex digits order `0`…`9` then `A`…`F`, which is ASCII's own
+    /// order and also the numeric order of the nibbles they stand for. Both strings are the same
+    /// length, so there is no prefix case, and the dashes fall in the same places, so they never
+    /// decide anything. Byte order and string order are therefore the same comparison, and
+    /// `uuidStringOrderMatchesBytes` in `SectionEightScheduleTests` pins that rather than leaving
+    /// it as an argument.
+    ///
+    /// `withUnsafeBytes` over the two 16-byte tuples rather than a loop over tuple members: a
+    /// homogeneous tuple has no subscript, and the alternative — `Array(…)` or `Mirror` — is the
+    /// allocation this exists to remove, one heap buffer instead of two strings.
+    func precedes(_ other: UUID) -> Bool {
+        withUnsafeBytes(of: uuid) { mine in
+            withUnsafeBytes(of: other.uuid) { theirs in
+                for index in 0..<mine.count where mine[index] != theirs[index] {
+                    return mine[index] < theirs[index]
+                }
+                return false
+            }
+        }
+    }
+}
+
 /// A kid's gender, and the three ways the app says it.
 ///
 /// The raw values are load-bearing and must not be renamed: Postgres stores `M` / `F` / `X`, and
@@ -209,6 +248,26 @@ struct CampDays: OptionSet, Codable, Hashable, Sendable {
     /// Monday first, which is the order the chips are drawn in.
     var ordered: [Weekday] { Weekday.allCases.filter(contains) }
 
+    /// Where `day` falls in the camp's own run — 1-based — or nil when the camp does not open
+    /// that day.
+    ///
+    /// The half of "Wednesday · day 2 of 5" that could not be counted. `ordered` gives the run
+    /// and `CampDays+Rules.swift:71-73` gives its length; nothing said which of them today is.
+    ///
+    /// **Counted through `ordered`, not off the bit position.** A camp running Tuesday and
+    /// Thursday makes Thursday its second day, and `Weekday.thu.rawValue` is 4 — the calendar's
+    /// answer to a question about the camp. The whole point of `CampDays` is that a camp is not
+    /// the calendar, and a header reading "day 4 of 2" would be that confusion drawn on screen.
+    ///
+    /// Nil rather than 0 for a day the camp does not run, because 0 is a position and this has
+    /// none. `4a`'s header is drawn on a day the camp is open by construction, so the nil arm is
+    /// for the caller that got there another way — a stale deep link, or a camp whose days were
+    /// edited while somebody stood on Thursday — and those want to draw nothing rather than
+    /// "day 0 of 5".
+    func dayIndex(of day: Weekday) -> Int? {
+        ordered.firstIndex(of: day).map { $0 + 1 }
+    }
+
     /// A camp with no days is a camp nobody can schedule anything on, so the editor refuses the
     /// empty set rather than letting it reach the database. This is what it checks.
     var isValid: Bool { !ordered.isEmpty }
@@ -245,6 +304,26 @@ struct TimeOfDay: Codable, Hashable, Comparable, Identifiable, Sendable {
     var clockLabel: String {
         let hour12 = hour % 12 == 0 ? 12 : hour % 12
         return String(format: "%d:%02d%@", hour12, minute, hour < 12 ? "am" : "pm")
+    }
+
+    /// The same clock with the meridiem left off: `9:12`, `2:30`.
+    ///
+    /// Beside `clockLabel` rather than instead of it, and both are wanted. `am`/`pm` earns its
+    /// two characters wherever a time stands alone in prose — "leaves at 2:30pm" — and cannot
+    /// pay for them in a column of times in order, which is where this one is read.
+    /// `ScheduleBlock.gutterLabel` (`ScheduleBlockPresentation.swift:30`) had already worked
+    /// that out for `8k`'s 52pt gutter and spelled it by hand — it calls this now, which is the
+    /// point; `4d` writes "Free at 10:30" and
+    /// `4d`'s eyebrow writes "10:45–12:00", which is the same sentence in a third place. Three
+    /// hand-spellings of one format is how two of them come to disagree, so the format is here.
+    ///
+    /// Locale-independent for the reason `clockLabel` states: this is the camp's own clock, and
+    /// the design writes it exactly this way. It is a 12-hour reading with no meridiem, which is
+    /// unambiguous only because a camp day does not wrap round midnight — the same assumption the
+    /// gutter has been resting on since it was written.
+    var shortLabel: String {
+        let hour12 = hour % 12 == 0 ? 12 : hour % 12
+        return String(format: "%d:%02d", hour12, minute)
     }
 
     static func < (lhs: TimeOfDay, rhs: TimeOfDay) -> Bool { lhs.id < rhs.id }
@@ -481,6 +560,27 @@ struct Group: Identifiable, Hashable, Codable, Sendable {
     /// that has gone its own way needs somewhere to say so. Nil means it has not: follow the
     /// schedule, which is what every seeded court does.
     var activity: String?
+
+    /// Why this court is out of play, or nil while it is in play — the reason half of
+    /// `CourtStatus` (`SectionEight.swift:88-110`), carried on the court itself.
+    ///
+    /// **It is here because the column is on `groups`.** `20260810030000_a_closed_court_stays_closed`
+    /// added `groups.closed_reason`, so a closed court survives a relaunch, and the camp graph
+    /// already selects every venue's `groups` rows in one request
+    /// (`SupabaseRepository+Graph.swift:33`) — the reason therefore arrives with the court and
+    /// costs no round trip of its own. Until it did, closure was only readable through `CourtCard`,
+    /// which is a per-venue read, and `AppStore.closedCourts` (`AppStore+SectionEight.swift:175`)
+    /// could answer for one venue and could not say why.
+    ///
+    /// **The empty string is a value, not a synonym for nil.** `""` is a court somebody shut
+    /// without typing a reason, which draws as a bare "Closed"; `GroupRecord.closedReason`
+    /// (`SupabaseDTOs.swift:101-111`) argues that at the column and the CHECK admits it. Nothing on
+    /// this side coerces one into the other.
+    ///
+    /// Nil-or-not is the same test `CourtStatus.isClosed` makes one layer up — `closureReason
+    /// != nil` — rather than a second boolean beside it, so the two cannot come to disagree about a
+    /// court that is shut for no stated reason.
+    var closedReason: String?
 
     /// Denormalised counts. Maintained by `Camp.reindex()`; never set these by hand
     /// outside the model layer.
@@ -972,6 +1072,19 @@ extension Camp {
 
     func venue(_ id: Venue.ID) -> Venue? { venues.first { $0.id == id } }
     func group(_ id: Group.ID) -> Group? { groups.first { $0.id == id } }
+
+    /// Why one court is out of play, asked with an id rather than with the court.
+    ///
+    /// `group(_:)` and then the property, which is what every caller would otherwise write out —
+    /// and writing it once is the point, because the callers are the ones that cannot see a
+    /// `CourtCard`. `AppStore.courts` is loaded for `readVenueID`
+    /// (`AppStore+SectionEight.swift:149-160`) and the block editor is scoped to `draft.venueID`,
+    /// which differs whenever the editor is reached from Overview on a two-venue camp; the graph
+    /// holds every venue's courts, so this answers for **any** of them.
+    ///
+    /// A caller already holding the `Group` reads `closedReason` off it and should. This is the
+    /// id-keyed spelling of one fact, not a second source for it.
+    func closedReason(for id: Group.ID) -> String? { group(id)?.closedReason }
     func player(_ id: Player.ID) -> Player? { players.first { $0.id == id } }
     func staff(_ id: StaffMember.ID) -> StaffMember? { staff.first { $0.id == id } }
 
@@ -1017,6 +1130,31 @@ extension Camp {
     func sheetSummary(for venueID: Venue.ID) -> String {
         guard let venue = venue(venueID) else { return "" }
         return "\(players(in: venueID).count) kids · \(coachCount(in: venueID)) coaches · \(venue.groupCount) groups"
+    }
+
+    /// `4b`'s venue row: `6 courts · 50 kids`.
+    ///
+    /// The third speller of one venue's shape, and deliberately not a fourth reading of either
+    /// neighbour. `rowSummary(for:)` writes `6 groups · 50 kids · 6 coaches` and
+    /// `sheetSummary(for:)` writes `50 kids · 6 coaches · 6 groups`; both name coaches, both call
+    /// a court a group, and neither is in the order `4b` draws. Both also have callers, so
+    /// bending one to fit would move a line on a screen this change is not about — the same
+    /// reasoning `CourtStatus.closureReason` (`SectionEight.swift:105-107`) uses in the other
+    /// direction, where three longhand copies of one question were worth folding into one.
+    ///
+    /// Two clauses rather than three because `4b` is a picker: the row is answering "which venue",
+    /// and how many coaches are on it is a fact for the screen you land on. `venue.groupCount`
+    /// rather than `groups(in:).count` so all three spellers count the venue's *shape* and cannot
+    /// disagree with each other on a camp mid-reindex, where the courts exist before the venue has
+    /// been told how many it has.
+    ///
+    /// The noun follows the sport — a swim club reads `6 lanes · 50 kids` — and is lower-cased
+    /// mid-line the way `CreateCampView.courtNoun` (`:144`) already does it.
+    func venueSummary(for venueID: Venue.ID) -> String {
+        guard let venue = venue(venueID) else { return "" }
+        let noun = sport.groupNoun.lowercased()
+        let courts = "\(venue.groupCount) \(noun)\(venue.groupCount == 1 ? "" : "s")"
+        return "\(courts) · \(players(in: venueID).count) kids"
     }
 
     /// `1–50` — where this venue's block sits in the camp-wide ladder.

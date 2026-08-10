@@ -98,6 +98,17 @@ struct GroupRecord: Decodable, Sendable {
     var courtLabel: String?
     var rankOrder: Int
     var activity: String?
+    /// Why this court is out of play, or nil while it is in play — `CourtStatus` in a column.
+    ///
+    /// Optional in both senses at once, and they happen to want the same spelling. The column is
+    /// `text null` because NULL *is* the open state, and an optional property is also what lets a
+    /// build talking to a database one migration behind read the rest of the row rather than
+    /// failing every Overview load. `CampRecord.campDays` argues the second half at length.
+    ///
+    /// The empty string is a value and not a synonym for NULL: `''` is a court somebody shut with
+    /// no reason typed, which is `CourtStatus.closed(reason: "")` and draws as a bare "Closed".
+    /// Nothing here coerces one into the other, and the column's CHECK admits it on purpose.
+    var closedReason: String?
 }
 
 struct PlayerRecord: Decodable, Sendable {
@@ -165,15 +176,23 @@ struct ScheduleBlockRecord: Decodable, Sendable {
     var kind: String?
 }
 
-/// One row of `schedule_block_coaches`: this coach is on that block.
+/// One row of `schedule_block_coaches`: this coach is on that block, and on that court of it.
 ///
-/// Two columns and no more, though the table also carries `created_at`. That column is read as an
-/// `order` and never as a value — it is what keeps "Nass & Alina" from becoming "Alina & Nass"
-/// between two reads of the same block, since the primary key `(block_id, coach_id)` says nothing
-/// about sequence and Postgres is under no obligation to invent one.
+/// Three columns and no more, though the table also carries `created_at`. That column is read as
+/// an `order` and never as a value — it is what keeps "Nass & Alina" from becoming "Alina & Nass"
+/// between two reads of the same block, since the key says nothing about sequence and Postgres is
+/// under no obligation to invent one.
+///
+/// `groupId` is the whole of the difference between `ScheduleBlock.coachIDs` and
+/// `ScheduleBlock.staffing`, and **NULL is not missing data**. A row with no court means this
+/// coach is on the block as a whole — which is what every row written before
+/// `20260810030500_a_coach_takes_a_court_not_a_block` meant, and what a `.regular` block, which
+/// names no courts at all, can only ever mean. So it decodes as an optional and the two are sorted
+/// apart at the fan-in rather than here; see `scheduleBlocks(forVenue:day:campID:)`.
 struct ScheduleBlockCoachRecord: Decodable, Sendable {
     var blockId: UUID
     var coachId: UUID
+    var groupId: UUID?
 }
 
 /// One row of `schedule_block_courts`: this block runs on that court.
@@ -313,6 +332,13 @@ extension Group {
     /// `number` is the court's 1-based position inside its venue rather than a stored column:
     /// the design writes a court chip as `C3`, meaning the third court here, and `rank_order`
     /// is free to be sparse after a reorder.
+    ///
+    /// `closedReason` rides straight across beside `activity`, which is the precedent for it: both
+    /// are nullable `text` on `groups`, both say something about *this morning* rather than about
+    /// the court's shape, and both are already in the camp graph's `select`
+    /// (`SupabaseRepository+Graph.swift:33`). Nothing is coerced on the way — an empty string is a
+    /// court shut with no reason typed and stays one; see `Group.closedReason`
+    /// (`Models.swift:563-582`) and `GroupRecord.closedReason` (`:101-111`).
     init(_ record: GroupRecord, number: Int, capacity: Int) {
         self.init(
             id: record.id,
@@ -322,7 +348,8 @@ extension Group {
             rankOrder: record.rankOrder,
             coachID: nil,
             capacity: capacity,
-            activity: record.activity
+            activity: record.activity,
+            closedReason: record.closedReason
         )
     }
 }
@@ -384,15 +411,16 @@ extension Attendance {
 }
 
 extension ScheduleBlock {
-    /// Three of the block's fields are not in its row, and all three arrive as arguments.
+    /// Four of the block's fields are not in its row, and all four arrive as arguments.
     ///
     /// `notes` are `inbox_items` of kind `note` carrying this block's `schedule_block_id`;
-    /// `coachIDs` are `schedule_block_coaches`; `courtIDs` are `schedule_block_courts`. None is
-    /// something a row-to-value initialiser can go and fetch, so the repository reads every
-    /// relation in one wave and hands the child lists in — see `scheduleBlocks(forVenue:day:campID:)`,
-    /// which is where the previous version of this comment said the decision belonged.
+    /// `coachIDs` and `staffing` are both `schedule_block_coaches`, split on whether the row names
+    /// a court; `courtIDs` are `schedule_block_courts`. None is something a row-to-value
+    /// initialiser can go and fetch, so the repository reads every relation in one wave and hands
+    /// the child lists in — see `scheduleBlocks(forVenue:day:campID:)`, which is where the previous
+    /// version of this comment said the decision belonged.
     ///
-    /// All three keep a default. `deleteScheduleBlock` decodes the row it removed only to learn
+    /// All four keep a default. `deleteScheduleBlock` decodes the row it removed only to learn
     /// which day to re-read, and a block built to answer that question has no children to supply.
     ///
     /// `kind` falls back to `.regular` twice over — once for a null column and once for a value
@@ -403,7 +431,8 @@ extension ScheduleBlock {
         _ record: ScheduleBlockRecord,
         notes: [BlockNote] = [],
         coachIDs: [StaffMember.ID] = [],
-        courtIDs: [Group.ID] = []
+        courtIDs: [Group.ID] = [],
+        staffing: [BlockCourtStaffing] = []
     ) {
         guard let day = CampWeek.weekday(from: record.day),
               let startsAt = TimeOfDay(postgresTime: record.startsAt)
@@ -420,7 +449,8 @@ extension ScheduleBlock {
             notes: notes,
             coachIDs: coachIDs,
             kind: record.kind.flatMap(ScheduleBlockKind.init(rawValue:)) ?? .regular,
-            courtIDs: courtIDs
+            courtIDs: courtIDs,
+            staffing: staffing
         )
     }
 }

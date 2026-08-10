@@ -113,25 +113,49 @@ extension SupabaseRepository: SectionEightData {
                 coachName: coach?.name,
                 playersHere: playersByGroup[record.id]?.count ?? 0,
                 activity: ScheduleBlock.running(on: record.id, in: day, at: now)?.title,
-                status: closedCourts[record.id].map { .closed(reason: $0) } ?? .open
+                // Off the row the read already fetched, rather than out of a dictionary on this
+                // actor. `select("*")` was carrying this column past the assembly the whole time.
+                status: record.closedReason.map { .closed(reason: $0) } ?? .open
             )
         }
     }
 
-    /// Held on the actor, not written down: nothing in the schema says a court is out of play.
-    /// The design draws a closed court with its reason still on it, so a `groups.closed_reason`
-    /// column is all it would take — until then a reason survives the screen but not the app.
+    /// Takes a court out of play, or puts it back, in one PATCH of `groups.closed_reason`.
+    ///
+    /// This used to hold the reason in a dictionary on the actor, because nothing in the schema
+    /// said a court was shut. `20260810030000_a_closed_court_stays_closed` is that column, and the
+    /// dictionary is gone: a net that went down on Tuesday morning was still down after the app
+    /// was force-quit, and the badge said Open.
+    ///
+    /// **NULL is open and `''` is closed with no reason given**, which is why the write below
+    /// spells the two branches out rather than sending `.text(status.closureReason)` and letting
+    /// `PostgresValue.text(_:)`'s nil-to-null overload decide. Those two are different facts and
+    /// the nullable overload cannot tell them apart — an empty reason would round-trip as an open
+    /// court, and the badge would clear itself the moment somebody shut a court without typing why.
+    ///
+    /// **Returning, not fire-and-forget.** A PATCH that matches nothing answers 204 exactly like
+    /// one that matched, so the separate `select` this used to make first is folded into the
+    /// write — one round trip instead of two, and the venue to re-read comes back in the same
+    /// answer. `missingOrRefused` settles what nothing-back meant; on this table it will nearly
+    /// always settle it as `unknownGroup`, because `groups_select_member` and
+    /// `groups_update_member` (`real_rls.sql:380-397`) carry the *same* predicate, so a court you
+    /// may read is a court you may shut. That is the honest answer rather than a weaker one: a row
+    /// this fails on is a court in a camp the reader is not in.
+    ///
+    /// Not inside `adminWrite`, and that is the reason. Closing a court is running-the-day work —
+    /// the class `real_rls.sql:17-18` lists attendance, the ladder and the inbox in — so the
+    /// policy is already member-writable and there is no admin-only rule here to rename a 403 for.
     func setCourtStatus(
         _ status: CourtStatus, forGroup groupID: Group.ID, campID: Camp.ID
     ) async throws -> [CourtCard] {
-        let records: [GroupRecord] = try await db.select(
-            Relation.groups, .select("*").eq("id", groupID)
+        let updated: [GroupRecord] = try await db.update(
+            Relation.groups,
+            set: ["closed_reason": status.closureReason.map { .text($0) } ?? .null],
+            where: PostgRESTQuery().eq("id", groupID),
+            returning: GroupRecord.self
         )
-        guard let court = records.first else { throw SycamoreError.unknownGroup }
-
-        switch status {
-        case .open: closedCourts[groupID] = nil
-        case .closed(let reason): closedCourts[groupID] = reason
+        guard let court = updated.first else {
+            throw await missingOrRefused(Relation.groups, id: groupID)
         }
         return try await courts(forVenue: court.siteId, campID: campID)
     }
@@ -199,9 +223,13 @@ extension SupabaseRepository: SectionEightData {
                 .eq("schedule_blocks.day", dayText)
                 .order("created_at")
         )
+        // `group_id` rides along with the pair it qualifies. One read still, not two: a block's
+        // coaches and its per-court coaches are the same rows of the same table, and asking for
+        // them separately would mean two filters over one relation that could disagree about which
+        // day they were reading.
         async let coachesTask: [ScheduleBlockCoachRecord] = db.select(
             Relation.scheduleBlockCoaches,
-            .select("block_id,coach_id,schedule_blocks!inner(site_id,day)")
+            .select("block_id,coach_id,group_id,schedule_blocks!inner(site_id,day)")
                 .eq("schedule_blocks.site_id", venueID)
                 .eq("schedule_blocks.day", dayText)
                 .order("created_at")
@@ -251,9 +279,31 @@ extension SupabaseRepository: SectionEightData {
             )
         }
 
+        // One relation, two destinations, split on `group_id`. A row with no court is a coach on
+        // the block as a whole and lands in `coachIDs`; a row with one is a coach on that court of
+        // it and lands in `staffing`. The two are not alternatives and a block may hold both — a
+        // floater across the whole session plus a name per court is an ordinary morning — which is
+        // exactly why the column is nullable rather than the table being two tables.
+        //
+        // `staffing` is built as an array in first-appearance order rather than through a
+        // dictionary, and that is the same argument the `created_at` ordering above is making: the
+        // courts come back in the order they were written, `ScheduleBlock: Equatable` reports a
+        // reordering as a change, and a `[Group.ID: [StaffMember.ID]]` collected here would have to
+        // be sorted by something before it could be handed over — with nothing to sort it by.
         var coachIDsByBlock: [ScheduleBlock.ID: [StaffMember.ID]] = [:]
+        var staffingByBlock: [ScheduleBlock.ID: [BlockCourtStaffing]] = [:]
         for record in coachRecords {
-            coachIDsByBlock[record.blockId, default: []].append(record.coachId)
+            guard let courtID = record.groupId else {
+                coachIDsByBlock[record.blockId, default: []].append(record.coachId)
+                continue
+            }
+            var courts = staffingByBlock[record.blockId] ?? []
+            if let index = courts.firstIndex(where: { $0.courtID == courtID }) {
+                courts[index].coachIDs.append(record.coachId)
+            } else {
+                courts.append(BlockCourtStaffing(courtID: courtID, coachIDs: [record.coachId]))
+            }
+            staffingByBlock[record.blockId] = courts
         }
 
         var courtIDsByBlock: [ScheduleBlock.ID: [Group.ID]] = [:]
@@ -266,7 +316,8 @@ extension SupabaseRepository: SectionEightData {
                 record,
                 notes: notesByBlock[record.id] ?? [],
                 coachIDs: coachIDsByBlock[record.id] ?? [],
-                courtIDs: courtIDsByBlock[record.id] ?? []
+                courtIDs: courtIDsByBlock[record.id] ?? [],
+                staffing: staffingByBlock[record.id] ?? []
             )
         }
     }
@@ -283,7 +334,7 @@ extension SupabaseRepository: SectionEightData {
             // this device a moment ago, so there is nothing under it to clear and a delete could
             // only ever be a round trip that matched nothing.
             try await db.insert(
-                Relation.scheduleBlockCoaches, Self.blockCoachRows(block.coachIDs, for: block.id)
+                Relation.scheduleBlockCoaches, Self.blockCoachRows(for: block)
             )
             try await db.insert(
                 Relation.scheduleBlockCourts, Self.blockCourtRows(block.courtIDs, for: block.id)
@@ -305,7 +356,7 @@ extension SupabaseRepository: SectionEightData {
             guard !updated.isEmpty else {
                 throw await missingOrRefused(Relation.scheduleBlocks, id: block.id)
             }
-            try await setBlockCoaches(block.coachIDs, forBlock: block.id)
+            try await setBlockCoaches(for: block)
             try await setBlockCourts(block.courtIDs, forBlock: block.id)
         }
         return try await scheduleBlocks(forVenue: block.venueID, day: block.day, campID: campID)
@@ -455,7 +506,7 @@ extension SupabaseRepository: SectionEightData {
             try await db.insert(Relation.scheduleBlocks, copies.map(Self.scheduleRow))
             try await db.insert(
                 Relation.scheduleBlockCoaches,
-                copies.flatMap { Self.blockCoachRows($0.coachIDs, for: $0.id) }
+                copies.flatMap(Self.blockCoachRows(for:))
             )
             try await db.insert(
                 Relation.scheduleBlockCourts,
@@ -504,13 +555,18 @@ extension SupabaseRepository: SectionEightData {
     /// The delete carries `block_id` because `PostgRESTClient` will not send it otherwise: an
     /// unfiltered DELETE would take every block's coaches off every block in the table, and that
     /// guard exists precisely so a filter lost in an edit never leaves the device.
-    private func setBlockCoaches(
-        _ coachIDs: [StaffMember.ID], forBlock blockID: ScheduleBlock.ID
-    ) async throws {
+    ///
+    /// It also carries *only* `block_id`, which matters now that the rows are of two kinds. The
+    /// cover clears the block's whole staffing — block-wide names and per-court names together —
+    /// and rewrites it, so moving a coach from the block onto Court 2 is one delete and one insert
+    /// rather than a PATCH that would have to find the row first. Filtering the delete on
+    /// `group_id` as well would leave the other kind behind, and the block would come back with
+    /// the coach on it twice.
+    private func setBlockCoaches(for block: ScheduleBlock) async throws {
         try await db.delete(
-            Relation.scheduleBlockCoaches, where: PostgRESTQuery().eq("block_id", blockID)
+            Relation.scheduleBlockCoaches, where: PostgRESTQuery().eq("block_id", block.id)
         )
-        try await db.insert(Relation.scheduleBlockCoaches, Self.blockCoachRows(coachIDs, for: blockID))
+        try await db.insert(Relation.scheduleBlockCoaches, Self.blockCoachRows(for: block))
     }
 
     /// The block's courts, covered rather than diffed — see `setBlockCoaches` for the whole
@@ -529,17 +585,52 @@ extension SupabaseRepository: SectionEightData {
         try await db.insert(Relation.scheduleBlockCourts, Self.blockCourtRows(courtIDs, for: blockID))
     }
 
-    /// `(block_id, coach_id)` is the table's primary key, so the same coach named twice is a
-    /// `23505` rather than a harmless no-op. Deduplicated here, keeping the first mention, because
-    /// the order the rows are written in is the order `created_at` gives them back and therefore
-    /// the order `ScheduleBlock.coachLine(in:)` reads out as "Nass & Alina".
-    private static func blockCoachRows(
-        _ coachIDs: [StaffMember.ID], for blockID: ScheduleBlock.ID
-    ) -> [RowValues] {
-        var seen: Set<StaffMember.ID> = []
-        return coachIDs
-            .filter { seen.insert($0).inserted }
-            .map { ["block_id": .uuid(blockID), "coach_id": .uuid($0)] }
+    /// Both halves of a block's staffing, as rows of one table.
+    ///
+    /// `coachIDs` writes `group_id` NULL — this coach is on the block — and each
+    /// `BlockCourtStaffing` writes one row per coach carrying its court. The block-wide names go
+    /// first so `created_at` gives them back first, which is the order `coachLine(in:)` reads out
+    /// as "Nass & Alina".
+    ///
+    /// **Deduplicated on the pair, not on the coach.** `(block_id, coach_id, group_id)` is the
+    /// table's key with NULLs compared as equal (see
+    /// `20260810030500_a_coach_takes_a_court_not_a_block`), so a name repeated *within* one court
+    /// — or twice on the block — is a `23505` rather than a harmless no-op, and must be collapsed
+    /// here. The same coach on two different courts is not a duplicate at all: it is the thing the
+    /// migration widened the key to permit, and it must survive this filter. A `Set<StaffMember.ID>`
+    /// would have thrown it away, which is why the seen-set is keyed on the court as well.
+    private static func blockCoachRows(for block: ScheduleBlock) -> [RowValues] {
+        var seen: Set<Pairing> = []
+        var rows: [RowValues] = []
+        for coachID in block.coachIDs where seen.insert(Pairing(coachID, nil)).inserted {
+            rows.append(["block_id": .uuid(block.id), "coach_id": .uuid(coachID)])
+        }
+        for court in block.staffing {
+            for coachID in court.coachIDs
+            where seen.insert(Pairing(coachID, court.courtID)).inserted {
+                rows.append([
+                    "block_id": .uuid(block.id),
+                    "coach_id": .uuid(coachID),
+                    "group_id": .uuid(court.courtID),
+                ])
+            }
+        }
+        return rows
+    }
+
+    /// One coach on one court, or on the block when the court is nil — the row's identity, for the
+    /// deduplication above and nothing else.
+    ///
+    /// A named type rather than a tuple because `Set` needs `Hashable` and tuples are not, and
+    /// because a bare `Set<[UUID?]>` would spell the same thing without saying what it is.
+    private struct Pairing: Hashable {
+        let coachID: StaffMember.ID
+        let courtID: Group.ID?
+
+        init(_ coachID: StaffMember.ID, _ courtID: Group.ID?) {
+            self.coachID = coachID
+            self.courtID = courtID
+        }
     }
 
     /// `(block_id, group_id)` is this table's primary key too, so the same deduplication and for

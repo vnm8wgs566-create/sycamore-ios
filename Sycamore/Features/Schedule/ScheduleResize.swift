@@ -66,7 +66,7 @@ struct ScheduleResizePlan: Equatable, Sendable {
 
     /// The grid every end time lands on, in minutes.
     ///
-    /// Fifteen, which is `BlockClock.options`' own spacing (`BlockEditorDraft.swift:229`) rather
+    /// Fifteen, which is `BlockClock.options`' own spacing (`BlockEditorDraft.swift:260-261`) rather
     /// than a second opinion about it: the editor's two time menus offer quarter-hours, so a
     /// resize snapping to anything else would write a time its own editor could not read back.
     ///
@@ -209,13 +209,13 @@ struct ScheduleResizePlan: Equatable, Sendable {
     /// True once the drag has actually moved the end off where it started.
     ///
     /// The commit is guarded on this. `AppStore.perform` tracks in-flight work with a single
-    /// `Bool` (`AppStore.swift:1111-1119`), so a write that changes nothing still flickers the
+    /// `Bool` (`AppStore.swift:520`, `:1694-1702`), so a write that changes nothing still flickers the
     /// screen's spinner and still costs a round trip.
     var hasMoved: Bool { endsAt != restingEnd }
 
     /// `9:00am – 10:15am` — the span the block will have if the finger lifts now.
     ///
-    /// `ScheduleBlock.timeLabel`'s spelling (`SectionEight.swift:156-160`), restated rather than
+    /// `ScheduleBlock.timeLabel`'s spelling (`SectionEight.swift:204-208`), restated rather than
     /// borrowed because a plan holds two times and not a block. The two are tested against each
     /// other so the live readout and the card underneath it cannot start disagreeing.
     var spanLabel: String { "\(startsAt.clockLabel) – \(endsAt.clockLabel)" }
@@ -363,7 +363,7 @@ struct ScheduleMovePlan: Equatable, Sendable {
 
     /// `9:00am – 10:15am`, or `8:30am` for a block with no stated end.
     ///
-    /// `ScheduleBlock.timeLabel`'s spelling (`SectionEight.swift:157-160`) including its nil case,
+    /// `ScheduleBlock.timeLabel`'s spelling (`SectionEight.swift:204-208`) including its nil case,
     /// restated rather than borrowed because a plan holds two times and not a block. The two are
     /// tested against each other so a live readout and the card under it cannot start disagreeing.
     var spanLabel: String {

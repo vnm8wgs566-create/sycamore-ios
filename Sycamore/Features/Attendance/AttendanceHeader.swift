@@ -20,8 +20,6 @@ struct AttendanceHeader: View {
     let total: Int
     let onClose: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Spacing.tight) {
@@ -39,9 +37,20 @@ struct AttendanceHeader: View {
                 .padding(.horizontal, Spacing.header)
                 .padding(.top, OnTheDayTokens.headerTop)
 
-            progress
-                .padding(.horizontal, Spacing.header)
-                .padding(.top, OnTheDayTokens.headerTop)
+            // The 4pt track is shared now — `4c`'s first sort draws the same bar with a different
+            // figure beside it, which is what took it out of this file. The two arguments that
+            // used to be made here, for scaling the fill rather than measuring it and for gating
+            // the spring on Reduce Motion, went with it (`Components.swift`, `ProgressTrack`).
+            ProgressTrack(
+                value: markedCount,
+                total: total,
+                label: "\(markedCount) of \(total)",
+                labelStyle: .metaSmall,
+                labelColor: Theme.inkSecondary,
+                accessibilityLabel: "Marked"
+            )
+            .padding(.horizontal, Spacing.header)
+            .padding(.top, OnTheDayTokens.headerTop)
         }
         .padding(.bottom, OnTheDayTokens.headerBottom)
     }
@@ -56,34 +65,6 @@ struct AttendanceHeader: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Close attendance")
-    }
-
-    /// The design's 4pt track. The fill is scaled rather than measured: at 4pt tall the capsule's
-    /// 2pt ends distort by well under a point, and that keeps the bar free of geometry readers.
-    private var progress: some View {
-        let fraction = total == 0 ? 0 : Double(markedCount) / Double(total)
-
-        return HStack(spacing: Spacing.row) {
-            Capsule()
-                .fill(Theme.hairline)
-                .frame(height: OnTheDayTokens.progressHeight)
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(Theme.accent)
-                        .scaleEffect(x: fraction, y: 1, anchor: .leading)
-                }
-                .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: fraction)
-
-            Text("\(markedCount) of \(total)")
-                .typeStyle(.metaSmall, color: Theme.inkSecondary)
-                .monospacedDigit()
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Marked")
-        .accessibilityValue("\(markedCount) of \(total)")
-        // Read out as the count moves rather than only when the header is swiped to, so a coach
-        // running VoiceOver hears the list shrink without leaving the row they are on.
-        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 

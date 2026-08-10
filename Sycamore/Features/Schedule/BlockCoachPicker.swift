@@ -28,18 +28,37 @@ import SwiftUI
 struct BlockCoachPicker: View {
 
     /// Everybody who could run this block. Handed in already resolved, the way
-    /// `BlockAssigneeList` takes its people.
+    /// `BlockCourtStaffingSheet` takes its pool.
     let people: [StaffMember]
     @Binding var selection: Set<StaffMember.ID>
     /// The signed-in person, so their row can say "· you" and sit at the top. Nil for somebody with
     /// no staff record in this camp — the same contract, and the same name, as
-    /// `BlockAssigneeList.myID`, because the two lists are read minutes apart.
+    /// `CourtCoachPicker.myID`, because the two lists are read minutes apart.
     ///
     /// `let` rather than a defaulted `var`, which is the difference between a caller who forgets
     /// and a caller who cannot compile. It must be the *same* id `people` was sorted with: the pool
     /// lifts your row to the top and this writes the suffix on it, so two answers would label the
     /// wrong row.
     let myID: StaffMember.ID?
+    /// What each of them is doing when this block starts — `Free now · roaming`, `Free at 10:30`,
+    /// `On Court 3 · Skills stations` (`design/rebuild/section-t5.html:118-119`).
+    ///
+    /// The line this picker used to draw was `StaffMember.detailLine` — "Worker · Sycamore ·
+    /// Court 3" — which says where somebody *stands* and is the same sentence under every block of
+    /// the day. `5b` asks the question the sheet is actually for: can I have this person at
+    /// quarter to eleven. `CoachAvailability` is the one answer to it, shared with `4d`'s picker,
+    /// and its header argues why it reads an open-ended block differently from the clash flag.
+    ///
+    /// Resolved by the sheet and handed down, like `people` above and like `BlockCourtPicker`'s
+    /// two dictionaries. `CoachAvailability.of` walks the day's blocks per person, and this body
+    /// re-runs on every keystroke in the title field — computed here it would be that walk once
+    /// per row per keystroke, inside a `ForEach` nobody can hoist it out of.
+    ///
+    /// Defaulted to empty, and every missing entry falls back to `rowDetail(for:)`. That is not a
+    /// convenience: availability needs a `Camp` and a day of blocks, and the store has neither
+    /// while it is still loading — so "where they stand" is what a row says until the schedule
+    /// arrives, rather than a blank line where a sentence goes.
+    var availability: [StaffMember.ID: CoachAvailability] = [:]
 
     var body: some View {
         Card(radius: ScheduleMetrics.cardRadius) {
@@ -66,15 +85,40 @@ struct BlockCoachPicker: View {
     /// one when it is given initials and nothing there when it is not.
     private func row(_ member: StaffMember) -> some View {
         let isOn = selection.contains(member.id)
+        let free = availability[member.id]
 
         return BlockPickRow(
             title: Self.rowTitle(for: member, me: myID),
-            detail: Self.rowDetail(for: member),
+            detail: free?.subtitle ?? Self.rowDetail(for: member),
+            detailColor: Self.detailColor(free),
             isOn: isOn,
             initials: member.initials,
             hint: hint(member, isOn: isOn)
         ) {
             selection.toggle(member.id)
+        }
+    }
+
+    /// Accent for a coach who is free, grey for one who frees up part way through, amber for one
+    /// who is taken for the whole block.
+    ///
+    /// The two the design draws are the first two: `Free now · roaming` in `#1A7F55` and
+    /// `Free at 10:30` in `#8A8E96` (`design/rebuild/section-t5.html:118-119`). Amber for the third
+    /// is this file's, and it is the reading the rest of the sheet already uses — the same colour
+    /// the court above says `Needs a coach` in, and the same colour the overlap line under the time
+    /// fields is drawn in. Every one of them means *know this before you save*, and none of them
+    /// stops the save; `CoachAvailability.isConflict` is `4d`'s word for the same state, where the
+    /// row genuinely has nothing to press.
+    ///
+    /// Deliberately not `Theme.danger`. Putting two coaches on one eleven-o'clock block is a thing
+    /// a camp does on purpose — a handover, a trainer walking a court — and red would say the app
+    /// had refused something it has not.
+    private static func detailColor(_ free: CoachAvailability?) -> Color {
+        switch free {
+        case .free: Theme.accent
+        case .freesAt: Theme.inkMuted
+        case .busy: Theme.warning
+        case nil: Theme.inkMuted
         }
     }
 
@@ -142,11 +186,15 @@ struct BlockCoachPicker: View {
 /// is the shape.
 ///
 /// Not done here, for two reasons rather than none. `BlockCourtPicker.pool`,
-/// `BlockCourtPicker.courts(on:in:)` and `BlockAssigneeList.coaches(on:in:)` are View-statics of
+/// `BlockCourtPicker.courts(on:in:)` and `BlockCourtCard.coaches(on:court:in:)` are View-statics of
 /// exactly this kind sitting in this same folder, so moving one of four is a new inconsistency
 /// bought with the old one — they go together or not at all. And `CourtCoachPicker` was already
 /// reaching across the folder for this function before it was widened, so the cross-feature call
 /// is not what this change introduced; only the keyword is.
+///
+/// `BlockAssigneeList.coaches(on:in:)` was a fifth until `5d` took the card it hung off away. What
+/// is left there is a bare `enum` holding that one function, which is the shape this paragraph is
+/// arguing for — reached by half a delete rather than on purpose.
 extension BlockCoachPicker {
 
     /// Everybody who could run a block at `venueID`: the staff posted there, the roamers who belong
@@ -157,11 +205,11 @@ extension BlockCoachPicker {
     ///
     /// The filter was `venueID == venueID || (isRoaming && venueID == nil)`, lifted out of
     /// `BlockDetailView.assignees`. It asks only where somebody *stands*, and `StaffMember.venueID`
-    /// is `assignment?.venueID` (`Models.swift:674`) — so role never entered into it. Two people
+    /// is `assignment?.venueID` (`Models.swift:773`) — so role never entered into it. Two people
     /// fell through:
     ///
     /// 1. **An admin nobody has put on a court.** `Role.roamsByDefault` is trainer-only
-    ///    (`Models.swift:320`), so a fresh admin has `venueID == nil` and `isRoaming == false` and
+    ///    (`Models.swift:398`), so a fresh admin has `venueID == nil` and `isRoaming == false` and
     ///    matched neither arm. That is not a rare shape: `adoptStaffRow`
     ///    (`SupabaseRepository+Enrolment.swift:44-73`) mints every new member's `coaches` row with
     ///    `site_id` and `group_id` NULL, admins included. So the person who set the camp up was
@@ -221,15 +269,17 @@ extension BlockCoachPicker {
 
     /// `Nass`, or `Nass · you` on your own row.
     ///
-    /// ` · you` is `BlockAssigneeList.name(for:)`'s wording (`:135-140`) and its position — after
-    /// the name, not buried in the grey line under it — so the card that *states* who is on a block
-    /// and the two pickers that *choose* them say the same thing the same way.
+    /// ` · you` after the name, not buried in the grey line under it, so all three pickers that
+    /// choose a person say the same thing the same way — this one, `CourtCoachPicker` and `4d`'s
+    /// `BlockCourtStaffingSheet`, each of which calls this function rather than spelling it.
     ///
-    /// A `String` and not that card's tinted `Text`. The accent run needs a `Text`-typed title on
-    /// `BlockPickRow`, which is a shared row this change had no other reason to touch, and the
-    /// colour is doing less work here anyway: on a picker the accent already means "ticked", so a
-    /// second accent phrase on the same row would be one word too many. Pinning the row to the top
-    /// is what makes it findable; the suffix is what confirms it.
+    /// The wording came from the "Logistics" card on `8l`, which *stated* who was on a block and
+    /// drew the suffix as a tinted run inside its name. `5d` replaced that card with a court each,
+    /// so the three pickers are now the only readers and the plain `String` is all any of them
+    /// wants — the accent run needed a `Text`-typed title on `BlockPickRow`, and on a picker the
+    /// accent already means "ticked", so a second accent phrase on the same row would be one word
+    /// too many. Pinning the row to the top is what makes it findable; the suffix is what confirms
+    /// it.
     nonisolated static func rowTitle(for member: StaffMember, me: StaffMember.ID?) -> String {
         member.id == me ? "\(member.name) · you" : member.name
     }
@@ -242,7 +292,7 @@ extension BlockCoachPicker {
     /// than as a person standing nowhere in particular. "No court" is the camp's own word for it —
     /// it is the first chip in `StaffSheet.courtChips`, which is the control that fixes it.
     ///
-    /// The guard restates `detailLine`'s own third arm (`Models.swift:686-690`) from the outside,
+    /// The guard restates `detailLine`'s own third arm (`Models.swift:785-789`) from the outside,
     /// which is one condition written twice from opposite ends: move that branching and this
     /// silently mislabels. It belongs on the model, beside `StaffMember.courtChip`, which already
     /// answers this exact case for a different reader and answers it "—". `Models.swift` is not

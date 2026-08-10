@@ -191,6 +191,11 @@ struct MainTabView: View {
                 SetupView(store: store)
             case .rank:
                 RankView(store: store)
+            case .firstSort(let venueID):
+                // `4c`. The venue rides on the case rather than being read from
+                // `store.readVenueID` inside the screen: the sort takes minutes and a venue chip
+                // tapped on the tab underneath must not change which kids it is asking about.
+                FirstSortView(venueID: venueID)
             case .attendance(let groupIDs, let block):
                 AttendanceView(groupIDs: groupIDs, block: block) { store.pushedScreen = nil }
             case .player(let playerID):

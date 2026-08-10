@@ -155,7 +155,7 @@ extension TodayCourts {
     /// Overview reads the camp.
     ///
     /// One pass and one dictionary, handed down, for the reason `rosters(in:day:venueID:)` gives
-    /// about itself: `Camp.group(_:)` is a linear search (`Models.swift:974`), and a card asking
+    /// about itself: `Camp.group(_:)` is a linear search (`Models.swift:1073`), and a card asking
     /// for its own ceiling inside `body` would be that search once per court on every tick of the
     /// clock. Courts are few and it would not have shown up in a profile — which is exactly why it
     /// is worth refusing here rather than after somebody adds a twelfth venue.

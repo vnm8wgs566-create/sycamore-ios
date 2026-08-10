@@ -68,17 +68,20 @@ struct PlusDisc: View {
 
 #Preview("Plus discs") {
     HStack(spacing: Spacing.medium) {
-        // `8i`'s two, at the sizes it draws them.
-        PlusDisc(
-            size: OverviewTheme.capacityPillDisc,
-            glyphSize: OverviewTheme.capacityPillGlyph,
-            fill: Theme.surface,
-            border: Theme.accentSurfaceBorder,
-            isDashed: false
-        )
+        // The one 4a still draws — the empty coach slot under a court's title. The 18pt white disc
+        // that used to sit inside the "2 spots" pill went with the pill's `+`; see
+        // `CourtCapacityBadge`'s header. The solid-ring variant is drawn here all the same, because
+        // it is the half of this component the remaining caller does not exercise.
         PlusDisc(
             size: OverviewTheme.courtCoachAvatar,
             glyphSize: OverviewTheme.addCoachGlyph
+        )
+        PlusDisc(
+            size: OverviewTheme.courtCoachAvatar,
+            glyphSize: OverviewTheme.addCoachGlyph,
+            fill: Theme.surface,
+            border: Theme.accentSurfaceBorder,
+            isDashed: false
         )
     }
     .padding(Spacing.bar)

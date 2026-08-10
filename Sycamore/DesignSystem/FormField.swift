@@ -89,6 +89,30 @@ struct FormFieldMetrics: Sendable {
         promptColor: Theme.inkFaint, minimumHeight: HitTarget.minimum
     )
 
+    /// The same box a size up: `border:1.5px solid #E4E5E9; border-radius:15px; padding:13px 15px`
+    /// with a 16pt glyph 9pt off the text (`design/rebuild/section-t5.html:86-87`).
+    ///
+    /// The block editor draws every one of its fields this way, and it is the sheet with the most
+    /// of them — a name, a description, two time menus, and each one carrying a 16pt value rather
+    /// than `.sheetBox`'s 14. At that size the smaller box's 13pt gutters and 1pt rule stop reading
+    /// as a field and start reading as a row.
+    ///
+    /// A second preset rather than a retune, which is the whole reason this file holds presets.
+    /// `.sheetBox` is what the pick-up sheet, the block notes card and the inbox composer are drawn
+    /// in, and it is `FormTextArea`'s default besides — nine call sites the design has not redrawn.
+    /// Two sizes of one box is what the design has; a preset each is how that has always been
+    /// carried here.
+    ///
+    /// Grown to 44 for the same reason `.sheetBox` is: 13pt of gutter either side of a single line
+    /// lands a point or two short of it at the default text size.
+    static let sheetBoxLarge = FormFieldMetrics(
+        fill: Theme.surface, border: Theme.stroke, borderWidth: BorderWidth.input,
+        radius: Radius.input,
+        horizontalPadding: 15, verticalPadding: 13,
+        glyphGap: 9, glyphSize: 16,
+        promptColor: Theme.inkFaint, minimumHeight: HitTarget.minimum
+    )
+
     /// Search — the `#F1F2F5` plate at radius 13, no rule, `12/11`, a 17pt glass.
     ///
     /// The one preset that stays under 44pt (roughly 40 at the default text size), because the
@@ -302,6 +326,7 @@ private struct FormFieldGallery: View {
     @State private var search = "Austin"
     @State private var venueName = "Main Courts"
     @State private var maxKids = "48"
+    @State private var blockName = "Match play"
 
     @FocusState private var emailFocus: Bool
     @FocusState private var campNameFocus: Bool
@@ -310,6 +335,7 @@ private struct FormFieldGallery: View {
     @FocusState private var searchFocus: Bool
     @FocusState private var venueNameFocus: Bool
     @FocusState private var maxKidsFocus: Bool
+    @FocusState private var blockNameFocus: Bool
 
     var body: some View {
         ScrollView {
@@ -357,6 +383,25 @@ private struct FormFieldGallery: View {
                         icon: "person",
                         focus: $collectorFocus
                     )
+                }
+
+                // Drawn directly under `.sheetBox` on purpose: the two are a point and a half
+                // apart on every measurement and the only way to see that is side by side.
+                labelled("sheetBoxLarge — the block editor's name") {
+                    FormField(
+                        "Skills rotation",
+                        text: $blockName,
+                        label: "Block name",
+                        metrics: .sheetBoxLarge,
+                        type: .rowTitle,
+                        focus: $blockNameFocus
+                    )
+                }
+
+                labelled("sheetBoxLarge — a time, with its glyph") {
+                    Text("10:45am")
+                        .typeStyle(.rowTitle, color: Theme.ink)
+                        .formFieldChrome(.sheetBoxLarge, icon: "clock")
                 }
 
                 labelled("plate — search, with a value in it") {

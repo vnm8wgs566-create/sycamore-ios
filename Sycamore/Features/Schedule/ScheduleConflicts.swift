@@ -49,4 +49,41 @@ struct ScheduleConflicts: Sendable {
 
     /// The block `id` clashes with, or nil.
     subscript(id: ScheduleBlock.ID) -> ScheduleBlock? { clashes[id] }
+
+    /// What a block runs into at the times a **finger** is holding it at, rather than at the times
+    /// the store has for it.
+    ///
+    /// The index above cannot answer this and should not be made to. It is keyed on a day that has
+    /// landed, and a drag is a day that has not: `8k`'s amber line was the *pre-drag* clash for the
+    /// whole of every gesture, saying nothing about the one being created and — worse — still
+    /// naming one that had just been dragged out of. The finger is the one moment on this screen
+    /// when the flag is about a decision somebody is still making.
+    ///
+    /// **`BlockRules.overlap(with:in:)` again, and not a second spelling of it.** That is this
+    /// type's own argument (`:36-41`) and it holds harder here: a live line disagreeing with the
+    /// line that appears a round trip later would be the app contradicting itself across a single
+    /// lift of a finger. The block is copied and its times overwritten because the rule takes a
+    /// block and this screen has a plan; `BlockEditorDraft.overlap(in:)` builds its own draft block
+    /// the same way for the same reason.
+    ///
+    /// `day` may — and normally does — still hold this block at its stored times. That copy is not
+    /// a clash with itself: `overlap(with:in:)` drops `$0.id == block.id` before it compares, so
+    /// the stale twin is invisible to the question rather than something a caller has to strip out
+    /// first.
+    ///
+    /// **Cost.** One walk of the day per call, which is what a card would have paid per body. Its
+    /// callers are `ScheduleBlockCard.trackResize`/`trackMove`, which run only when the *settled*
+    /// quarter-hour changes — four to eight times across a whole drag, not once a frame — so this
+    /// adds nothing to the per-tick bill the header above is written to protect.
+    static func live(
+        _ block: ScheduleBlock,
+        startsAt: TimeOfDay,
+        endsAt: TimeOfDay?,
+        in day: [ScheduleBlock]
+    ) -> ScheduleBlock? {
+        var live = block
+        live.startsAt = startsAt
+        live.endsAt = endsAt
+        return BlockRules.overlap(with: live, in: day)
+    }
 }

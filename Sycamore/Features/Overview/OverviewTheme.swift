@@ -2,9 +2,9 @@
 //  OverviewTheme.swift
 //  Sycamore
 //
-//  The tokens `8i` / `8j` need that `Theme` and the type table do not carry: the accent-tinted
-//  lift under your own court, the type styles the design sets Overview in, and the metrics it
-//  draws the screen with.
+//  The tokens `4a`, `4b` and `8j` need that `Theme` and the type table do not carry: the
+//  accent-tinted lift, the type styles the design sets Overview in, and the metrics it draws the
+//  screen with.
 //
 //  The colour and the metrics are local to this folder on purpose. `Theme` is the file every
 //  feature touches and section 8 is being built by several hands at once, so a new token there is
@@ -22,6 +22,18 @@
 //  is here now, and holding the two side by side moved eleven of them — the card's title is 19 and
 //  not 17, its coach disc 26 and not 30, the rank column 14 and not 17, both badges a size smaller.
 //  The CSS each one came from is quoted beside it, so the next person can check rather than trust.
+//
+//  ── And section 4 moved several of them again ────────────────────────────────────────────────
+//
+//  `design/rebuild/section-t4.html` redraws this screen, and three kinds of thing changed. The
+//  **label pass** is the headline: `overline`, `courtLabel` and `condensedCourtLabel` were tracked
+//  capitals and are now one sentence-case cut, because the section's own caption says "No tracked
+//  caps anywhere". The **court's title went back down** to 17 and a new `blockTitle` took 21, the
+//  two cards having stopped being one size. And a handful of gaps tightened by a point each —
+//  `titleGap` 7 → 6, `coachRowGap` 11 → 10 — as the labels above them got quieter.
+//
+//  Where a figure moved, the paragraph beside it says what it was and why it moved, rather than
+//  being rewritten to look as though it had always been this.
 //
 
 import SwiftUI
@@ -70,8 +82,15 @@ enum OverviewTheme {
     /// nobody to notice which of the two ambers it was meant to be.
     ///
     /// `Theme.color(for:)` is the precedent for a colour that is a decision rather than a constant.
+    ///
+    /// The open court's end is `Theme.inkTertiary` (`#71757E`) now rather than `inkFaint`
+    /// (`#A2A6AE`) — 4a's own value, and it had to move with the label pass rather than after it.
+    /// A tracked capital at 10pt is a shape the eye reads as furniture whatever colour it is; the
+    /// same words in sentence case at 12.5 in `inkFaint` would sit *under* the "8 of 8" beside them,
+    /// which is a reading and not a label. One step firmer puts the label back on top of the row it
+    /// heads. `capacityReading`'s own `inkFaint` is unchanged, so the pair still separate.
     static func courtLabelColour(isClosed: Bool) -> Color {
-        isClosed ? closedCourtLabel : Theme.inkFaint
+        isClosed ? closedCourtLabel : Theme.inkTertiary
     }
 
     /// And what colour its big line is. The pair above, for the title rather than the label.
@@ -102,10 +121,12 @@ enum OverviewTheme {
     // still transcribed from the design's earlier and heavier ones. It carries section 8's weights
     // now, so most of these are names onto it rather than a scale of their own.
     //
-    // Four are declared outright — `cardTitle`, `coachName`, `rosterName` and `capacityPill` — and
-    // `Typography.swift` belongs to another unit, so they are the rows to hoist first when section
-    // 8's type pass lands. Three of the four have nothing upstairs within a rounding: there is no
-    // 19, no `500 13` and no `600 11`.
+    // Five are declared outright — `blockTitle`, `coachName`, `rosterName`, `capacityPill` and
+    // `venueName` — and `Typography.swift` belongs to another unit, so they are the rows to hoist
+    // first when section 8's type pass lands. None of the five has anything upstairs within a
+    // rounding: there is no sans 21, no `500 13`, no `600 11` and no `600 15.5`. `cardTitle` used
+    // to be the sixth at 19; 4a puts a court's title back at 17, which *is* `venueHeading`, so it
+    // is an alias again.
     //
     // `rosterName` is the exception and is worth being honest about. `TypeStyle.bodyAlt` *is*
     // `500 14` — the same size and weight — differing only in a `1.5` line height, and
@@ -115,37 +136,83 @@ enum OverviewTheme {
     // name in a ranked list, and a reader following the chain would arrive at a paragraph style
     // with its defining property removed. Two roles that agree on two numbers are not one row.
 
-    /// `600 10.5`, `+.14em`, uppercase — "YOUR COURT" and "OTHER COURTS".
-    ///
-    ///     8j: font:600 10.5px;letter-spacing:.14em;text-transform:uppercase
-    static let overline = TypeStyle.overlineSmall
+    // ── The label pass ───────────────────────────────────────────────────────────────────────
+    //
+    // The three rows below were `overlineSmall` and `statLabel` — `600 10`/`10.5`, tracked
+    // `+.14em`/`+.16em`, and **uppercased**. Section 4's caption states the rule that ends them:
+    // "No tracked caps anywhere" (`design/rebuild/section-t4.html:48`), and 4a draws every one of
+    // them in the same sentence-case cut, `600 12.5 / -.01em`:
+    //
+    //     4a: font:600 12.5px;letter-spacing:-.01em;color:#71757E   >Court 1<
+    //     4a: font:600 12.5px;letter-spacing:-.01em;color:#1A7F55   >On now · 41 min left<
+    //
+    // Two points larger, tracked the other way, and read rather than decoded. Tracked caps were
+    // section 8's way of saying "this is a label and not a sentence", and the size difference does
+    // that job now — an eyebrow at 12.5 under a title at 17 or 21 is plainly the smaller of the
+    // two without having to be shouted.
+    //
+    // **Three aliases onto one expression, not one constant read three times.** They resolve
+    // identically today and are still three, for the reason `condensedCourtLabel` gave when the
+    // pair genuinely differed: these label three different things — a region of the screen, a card,
+    // a row in a list — and a later frame is entitled to move one without moving the others.
+    //
+    // `TypeStyle.overlineSmall` and `TypeStyle.statLabel` are **deliberately left alone**. Between
+    // them they have seven other section-8 callers in features this unit does not own
+    // (`Typography.swift:391-401`), and this is section 4's rule about section 4's screen. What
+    // changes here is where Overview points, not what the shared table says.
 
-    /// `600 10`, `+.16em`, uppercase — "COURT 1" at the head of a card.
+    /// `600 12.5`, `-.01em`, sentence case — "Your court" and "Other courts".
     ///
-    ///     8i: font:600 10px;letter-spacing:.16em;text-transform:uppercase;color:#A2A6AE
+    ///     4a: font:600 12.5px 'Instrument Sans';letter-spacing:-.01em
     ///
-    /// Two points smaller and a shade wider than the section headings above, and the difference is
-    /// meaningful: those head a *region* of the screen, this labels one card inside it.
-    static let courtLabel = TypeStyle.statLabel.tracking(em: 0.16)
+    /// 4a draws neither heading — it is an admin frame, and every court on it is a full card. They
+    /// survive because `8j` does (`OverviewScreen.swift:15-27`), and they move to 4a's cut with
+    /// everything else: a coach's screen and an admin's must not label the same court two ways.
+    static let overline = TypeStyle.chipMedium.tracking(em: -0.01)
 
-    /// `600 10`, `+.14em`, uppercase — the same label on `8j`'s condensed rows.
+    /// `600 12.5`, `-.01em`, sentence case — "Court 1" at the head of a card.
     ///
-    ///     8j: font:600 10px;letter-spacing:.14em;text-transform:uppercase
+    ///     4a: font:600 12.5px 'Instrument Sans';letter-spacing:-.01em;color:#71757E
     ///
-    /// Its own constant rather than sharing `courtLabel`'s: the design genuinely tracks the two
-    /// differently, and a row that sits in a list of three needs less air between its letters than
-    /// one heading a card of its own.
-    static let condensedCourtLabel = TypeStyle.statLabel.tracking(em: 0.14)
+    /// Drawn in `Theme.inkTertiary` now rather than `inkFaint`; see `courtLabelColour(isClosed:)`.
+    static let courtLabel = TypeStyle.chipMedium.tracking(em: -0.01)
 
-    /// `600 19`, `-.035em` — a court card's big line.
+    /// `600 12.5`, `-.01em`, sentence case — the same label on `8j`'s condensed rows.
     ///
-    ///     8i/8j: font:600 19px 'Instrument Sans';letter-spacing:-.035em
+    /// It used to track a shade tighter than `courtLabel` because the two were uppercase and the
+    /// design genuinely spaced them differently. Sentence case removes the difference: there is one
+    /// figure in 4a for this cut and both rows now draw it.
+    static let condensedCourtLabel = TypeStyle.chipMedium.tracking(em: -0.01)
+
+    /// `600 12.5`, `-.01em`, sentence case — the venue name in 4a's header pill.
     ///
-    /// **Two points larger than this used to be.** It was `venueHeading` (`600 17`, `-.03em`),
-    /// which was the nearest row upstairs and was a guess at a frame nobody could open. The frames
-    /// are in the repository now and both set 19: the activity is the subject of the card, and at
-    /// 17 it sat level with a group's name on Groups rather than above it.
-    static let cardTitle = TypeStyle(size: 19, weight: .semibold, trackingEm: -0.035)
+    ///     4a: font:600 12.5px 'Instrument Sans';letter-spacing:-.01em;color:#3F4A44
+    ///
+    /// The fourth name onto the same expression, and it is a pill rather than a label — but it is
+    /// the same reading at the same size in the same header block, and naming it separately is what
+    /// lets the pill's type move with the design rather than with a court card's eyebrow.
+    static let venuePillLabel = TypeStyle.chipMedium.tracking(em: -0.01)
+
+    /// `600 17`, `-.03em` — a court card's big line.
+    ///
+    ///     4a: font:600 17px 'Instrument Sans';letter-spacing:-.03em   >Drills<
+    ///
+    /// **Two points smaller than it was, and back to the shared row.** It was declared here at 19
+    /// because `8i`/`8j` set 19 and `venueHeading` was "a guess at a frame nobody could open". 4a
+    /// is that frame reworked and it sets 17 for a court — while setting **21** for the block card
+    /// above (`blockTitle`). One constant cannot be both, and the split is the design's own point:
+    /// what is running now is the subject of the screen, and a court is one of several things
+    /// under it. At 17 this is `TypeStyle.venueHeading` exactly, so it is an alias again.
+    static let cardTitle = TypeStyle.venueHeading
+
+    /// `600 21`, `-.035em` — the on-now card's big line.
+    ///
+    ///     4a: font:600 21px 'Instrument Sans';letter-spacing:-.035em   >Skills rotation<
+    ///
+    /// Declared rather than aliased: the table has no 21 in a sans weight at all (`.sheetTitleSm`
+    /// is 21 and serif), and `Typography.swift` is another unit's file. Four points over a court's
+    /// title, which is the whole of what moved the accent border onto this card as well.
+    static let blockTitle = TypeStyle(size: 21, weight: .semibold, trackingEm: -0.035)
 
     /// `400 13` — a sentence set at card scale. The coach picker's empty card is what is left
     /// reading this; the court card's own second line is `capacityReading` now.
@@ -180,9 +247,6 @@ enum OverviewTheme {
     ///
     ///     8i: font:600 13px 'Instrument Sans';color:#1A7F55
     static let addCoach = TypeStyle.chip
-
-    /// `400 13.5/1.55` — the note hanging off the block on your own court.
-    static let cardNote = TypeStyle.subtitle.lineHeight(1.55)
 
     /// `500 14`, `-.015em` — a name in a court's list.
     ///
@@ -257,13 +321,15 @@ enum OverviewTheme {
     static let cardPadding: CGFloat = 14
     /// The card header's `gap:10px`, between the court's label and what closes the row.
     static let headerGap: CGFloat = 10
-    /// `margin-top:7px` — the header row to the card's big line.
+    /// `margin-top:6px` — the header row to the card's big line.
     ///
-    /// Four, until the frames arrived. Four was right while the two were a title and a subtitle
-    /// stacked together; they are a label *over* a title now, which is a wider step.
-    static let titleGap: CGFloat = 7
-    /// `margin-top:11px` — the title to the coach beneath it.
-    static let coachRowGap: CGFloat = 11
+    /// Four, then seven, now six. Four was right while the two were a title and a subtitle stacked
+    /// together; seven came off `8i`, where the label above was a tracked capital with air of its
+    /// own. 4a's label is sentence case and sits closer to what it names — `margin-top:6px` on both
+    /// the court card and the block card, which is `Spacing.tight`.
+    static let titleGap: CGFloat = 6
+    /// `margin-top:10px` — the title to the coach beneath it.
+    static let coachRowGap: CGFloat = 10
     /// `gap:9px` — the coach's disc to their name.
     static let coachRowSpacing: CGFloat = 9
     /// `margin-bottom:9px` — the "Your court" overline to the header row.
@@ -324,10 +390,11 @@ enum OverviewTheme {
     static let rosterRowPadding: CGFloat = 3
     /// The 30pt disc inside a coach pill.
     ///
-    /// The pill's, not the court card's. `8i` draws the card's coach on a 26pt disc with no plate
+    /// The pill's, not the court card's. 4a draws the card's coach on a 26pt disc with no plate
     /// under it at all — that is `CourtCoachLine`, and it carries `courtCoachAvatar` below. This
-    /// stays where it was because the two remaining readers of `CoachPill` are `RunningBlockCard`
-    /// and the court screen's own header, neither of which is a frame this unit is drawing.
+    /// stays where it was because `CoachPill`'s remaining reader is the court screen's own header
+    /// (`CourtHeader.swift:87`), which is not a frame this unit is drawing. `RunningBlockCard` was
+    /// the other, until 4a folded the block's coaches into one comma-separated line.
     static let coachAvatar: CGFloat = 30
     /// The coach pill's `padding:4px 13px 4px 4px` — the disc sits tight against the leading
     /// edge and the name gets the room.
@@ -364,8 +431,15 @@ enum OverviewTheme {
 
     // MARK: Room on a court
     //
-    // `8i`'s "6 of 8" and the dashed pill beside it — `padding:3px 9px 3px 4px`, `gap:5px`, with an
-    // 18pt white disc carrying an 11pt `+`.
+    // 4a's "6 of 8" and the dashed pill beside it — `padding:3px 10px`, one child:
+    //
+    //     <div style="…background:#F6FAF7;border:1px dashed #C3DFCF;border-radius:999px;
+    //                 padding:3px 10px"><span style="font:600 11px;color:#1A7F55">2 spots</span></div>
+    //
+    // **The `+` disc is gone.** `8i` drew an 18pt white disc with an 11pt `+` inside the pill, and
+    // `CourtCapacityBadge`'s header argued at length that it was drawn and inert. 4a settles that
+    // by removing the glyph rather than the argument: the pill is a *reading*, it reads "2 spots",
+    // and a control-shaped thing that is not a control no longer has to be explained.
 
     /// `gap:10px` — the reading to the pill beside it.
     ///
@@ -374,14 +448,9 @@ enum OverviewTheme {
     /// theirs: reading `headerGap` would mean a change to the *card's* header spacing silently
     /// re-spacing the inside of a badge that no longer lives there.
     static let capacityReadingGap: CGFloat = 10
-    static let capacityPillLeading: CGFloat = 4
-    static let capacityPillTrailing: CGFloat = 9
+    /// `padding:3px 10px`, symmetric now that there is nothing tucked into the leading edge.
+    static let capacityPillHorizontal: CGFloat = 10
     static let capacityPillVertical: CGFloat = 3
-    static let capacityPillGap: CGFloat = 5
-    /// `width:18px;height:18px;background:#fff;border:1px solid #E4EDE7` — the disc inside it.
-    static let capacityPillDisc: CGFloat = 18
-    /// `font-size:11px` — the `+` inside that disc.
-    static let capacityPillGlyph: CGFloat = 11
 
     // MARK: A court that is not yours
     //
@@ -399,18 +468,127 @@ enum OverviewTheme {
 
     // MARK: The running block
     //
-    // `RunningBlockCard` is not in the design — see its header for why the design's own header line
-    // implies it — so these are composed from the numbers around them rather than transcribed. The
-    // card is a court card's frame with different contents, and it says so by reusing that card's
-    // radius, padding, rule gap and title metrics rather than picking new ones.
+    // **In the design now.** This card was composed from the numbers around it while `8i` only
+    // implied it — see `RunningBlockCard`'s header. 4a draws it outright, at the top of the screen
+    // and wearing the accent border, so every figure below is transcribed rather than derived:
+    //
+    //     border:1.5px solid #C3DFCF;border-radius:16px;padding:14px;
+    //     box-shadow:0 8px 22px rgba(26,127,85,.08)
+    //
+    // Radius and padding are still the court card's, which is the design's own choice and not a
+    // convenience — the two cards are one family and 4a sets both at 16/14.
 
-    /// One note on the block to the next.
-    static let noteStackGap: CGFloat = 8
-    /// The mark at the head of a note to the note itself — the banner's `gap:9px`, restated because
-    /// a value shared by coincidence is a value that gets changed for one caller.
-    static let noteGap: CGFloat = 9
-    /// The 13pt mark itself, in the callout band alongside the marks at the end of a roster line.
-    static let noteGlyph: CGFloat = 13
+    /// `margin-top:4px` — the block's title to the line under it, "Courts 1–3 · 22 players · …".
+    ///
+    /// Tighter than `titleGap` (6) above it, and the difference is drawn: the meta line is a
+    /// continuation of the title, where the label above the title is a different kind of thing.
+    static let blockMetaGap: CGFloat = 4
+    /// `margin-top:13px` — the meta line to the call to action.
+    static let blockCtaGap: CGFloat = 13
+    /// `height:48px` — the call to action, four points under `PrimaryButton`'s own 56. It sits
+    /// inside a card rather than at the foot of a screen.
+    static let blockCtaHeight: CGFloat = 48
+    /// `margin-top:12px;padding-top:11px` — the rule above the "Next · …" footer.
+    ///
+    /// Deliberately **not** `ruleGap`, which is the symmetric 11/11 a court card's roster rule
+    /// takes. 4a sets 12 above and 11 below here, and the asymmetry is what keeps the footer
+    /// reading as a tail on the card rather than as a second section of it.
+    static let blockRuleTop: CGFloat = 12
+    static let blockRuleBottom: CGFloat = 11
+    // The three that measured the block's notes — the stack gap, the mark's gap and the mark —
+    // went with the notes themselves; see `RunningBlockCard`'s header. `cardNote`, the `400 13.5`
+    // they were set in, went with them. Nothing else in this folder drew any of the four, and a
+    // constant kept against the day a list comes back is a constant nobody dares change.
+
+    // MARK: The header's venue pill
+    //
+    // 4a's whole inversion, in one control: `padding:7px 13px;gap:6px;border-radius:999px;
+    // border:1px solid #E6E7EB`, a 13pt map pin in `Theme.accent`, the venue's name, and an 11pt
+    // caret in `Theme.inkMuted`. 4b draws the same pill in its open state — `accentBorder` rule,
+    // `accentSurface` fill, `accentDark` label, the caret flipped and drawn in `Theme.accent`.
+
+    static let venuePillHorizontal: CGFloat = 13
+    static let venuePillVertical: CGFloat = 7
+    static let venuePillGap: CGFloat = 6
+    static let venuePillGlyph: CGFloat = 13
+    static let venuePillCaret: CGFloat = 11
+    /// `gap:10px` between the pill and the avatar's column, and `margin-top:14px` under the row.
+    static let headerControlGap: CGFloat = 10
+    static let headerTitleGap: CGFloat = 14
+    /// `font-size:13.5px;margin-top:7px` — 4a's date line.
+    ///
+    /// Half a point and one point off `ScreenHeaderMetrics`' 13/6, which `ScreenHeader.swift:45-50`
+    /// settled 3-to-1 for the *shared* header. Nothing here re-opens that: this is Overview's own
+    /// header block, drawn locally because the shared one has no slot for a leading control, and 4a
+    /// states 13.5/7 as plainly as `8i` did. The three screens that argued for 13/6 keep it.
+    static let headerSubtitleSize: CGFloat = 13.5
+    static let headerSubtitleGap: CGFloat = 7
+
+    // MARK: The needs-you row
+    //
+    // 4a's second card: `gap:9px;background:#fff;border:1px solid #F0E3C6;border-radius:13px;
+    // padding:11px 13px`, a 15pt warning glyph in `Theme.warning`, one clipped line, a 14pt caret.
+
+    static let needsYouHorizontal: CGFloat = 13
+    static let needsYouVertical: CGFloat = 11
+    static let needsYouGlyph: CGFloat = 15
+    static let needsYouCaret: CGFloat = 14
+
+    // MARK: The venue sheet
+    //
+    // 4b. A bespoke plate rather than `SheetChrome` — it draws no ✕ and no title row, and its
+    // gutter is 16 where every other sheet in the app insets at `Spacing.sheet` (18).
+    //
+    //     padding:10px 16px 28px;border-radius:24px 24px 0 0
+    //     grabber: width:36px;height:5px;background:#E4E5E9;margin:0 auto 14px
+
+    /// The sheet's height over the frame it is drawn in.
+    ///
+    /// Measured rather than borrowed: 4b's plate comes to about 388 of the 848pt frame — 10 above
+    /// the grabber, 19 through it, the eyebrow and the question, 16, two 70pt venue rows with 9
+    /// between them, 13, a two-row footer card, and 28 below. That is 0.46; it is set a little
+    /// over, so the footer clears the home indicator at the default type size and a third venue
+    /// does not immediately need the scroller.
+    ///
+    /// Its own constant rather than `ActiveSheet.detentFraction`, for `BlockEditorSheet`'s reason
+    /// about its own: that property belongs to a presentation slot this sheet does not occupy.
+    /// `sheetPresentation` offers `.large` alongside it, so a camp with six venues scrolls or is
+    /// dragged up.
+    static let venueSheetDetent: Double = 0.5
+
+    static let sheetTop: CGFloat = 10
+    static let sheetHorizontal: CGFloat = 16
+    static let sheetBottom: CGFloat = 28
+    static let sheetGrabberWidth: CGFloat = 36
+    static let sheetGrabberHeight: CGFloat = 5
+    static let sheetGrabberGap: CGFloat = 14
+    /// `margin-top:16px` — 4b's question to the first venue row.
+    static let sheetListGap = Spacing.large
+    /// `margin-top:13px` — the last venue row to the footer card.
+    static let sheetFooterGap: CGFloat = 13
+    /// `padding:13px;gap:12px` — one venue row.
+    static let venueRowPadding: CGFloat = 13
+    static let venueRowGap = Spacing.medium
+    /// `margin-top:3px` — a venue's name to the line under it.
+    static let venueMetaGap: CGFloat = 3
+    /// `gap:7px` — a venue's name to the amber badge beside it.
+    static let venueBadgeGap: CGFloat = 7
+    /// `padding:3px 8px` on that badge, and `font:600 11px` — `capacityPill`'s own cut.
+    static let venueBadgeHorizontal: CGFloat = 8
+    static let venueBadgeVertical: CGFloat = 3
+    /// `font-size:20px` — the filled check on the venue you are standing in.
+    static let venueCheckGlyph: CGFloat = 20
+    /// `600 15.5`, `-.025em` — a venue's name in the sheet.
+    ///
+    /// Declared: the table's nearest rows are `.fieldValue` (`500 15.5`) and `.venueRow`
+    /// (`600 15 / -.02em`), and neither is within a rounding of both numbers.
+    static let venueName = TypeStyle(size: 15.5, weight: .semibold, trackingEm: -0.025)
+    /// `400 26/1.05` Newsreader, `-.02em` — "Where are you today?".
+    ///
+    /// `.profileName` re-sized rather than declared outright: that row is `400 24/1.15` serif at
+    /// `-.02em`, so the family, the weight and the tracking are already right and only the size and
+    /// the leading move. A serif question at 26 is the one line on this sheet that is the sheet.
+    static let sheetQuestion = TypeStyle.profileName.size(26).lineHeight(1.05)
 
     // MARK: The coach picker
 

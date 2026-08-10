@@ -43,16 +43,21 @@ struct BlockQuickActions: View {
         }
     }
 
-    /// `inlineAction` is the design's own word-as-a-button — "Reassign", "Copy Monday instead" —
-    /// so these read as the same kind of thing rather than as a third button style.
+    /// A word-as-a-button, the way `8f` draws "Reassign" and "Copy Monday instead" — the same kind
+    /// of thing rather than a third button style.
+    ///
+    /// `cardAction` and not `inlineAction`, which is what this took when the two were one size.
+    /// `5b` sets these at `600 13` (`design/rebuild/section-t5.html:102`) against `8f`'s `12.5`,
+    /// and the difference is where each one stands: those sit beside body copy and are quieter than
+    /// it, and these have a row of a card to themselves.
     ///
     /// The frame reaches 44 and the `contentShape` follows it, in that order: reversed, the added
-    /// height would be inert and the target would stay the height of a 12.5pt word. `Chip` states
+    /// height would be inert and the target would stay the height of a 13pt word. `Chip` states
     /// the same rule at `Components.swift:374-379`, where it was learned the hard way.
     private func action(_ title: String, hint: String, run: @escaping () -> Void) -> some View {
         Button(action: run) {
             Text(title)
-                .typeStyle(ScheduleType.inlineAction, color: Theme.accent)
+                .typeStyle(ScheduleType.cardAction, color: Theme.accent)
                 .frame(minHeight: HitTarget.minimum)
                 .contentShape(.rect)
         }
@@ -68,7 +73,7 @@ struct BlockQuickActions: View {
         BlockQuickActions(allTitle: "All courts", noneTitle: "No courts", onAll: {}, onNone: {})
         CardRow(spacing: Spacing.row, verticalPadding: Spacing.row) {
             Text("Court 1")
-                .typeStyle(ScheduleType.assigneeName, color: Theme.ink)
+                .typeStyle(ScheduleType.pickRowTitle, color: Theme.ink)
         }
     }
     .padding(Spacing.gutter)

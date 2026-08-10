@@ -26,8 +26,9 @@
 //  This is a deliberate distinction from the clash rule and it is written down rather than left to
 //  be rediscovered. `BlockRules.overlap(with:in:)` (`BlockEditorDraft.swift:134`) flags a clash
 //  only when two blocks overlap in time **and** `sharesSpace` — unless both name courts and those
-//  court lists are disjoint. That rule is untouched and still drives the amber "Clashes with…"
-//  line. Lanes are not that question: two blocks running at once sit side by side whether or not
+//  court lists are disjoint. That rule is untouched and still drives the amber "Runs into…" line —
+//  now live under a finger as well as at rest (`ScheduleConflicts.live(_:startsAt:endsAt:in:)`),
+//  which changes when it is asked and nothing about what it answers. Lanes are not that question: two blocks running at once sit side by side whether or not
 //  they share courts, because **concurrency is a layout fact and a clash is a judgement**. A
 //  warm-up on Court 1 beside free play on Courts 2–4 is a morning the camp is meant to be able to
 //  write down, and drawing the two on top of each other to prove they are compatible would hide
@@ -227,7 +228,7 @@ struct ScheduleTimeline: Equatable, Sendable {
     init(day: [ScheduleBlock]) {
         // Sorted, because the input is not — `scheduleBlocks(forVenue:day:campID:)` orders by
         // `starts_at` and nothing else. The tie-break is `ScheduleBlock.running(in:at:)`'s
-        // (`SectionEight.swift:297`), arbitrary but fixed, so two blocks starting on the same
+        // (`SectionEight.swift:462-467`), arbitrary but fixed, so two blocks starting on the same
         // minute do not swap columns between one read and the next.
         let spans = day
             .map { Self.span(of: $0, in: day) }
@@ -324,7 +325,7 @@ struct ScheduleTimeline: Equatable, Sendable {
     /// A stated end is an end. An unstated one is closed by the next block that `sharesSpace` with
     /// it, and by the bottom of the canvas when nothing does.
     ///
-    /// **That is `ScheduleBlock.hasFinished(_:by:amongst:)`'s rule** (`SectionEight.swift:351-361`)
+    /// **That is `ScheduleBlock.hasFinished(_:by:amongst:)`'s rule** (`SectionEight.swift:496-522`)
     /// asked for a moment rather than about one, and it is stated the same way on purpose: read
     /// any other way, an 8:30 "Drop-off" with no end is the activity on every court all afternoon,
     /// and a canvas is the one place that sentence would be drawn at full height in front of

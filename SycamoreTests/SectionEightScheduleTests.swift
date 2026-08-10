@@ -90,8 +90,10 @@ struct BlockNoteTests {
         #expect(blocks.first?.notes.first?.authorName == nil)
     }
 
-    /// `ScheduleBlockCard` pins `notes.first` and `BlockCourtCard` pins it again, so newest-first
-    /// would swap the pinned line out from under a coach every time somebody added one.
+    /// `ScheduleBlockCard` pins `notes.first` on the day list, so newest-first would swap the
+    /// pinned line out from under a coach every time somebody added one. `BlockCourtCard` used to
+    /// pin it a second time on `8l` and `5d` took that away — one reader rather than two, and the
+    /// rule is unchanged: the pinned note is the *first* one.
     @Test("Notes come back oldest first, so the pinned line stays put")
     func notesAreOldestFirst() async throws {
         let (repo, camp, venueID) = loaded()

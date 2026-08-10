@@ -29,6 +29,24 @@
 
 import SwiftUI
 
+// MARK: - Coordinate space
+
+/// A card's own frame of reference, for the two things that have to agree about where the amber
+/// "Needs a coach" line is: the measurement taken inside the plate and the tap taken outside it.
+///
+/// One name shared by every card and no collision from it: `.named(_:)` resolves at the nearest
+/// ancestor declaring it, and each card declares its own around itself. That is the distinction
+/// from `ScheduleResizePlan.listSpace`, which is one space on the canvas precisely because a drag
+/// has to be measured against something the card cannot move.
+///
+/// At file scope rather than a `static` on the card, for `GroupsSpace`'s reason
+/// (`GroupsMove.swift:41-43`): a SwiftUI view is `@MainActor` in Swift 6 and the closure
+/// `onGeometryChange` transforms through is `@Sendable`, so a static on the view is not reachable
+/// from inside it. `greyLines` measures through exactly that closure.
+enum ScheduleCardSpace {
+    static let card = "schedule.block.card"
+}
+
 struct ScheduleBlockCard: View {
 
     let block: ScheduleBlock
@@ -63,9 +81,41 @@ struct ScheduleBlockCard: View {
     /// Handed down rather than worked out here, because working it out is a walk of the whole day
     /// and this view is drawn once per block: see `ScheduleConflicts`, which is where the walk
     /// happens and where its cost is argued.
+    ///
+    /// It is the *store's* answer, so it is a frame behind a finger and an entire round trip behind
+    /// a drop. `runsInto` below is the same question asked of the times a finger is holding, and
+    /// `liveConflict` is which of the two the card is drawing at any moment.
     var conflict: ScheduleBlock?
 
+    /// The day this card is drawn in, for the one question the index above cannot answer: what the
+    /// block runs into at times nobody has written down yet.
+    ///
+    /// Walked only inside `trackResize`/`trackMove` and the two `begin`s — never in `body` — so
+    /// the O(N) that `ScheduleConflicts` exists to keep off this screen's clock stays off it. Those
+    /// fire on settled quarter-hours, four to eight times across a whole drag.
+    ///
+    /// Handed down rather than read from the store, so the card asks about the day it is *drawn*
+    /// in. A card is drawn from `blocks`, which is empty for a day still landing, and a conflict
+    /// index built against a different day would flag against blocks nobody can see.
+    let day: [ScheduleBlock]
+
+    /// The block currently being run into by the drag, shared with the screen so the neighbour can
+    /// recede while a finger is over it. Nil when nothing is being dragged into anything.
+    ///
+    /// Beside `draggingID` and owned by the parent for the same reason: it is *read* by the parent,
+    /// in the parent's own body, to dim a card that is not this one. A card cannot dim its
+    /// neighbour from inside itself.
+    ///
+    /// Written only when the identity changes — see `flag(startsAt:endsAt:)` — because writing it
+    /// is what re-runs the canvas.
+    @Binding var runsIntoID: ScheduleBlock.ID?
+
     let onOpen: () -> Void
+    /// The amber "Needs a coach" line was tapped. `4d` makes that line the button: the flag is the
+    /// only thing on the card that names the problem, so it is the only honest thing to press to
+    /// fix it. The sheet is the screen's to present — see `staffingTapTarget` for how the tap is
+    /// taken without a fourth gesture on a card that already has three.
+    let onStaffing: () -> Void
     /// The block's new end, once. Called on release and never during the drag — `AppStore.perform`
     /// tracks in-flight work with a single `Bool`, so a write per frame would thrash it.
     let onResize: (TimeOfDay) -> Void
@@ -82,17 +132,35 @@ struct ScheduleBlockCard: View {
     @ScaledMetric(relativeTo: .callout) private var fullFrom = ScheduleMetrics.blockLayoutFull
     @ScaledMetric(relativeTo: .callout) private var compactFrom = ScheduleMetrics.blockLayoutCompact
 
+    /// Read for the grab and release animation below, which is the one piece of motion this card
+    /// runs that a reader has not asked for by moving their own finger. `Motion.fold` has a
+    /// `reduceMotion:` form for exactly this and every other caller in the app takes it.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     /// The live bottom-edge drag, or nil when no finger is on this card's handle.
     @State private var resize: ScheduleResizePlan?
     /// The live body drag, or nil when nobody is carrying this block.
     @State private var move: ScheduleMovePlan?
+
+    /// What the block runs into *right now*, at the times the finger is holding it at.
+    ///
+    /// The block rather than the sentence, which is `ScheduleConflicts`' own choice and for its
+    /// reason: the wording lives in `ScheduleBlockPresentation` with the rest of `8k`'s copy. It
+    /// also has to be the block here, because the sentence's minute is
+    /// `max(liveStart, other.startsAt)` and `liveStart` moves under the finger — so the string is
+    /// built in `body` from a live start, and only the neighbour is held.
+    @State private var runsInto: ScheduleBlock?
+
+    /// Where the "Needs a coach" line is, in this card's own coordinate space, or nil when the
+    /// card is not drawing one. Written by `greyLines`, read by `staffingTapTarget`.
+    @State private var staffingLine: CGRect?
 
     /// The times the last committed drag wrote, held until the store answers.
     ///
     /// Without it the card **rubber-bands**: the plan is cleared on release, the card springs back
     /// to where the drag started, and a round trip later it jumps to where it was dropped.
     /// `AppStore.updateScheduleBlock` is not optimistic — `scheduleBlocks` is assigned after the
-    /// `await` (`AppStore+SectionEight.swift:121-126`) — so that gap is the whole latency of the
+    /// `await` (`AppStore+SectionEight.swift:198-202`) — so that gap is the whole latency of the
     /// write, on the one gesture in the app where the finger and the thing it moved were supposed
     /// to be the same object. `RankView` and `GroupCard` snap back the same way and get away with
     /// it, because a row returning to a list it is about to be re-sorted into is a much smaller
@@ -217,8 +285,17 @@ struct ScheduleBlockCard: View {
             // rather than being swallowed by `children: .ignore`.
             .overlay(alignment: .top) { moveSurface }
             .overlay(alignment: .bottom) { resizeHandle }
-            .overlay(alignment: .bottom) { edgeReadout }
+            .overlay(alignment: .bottomTrailing) { edgeReadout }
             .overlay(alignment: .top) { moveReadout }
+            // Declared *outside* the overlays rather than inside `plate`, and the order is
+            // load-bearing: the copy that measures `staffingLine` is inside the plate and the
+            // gesture that reads it is inside `moveSurface`, so the only node that is an ancestor
+            // of both is this one. An overlay is not a descendant of the view it is drawn over.
+            //
+            // It sits inside `.offset(y:)` for the same reason it has to: an offset is a render
+            // transform applied to the whole of this, so a rect measured in here is unmoved by a
+            // carry that moves the card and the finger together.
+            .coordinateSpace(.named(ScheduleCardSpace.card))
             // The plate is `liveHeight` tall and starts at the slot's top; a move slides the whole
             // thing, handles and readouts with it.
             .offset(y: liveOffset)
@@ -257,31 +334,92 @@ struct ScheduleBlockCard: View {
                     Button("Lengthen by 15 minutes") { stretch(by: 1) }
                     Button("Shorten by 15 minutes") { stretch(by: -1) }
                 }
+                // The rotor's route to `4d`. `staffingTapTarget` is a *region* of a card, which is
+                // nothing a rotor can aim at — and the region exists at all only because the card
+                // is one accessibility element, so there is no button here to be found by touch.
+                // Named for what it does to which block, this element being the whole card and its
+                // label already having said the block's name once.
+                if block.status == .needsCoach {
+                    Button("Add a coach to \(block.title)") { onStaffing() }
+                }
             }
     }
 
     /// `8k`'s running block wears a green border at the same weight as every other card's grey
-    /// one, and no shadow. Only `8l`'s court card is lifted — see `ScheduleShadows.courtCard`.
+    /// one. A card **under a finger** wears the same green half a point thicker and the day's only
+    /// shadow; every other card on the canvas is flat — see `ScheduleShadows.draggedBlock`, which
+    /// argues both halves of that.
+    ///
+    /// One `.animation(_:value:)`, keyed on the grab rather than on the whole card. The border, the
+    /// lift and — over in `ScheduleBlockLayer` — the neighbour's dimming all arrive on
+    /// `Motion.fold` when a hold succeeds and leave on it when the finger goes; nothing else in
+    /// here animates, and the *tracking* must not. Keying on `isDragging` is what keeps those
+    /// apart: `liveHeight` changes without it and so is never animated, which is the whole of
+    /// `readout(_:)`'s warning about 0.24s between a finger and the thing it is moving.
     private var card: some View {
-        plate(fill: Theme.surface, border: border, drawnHeight: liveHeight) {
+        plate(
+            fill: Theme.surface,
+            border: border,
+            borderWidth: borderWidth,
+            drawnHeight: liveHeight
+        ) {
             copy
         }
+        .shadow(lift)
+        .animation(Motion.fold(reduceMotion: reduceMotion), value: isDragging)
     }
 
-    /// Green while it is running, amber while a clash has nowhere else to be drawn, grey otherwise.
+    /// True while either drag is live. The two cannot be live at once — the surfaces do not
+    /// overlap — so this is one question and not two.
+    private var isDragging: Bool { resize != nil || move != nil }
+
+    /// The clash the card is drawing: the live one while a finger is down, the store's otherwise.
+    ///
+    /// Every reader of a clash on this card goes through here — the line, the border and the tier
+    /// that decides between them — so there is no path by which the card can say one thing in ink
+    /// and another in position.
+    private var liveConflict: ScheduleBlock? { isDragging ? runsInto : conflict }
+
+    /// Green while it is running or being dragged, amber while a clash has nowhere else to be
+    /// drawn, grey otherwise.
     ///
     /// The amber case is what the canvas cost and what it pays back. `greyLines(_:)` needs a line's
     /// worth of card and a block under three quarters of an hour has none, so on short blocks the
     /// border carries the flag instead — the same ink, no vertical room at all. It outranks the
     /// running block's green for the reason `ScheduleBlock.subtitle` lets "Needs a coach" outrank
-    /// `detail` (`ScheduleBlockPresentation.swift:29-33`): a problem outranks a state.
+    /// `detail` (`ScheduleBlockPresentation.swift:35-39`): a problem outranks a state — and it
+    /// outranks the drag's green for that same reason again. A short block being dragged onto its
+    /// neighbour has one thing worth saying and it is not that a finger is on it, which the finger
+    /// already knows.
     ///
     /// It is *not* drawn on a card tall enough for the line, which would be the same fact twice in
     /// two places and would take the green off the block somebody is standing in to say something
     /// already written on it.
     private var border: Color {
-        if conflict != nil, tier(for: liveHeight) < .full { return Theme.warning }
-        return isCurrent ? Theme.accentBorder : Theme.hairline
+        if liveConflict != nil, tier(for: liveHeight) < .full { return Theme.warning }
+        return isCurrent || isDragging ? Theme.accentBorder : Theme.hairline
+    }
+
+    /// `1.5` under a finger, a hairline otherwise (`design/rebuild/section-t5.html:166`).
+    ///
+    /// Decided apart from the colour, so the two say different things: the *weight* says a hand is
+    /// on this card, the *ink* says what is wrong with it. That is what lets a short amber card
+    /// keep its amber while still thickening under the finger, instead of the flag and the grab
+    /// having to take turns.
+    private var borderWidth: CGFloat {
+        isDragging ? BorderWidth.input : BorderWidth.hairline
+    }
+
+    /// The accent-tinted lift, or the same shadow in nothing at all.
+    ///
+    /// The geometry is constant and only the colour moves, so the grab fades a shadow in rather
+    /// than growing one out of the card's own edge — a radius animating from 0 reads as the card
+    /// inflating, which on a canvas where height means minutes is the one thing it must not look
+    /// like it is doing.
+    private var lift: ShadowToken {
+        var token = ScheduleShadows.draggedBlock
+        if !isDragging { token.color = .clear }
+        return token
     }
 
     /// The card's words, as much of them as the height allows.
@@ -299,12 +437,36 @@ struct ScheduleBlockCard: View {
 
                 greyLines(tier)
 
-                if tier >= .rich, !block.notes.isEmpty {
+                // Dropped for the length of a drag, which is the one thing on the card a drag is
+                // not about — and the design's dragged card draws no note row either
+                // (`design/rebuild/section-t5.html:166`). It is also the 36pt (`blockLayoutRich`'s
+                // own arithmetic) that lets the amber line below reach the bottom edge on a card
+                // only just tall enough to be `.rich`. A pinned note that had to be clipped to fit
+                // a warning under it would be the worse half of that trade drawn twice.
+                if tier >= .rich, !block.notes.isEmpty, !isDragging {
                     Hairline(color: Theme.hairlineSoft)
                         .padding(.top, ruleGap)
 
                     noteLine
                         .padding(.top, ruleGap)
+                }
+
+                // The amber line, moved out of the flow and down onto the edge being dragged.
+                //
+                // A `Spacer` rather than an overlay pinned at `bottom: 34`, which is what the
+                // design's absolute positioning transcribes to and what a card of one fixed height
+                // could afford. Ours are handed any height between 30pt and the whole morning: an
+                // overlay would sit *under* the copy on the shorter ones, and the one line nobody
+                // may lose the bottom half of is this one. In the flow it is pushed to the bottom
+                // when there is room and simply follows the copy when there is not.
+                if pinsClashLine, let liveConflict {
+                    Spacer(minLength: 0)
+
+                    clashLine(liveConflict)
+                        // The design's 34 is measured off the card's border and the plate has
+                        // already inset this stack by its own padding, so what is left to add is
+                        // the difference.
+                        .padding(.bottom, ScheduleMetrics.dragClashBottom - tier.verticalPadding)
                 }
             }
         } else if tier == .compact {
@@ -335,26 +497,85 @@ struct ScheduleBlockCard: View {
     /// and a block laid over another one is the more urgent of the two things again.
     ///
     /// At `.rich` there is room for both and both are drawn, in the order the list drew them.
+    ///
+    /// The clash it asks about is `liveConflict` and never `conflict`, so a card mid-drag flags
+    /// what the finger is making rather than what the store last saw. On a `.rich` card that line
+    /// is drawn by `copy` down at the edge instead — see `pinsClashLine`, which is what keeps the
+    /// same fact from being stated in two places at once.
     @ViewBuilder
     private func greyLines(_ tier: Tier) -> some View {
+        let conflict = liveConflict
         // Bound rather than branched, so the subtitle is one `Text` and not the same one written
         // into two mutually exclusive arms of an `if`.
         let subtitle = (tier >= .rich || conflict == nil) ? block.subtitle : nil
 
         if let subtitle {
             detailLine(subtitle, color: block.status.tint)
+                // Where the flag came out, for the tap that has to land on it. An arithmetic guess
+                // would not do: this line's position is four tiers, two title line-limits and the
+                // reader's own text size away from being predictable, so a target computed from
+                // any of that would be right at the default sizes and wrong at every other one.
+                //
+                // Measured *here* rather than reported up through a preference, which is what this
+                // was and what cost it three moving parts — a `GeometryReader` in a background, a
+                // key, and a hop onto the main actor to write the state from an `@Sendable`
+                // closure. `onGeometryChange`'s action is not `@Sendable`, so it inherits this
+                // view's isolation and assigns `staffingLine` straight. `GroupCard.swift:135-139`
+                // measures its rows the same way.
+                //
+                // Attached to the grey line as well, because the *transform* is `@Sendable` and so
+                // cannot read a status to gate on — which is also why the space it names is at
+                // file scope. The action can read it, and does, so a card carrying an ordinary
+                // `detail` never leaves a rect behind and `staffingLine` still means what it says
+                // it holds. It is not what retires a *stale* one, though: see `staffingTapTarget`.
+                .onGeometryChange(for: CGRect.self) {
+                    $0.frame(in: .named(ScheduleCardSpace.card))
+                } action: { rect in
+                    staffingLine = block.status == .needsCoach ? rect : nil
+                }
         }
 
-        if let conflict {
-            detailLine(conflict.clashLine, color: Theme.warning)
+        if let conflict, !pinsClashLine {
+            clashLine(conflict)
         }
+    }
+
+    /// Whether the clash has left the flow for the card's bottom edge.
+    ///
+    /// Only while a finger is down — a resting card's clash reads in the order the card reads, one
+    /// line under the grey one — and only on a card with a bottom worth pinning to. Below `.rich`
+    /// the copy already reaches the foot of the plate, so "at the edge" and "after the last line"
+    /// are the same place and the flow is the honest way to say it.
+    private var pinsClashLine: Bool {
+        isDragging && liveConflict != nil && tier(for: liveHeight) >= .rich
+    }
+
+    /// `Runs into Cool-down at 12:00pm`, in the words of the block being run into.
+    ///
+    /// `liveStart` and not `block.startsAt`, which is the whole of what makes it live on a *move*:
+    /// carrying a block down onto its neighbour overlaps them from the dragged block's own new
+    /// start, and that number is under the finger.
+    ///
+    /// A half-point quieter while dragging (`noteLine`, 12.5) than at rest (`blockDetail`, 13.5),
+    /// which is the design's own pair of sizes for the two states
+    /// (`design/rebuild/section-t5.html:169`): down at the edge, alone on a white card and in the
+    /// only amber on screen, it does not need the size it needs when it is the fourth grey-ish line
+    /// in a stack.
+    private func clashLine(_ conflict: ScheduleBlock) -> some View {
+        detailLine(
+            conflict.runsIntoLine(from: liveStart),
+            color: Theme.warning,
+            style: isDragging ? ScheduleType.noteLine : ScheduleType.blockDetail
+        )
     }
 
     /// One of the card's lines under its title. The style, the single line and the gap above it are
     /// one visual rule and are stated once, rather than five times over four call sites.
-    private func detailLine(_ text: String, color: Color) -> some View {
+    private func detailLine(
+        _ text: String, color: Color, style: TypeStyle = ScheduleType.blockDetail
+    ) -> some View {
         Text(text)
-            .typeStyle(ScheduleType.blockDetail, color: color)
+            .typeStyle(style, color: color)
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.top, ScheduleMetrics.detailGap)
@@ -423,6 +644,7 @@ struct ScheduleBlockCard: View {
     private func plate<Content: View>(
         fill: Color,
         border: Color,
+        borderWidth: CGFloat = BorderWidth.hairline,
         drawnHeight: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -430,14 +652,19 @@ struct ScheduleBlockCard: View {
         let layout = tier(for: drawnHeight)
 
         return content()
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // `maxHeight` as well as `maxWidth`, so the copy is offered the whole plate rather than
+            // only as much of it as the copy wants. Nothing about a resting card changes — a stack
+            // of `Text`s takes its ideal height and sits at the top either way — but it is what
+            // gives `copy`'s `Spacer` something to expand into, and a `Spacer` is how the amber
+            // line reaches the bottom edge without arithmetic about what is above it.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, ScheduleMetrics.cardPadding)
             .padding(.vertical, layout.verticalPadding)
             .frame(height: drawnHeight, alignment: .topLeading)
             .background(fill, in: shape)
             .clipShape(shape)
             .overlay {
-                shape.strokeBorder(border, lineWidth: BorderWidth.hairline)
+                shape.strokeBorder(border, lineWidth: borderWidth)
             }
             .contentShape(shape)
     }
@@ -538,23 +765,50 @@ struct ScheduleBlockCard: View {
     /// Deliberately unanimated, in both directions. The tracking phase of a drag must never be
     /// animated — `SwipeToDelete.swift:350-355` records what 0.24s between a finger and the thing
     /// it is moving feels like.
+    ///
+    /// `Theme.ink` and not `Theme.accent`, which is what this was.
+    ///
+    /// The accent is spent five times on this screen already — the running block's border, the
+    /// now-line, the pinned-note pin, "Add a block", and now the dragged card's own border and
+    /// lift. A green capsule on a green-bordered card is the one mark that has to be read at a
+    /// glance wearing the colour of everything around it. Near-black is the design's answer
+    /// (`design/rebuild/section-t5.html:172`) and it is the same answer `SnackBar` and the tab bar
+    /// give: the thing floating over the page is the thing drawn in the page's ink.
     private func readout(_ label: String) -> some View {
         Text(label)
             .typeStyle(ScheduleType.blockTimeNow, color: Theme.surface)
             .lineLimit(1)
-            .padding(.horizontal, Spacing.small)
-            .padding(.vertical, Spacing.tight)
-            .background(Theme.accent, in: Capsule(style: .continuous))
+            .padding(.horizontal, ScheduleMetrics.readoutPadding)
+            .padding(.vertical, Spacing.small)
+            .background(Theme.ink, in: Capsule(style: .continuous))
+            // `Shadows.liftedRow` — "a row lifted for dragging", which is what this is, and within
+            // two points of the design's own `0 10px 26px rgba(11,11,12,.28)`. It is what stops the
+            // capsule dissolving into whichever card it happens to be hanging over.
+            .shadow(Shadows.liftedRow)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
 
+    /// Centred **on the moving edge**, out at the card's trailing corner.
+    ///
+    /// It used to sit inside the card, above the grabber, where a list had put it. On a canvas that
+    /// is the wrong place by the width of the whole gesture: the thing being moved is the bottom
+    /// border, and the number saying where it has got to belongs on it rather than a line above it.
+    /// It may hang below the card and over the neighbour, which is what the design draws
+    /// (`design/rebuild/section-t5.html:172`) — the dragged card already carries `.zIndex(1)`
+    /// (`ScheduleView.swift:733-736`) and this is an overlay outside the plate's `clipShape`, so both
+    /// halves of that are already true.
+    ///
+    /// The centring is an alignment guide rather than an offset of half its own height, which is a
+    /// number this cannot know: the capsule's height is its type's, and its type grows with the
+    /// reader's. Overriding the child's `.bottom` guide to its own centre puts the centre on the
+    /// container's bottom edge at any size.
     @ViewBuilder
     private var edgeReadout: some View {
         if let resize {
             readout(resize.spanLabel)
-                // Clear of the grabber's own lift, and then clear of the grabber.
-                .padding(.bottom, Spacing.tight + Spacing.small)
+                .padding(.trailing, ScheduleMetrics.readoutInset)
+                .alignmentGuide(.bottom) { $0[VerticalAlignment.center] }
         }
     }
 
@@ -566,6 +820,13 @@ struct ScheduleBlockCard: View {
     /// clipped by the scroll view for any block near the top of the day — and a block being carried
     /// to the top of the day is exactly when somebody is reading it. Covering a title for the
     /// length of a drag costs nothing by comparison; the title is not the question.
+    ///
+    /// **The asymmetry with `edgeReadout` is deliberate**, and worth restating now that the two
+    /// have visibly parted: the resize's readout hangs *off* the card because the edge it reports
+    /// is the card's own bottom border and nothing above the day can clip it; the move's stays
+    /// *inside* because the edge it reports is the top one, and the top of the day is precisely
+    /// where a floating capsule gets cut off. Same capsule, two placements, each pinned to the
+    /// edge its own gesture is aiming.
     @ViewBuilder
     private var moveReadout: some View {
         if let move {
@@ -620,12 +881,19 @@ struct ScheduleBlockCard: View {
             Capsule(style: .continuous)
                 // `Theme.grabber`, which is what `SheetGrabber` draws. A second grabber in a
                 // second grey is two answers to "what colour is a thing you can pull".
-                .fill(resize == nil ? Theme.grabber : Theme.accent)
+                //
+                // **Grey while the drag is live too**, which is a change: it used to go
+                // `Theme.accent` under a finger. The design keeps it grey
+                // (`design/rebuild/section-t5.html:170`) and it is right to — the accent border and
+                // the accent-tinted lift now say "this is moving" across the whole card, and a
+                // third mark saying it on a 26×4 capsule is the least legible copy of a fact
+                // already drawn twice.
+                .fill(Theme.grabber)
                 .frame(width: ScheduleMetrics.resizeGrab.width,
                        height: ScheduleMetrics.resizeGrab.height)
-                .padding(.bottom, Spacing.tight)
+                .padding(.bottom, ScheduleMetrics.grabberLift)
                 // Grown, then shaped, and that order is load-bearing: `.contentShape` first would
-                // pin the hit region to the 28×3 capsule and leave the added height inert, which
+                // pin the hit region to the 26×4 capsule and leave the added height inert, which
                 // is the trap `Chip` records at `Components.swift:363-373`. Bottom-aligned so the
                 // strip lives *inside* the card — hanging below it would put a dead band over the
                 // top of whatever is drawn underneath.
@@ -743,11 +1011,62 @@ struct ScheduleBlockCard: View {
         return Color.clear
             .frame(maxWidth: .infinity, maxHeight: max(0, liveHeight - edge), alignment: .top)
             .contentShape(.rect)
-            .gesture(bodyLift.exclusively(before: TapGesture().onEnded(onOpen)))
+            .gesture(bodyLift.exclusively(before: bodyTap))
             // The card above already speaks for this region — it carries the sentence, the button
             // trait, the activation and the adjustable action. A second element here would be an
             // unlabelled rectangle sitting on top of it.
             .accessibilityHidden(true)
+    }
+
+    /// A tap on the body: the staffing sheet if it landed on the amber flag, the block otherwise.
+    ///
+    /// **`4d` says the amber flag is the button**, and this card is the awkward place to keep that
+    /// promise. A `Button` around the "Needs a coach" line cannot work: this surface is a
+    /// transparent overlay *over* the copy carrying a gesture of its own, so it takes every touch
+    /// that lands on the card and the line underneath never hears one. Nor can the surface be cut
+    /// around the line — the move is a hold anywhere on the body, and a hole in the body is a hold
+    /// that fails wherever the flag happens to be.
+    ///
+    /// So no fourth gesture is added at all. The tap that already exists asks *where* it landed
+    /// and picks a destination, which is the one shape that cannot lose an arbitration it is not
+    /// in: `bodyLift` still wins the touch first, this is still only offered it once the hold has
+    /// definitively failed, and the bottom edge's own tap is untouched. `SpatialTapGesture` is
+    /// `TapGesture` with the location attached — the same gesture, still with no maximum duration,
+    /// still `exclusively(before:)`-gated for the reason `GroupCard.swift:494-499` gives.
+    ///
+    /// Measured in the card's own named space rather than `.local`, so the rect taken from inside
+    /// the plate and the point arriving from outside it are in one frame of reference. See
+    /// `draggableCard`, which declares that space above both.
+    private var bodyTap: some Gesture {
+        SpatialTapGesture(coordinateSpace: .named(ScheduleCardSpace.card))
+            .onEnded { value in
+                if let target = staffingTapTarget, target.contains(value.location) {
+                    onStaffing()
+                } else {
+                    onOpen()
+                }
+            }
+    }
+
+    /// The band of the card that opens the staffing sheet, or nil when there is no flag on it.
+    ///
+    /// Grown by `Spacing.tight` above and below the drawn line. A 16pt band is under any minimum
+    /// worth naming, and the honest reading is that this is not a control in a row of controls: it
+    /// is a *region* of a card that is entirely tappable either way, so the failure mode of a
+    /// near-miss is the block opening — one back-swipe, and `8l` carries the same flag. Growing it
+    /// further would start stealing taps from the title, which would be the same trade run the
+    /// wrong way.
+    ///
+    /// Gated on the status as well as on the rect, and the status is the half that does the work.
+    /// A block staffed while its card is on screen redraws with `detail` in that slot — same
+    /// place, same height — and a rect that stops *changing* stops arriving, so nothing is
+    /// guaranteed to come along and retire the band. Neither is anything guaranteed to when a
+    /// clash takes the line away below `.rich`, or when the whole card drops to a tier that draws
+    /// no second line at all. This is what says no in every one of those, and it cannot be stale:
+    /// it is read off `block`, at the moment of the tap.
+    private var staffingTapTarget: CGRect? {
+        guard block.status == .needsCoach, let staffingLine else { return nil }
+        return staffingLine.insetBy(dx: 0, dy: -Spacing.tight)
     }
 
     /// `lift`'s composition, moving both times instead of one.
@@ -778,13 +1097,34 @@ struct ScheduleBlockCard: View {
     private func trackResize(_ height: CGFloat) {
         guard var moved = resize else { return }
         moved.drag(by: height)
-        if moved != resize { resize = moved }
+        guard moved != resize else { return }
+        resize = moved
+        flag(startsAt: moved.startsAt, endsAt: moved.endsAt)
     }
 
     private func trackMove(_ height: CGFloat) {
         guard var carried = move else { return }
         carried.drag(by: height)
-        if carried != move { move = carried }
+        guard carried != move else { return }
+        move = carried
+        flag(startsAt: carried.startsAt, endsAt: carried.endsAt)
+    }
+
+    /// What the block runs into at the times it is being held at, asked once per **settled** step.
+    ///
+    /// Inside the two guards above rather than beside them, which is the whole of why this costs
+    /// nothing: those return early on the frames that changed no quarter-hour, so a walk of the day
+    /// happens four to eight times across a drag instead of at 120Hz. The comment on `trackResize`
+    /// is what earns that, and this is the second thing hanging off it.
+    ///
+    /// Two writes with two different guards, because they cost different things. `runsInto` is this
+    /// card's own state and re-runs this card. `runsIntoID` is a binding into the canvas and
+    /// re-runs every card on it, so it moves only when the *identity* of the neighbour does —
+    /// dragging further down the same block it is already flagging writes nothing.
+    private func flag(startsAt: TimeOfDay, endsAt: TimeOfDay?) {
+        let live = ScheduleConflicts.live(block, startsAt: startsAt, endsAt: endsAt, in: day)
+        if live != runsInto { runsInto = live }
+        if live?.id != runsIntoID { runsIntoID = live?.id }
     }
 
     private func beginResize() {
@@ -793,14 +1133,21 @@ struct ScheduleBlockCard: View {
         // write re-runs that whole body — the scroll view, every sibling card — for a value that
         // changes once per gesture. `SwipeToDelete.swift:340-346` guards its own for this reason.
         guard draggingID != block.id else { return }
-        resize = restingResize
+        let resting = restingResize
+        resize = resting
         draggingID = block.id
+        // From where the block already sits, so the flag is up the moment the card is picked up
+        // rather than at the first quarter-hour it crosses. On a block that was already clashing
+        // this is the same answer the store's index gave, moved from the flow down onto the edge.
+        if let resting { flag(startsAt: resting.startsAt, endsAt: resting.endsAt) }
     }
 
     private func beginMove() {
         guard draggingID != block.id else { return }
-        move = restingMove
+        let resting = restingMove
+        move = resting
         draggingID = block.id
+        flag(startsAt: resting.startsAt, endsAt: resting.endsAt)
     }
 
     /// Tracking down, committing nothing. `pending` is deliberately untouched: a cancelled hold
@@ -808,9 +1155,15 @@ struct ScheduleBlockCard: View {
     private func endTracking() {
         resize = nil
         move = nil
+        runsInto = nil
         // Only if it is still ours. A second finger landing on another card claims the id, and
         // clearing it blindly here would unlock the canvas underneath a drag that is still live.
-        if draggingID == block.id { draggingID = nil }
+        // The neighbour's dimming goes with it and on the same test: it was written by whichever
+        // card owns the drag, so a card that has lost the drag must not be the one to clear it.
+        if draggingID == block.id {
+            draggingID = nil
+            runsIntoID = nil
+        }
     }
 
     private func commit() {
@@ -865,6 +1218,7 @@ private struct ScheduleBlockCardPreviewHarness: View {
 
     @State private var blocks = ScheduleSampleDay.overlappingBlocks(venueID: SampleData.sycamore.id)
     @State private var draggingID: ScheduleBlock.ID?
+    @State private var runsIntoID: ScheduleBlock.ID?
 
     var body: some View {
         // The design's clock, so the preview marks the block `8k` marks rather than whichever one
@@ -886,7 +1240,10 @@ private struct ScheduleBlockCardPreviewHarness: View {
                             height: placement.height,
                             draggingID: $draggingID,
                             conflict: conflicts[block.id],
+                            day: blocks,
+                            runsIntoID: $runsIntoID,
                             onOpen: {},
+                            onStaffing: {},
                             // No store in a preview, so the drags land in the array directly.
                             onResize: { end in write(block) { $0.endsAt = end } },
                             onMove: { start, end in
@@ -894,6 +1251,11 @@ private struct ScheduleBlockCardPreviewHarness: View {
                             }
                         )
                         .frame(height: placement.height)
+                        // The canvas's own dimming, so the harness shows the whole of a drag
+                        // rather than only the card under the finger. `ScheduleView.swift` argues
+                        // the reading: one neighbour recedes, not everything else.
+                        .opacity(runsIntoID == block.id ? ScheduleMetrics.runIntoDim : 1)
+                        .animation(Motion.fold, value: runsIntoID == block.id)
                     }
                 }
             }

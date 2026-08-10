@@ -46,6 +46,14 @@
 			);
 			sourceTree = "<group>";
 		};
+		5C0A00000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5C0A00000000000000000004 /* Sycamore.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		5C0A00000000000000000013 /* Config */ = {
 			isa = PBXGroup;
 			children = (
@@ -53,14 +61,6 @@
 				5C0A00000000000000000012 /* Signing.local.xcconfig.example */,
 			);
 			path = Config;
-			sourceTree = "<group>";
-		};
-		5C0A00000000000000000003 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				5C0A00000000000000000004 /* Sycamore.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

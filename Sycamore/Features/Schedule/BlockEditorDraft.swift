@@ -17,7 +17,7 @@
 //  applies with more force to a draft, which is not a domain shape at all. A `ScheduleBlock` is
 //  what the camp has; a `BlockEditorDraft` is what one sheet is in the middle of doing to one.
 //
-//  `BlockRules` follows the `CampName` precedent (`Models.swift:700-718`) exactly: the CHECK
+//  `BlockRules` follows the `CampName` precedent (`Models.swift:939-955`) exactly: the CHECK
 //  quoted, the count taken in unicode scalars, and one place that states it so every screen
 //  testing it is testing the same thing.
 //
@@ -77,7 +77,7 @@ enum BlockRules {
     /// the column would refuse. Strictly greater, like the constraint — a block that ends when it
     /// starts is not a block.
     ///
-    /// `TimeOfDay` is `Comparable` (`Models.swift:156`), so this is the comparison and not a
+    /// `TimeOfDay` is `Comparable` (`Models.swift:289`), so this is the comparison and not a
     /// re-derivation of one from hours and minutes.
     static func endsAfterStart(startsAt: TimeOfDay, endsAt: TimeOfDay?) -> Bool {
         guard let endsAt else { return true }
@@ -108,7 +108,7 @@ enum BlockRules {
     ///
     /// **It states the wrong rule.** An EXCLUDE keyed on `site_id` says "two blocks at one venue
     /// may not claim the same minute", and `ScheduleBlockKind.assigned` with `courtIDs`
-    /// (`SectionEight.swift:143-154`) exists precisely so that they may. "Warm-up 9:00–9:15 on
+    /// (`SectionEight.swift:183-186`) exists precisely so that they may. "Warm-up 9:00–9:15 on
     /// Court 1" beside "Free play 9:00–9:15 on Courts 2–4" is a morning the schedule is now meant
     /// to be able to write down, and a venue-wide constraint makes it unsayable **at the
     /// database** — the one layer the app cannot work around.
@@ -180,7 +180,7 @@ enum BlockRules {
     ///
     /// **Internal rather than private**, which it was when this rule only had one reader. The
     /// clash flag was the first question asked of it and it is no longer the only one:
-    /// `ScheduleBlock.running(in:at:)` (`SectionEight.swift:294`) asks the identical question —
+    /// `ScheduleBlock.running(in:at:)` (`SectionEight.swift:459-467`) asks the identical question —
     /// *do these two contend for the same courts* — to decide whether one block ends another. Two
     /// spellings of that would be two answers to it, and a morning where the editor flagged a
     /// clash the "On now" highlight did not believe in.
@@ -251,7 +251,7 @@ enum BlockRules {
 ///
 /// 07:00 to 20:00 in fifteen-minute steps — fifty-three entries, which is a menu rather than a
 /// wheel, and a camp day that starts before seven or runs past eight is not a thing these screens
-/// draw. Built with `stride` the way `TimeOfDay.pickupOptions` is (`Models.swift:170-171`), so the
+/// draw. Built with `stride` the way `TimeOfDay.pickupOptions` is (`Models.swift:342-343`), so the
 /// two lists are recognisably the same construction at different resolutions.
 ///
 /// Quarter-hours rather than the pick-up sheet's half-hours because the design's own Tuesday has a
@@ -408,7 +408,7 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
     ///
     /// Nothing at all when the draft has been moved to a day other than the one the store is
     /// holding. `AppStore.scheduleBlocks` is one venue and one day at a time
-    /// (`AppStore+SectionEight.swift:108`), so a block dragged onto Wednesday is asked about
+    /// (`AppStore+SectionEight.swift:182-189`), so a block dragged onto Wednesday is asked about
     /// Tuesday's list, and the venue-and-day filter inside `BlockRules.sharesSpace(_:_:)` is what
     /// makes that a quiet "nothing" rather than a confident wrong answer.
     func overlap(in day: [ScheduleBlock]) -> ScheduleBlock? {

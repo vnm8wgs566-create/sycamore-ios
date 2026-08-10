@@ -278,6 +278,25 @@ enum Theme {
     /// Subtitle inside the tinted call card ("Tap to call in an emergency"). Sits on
     /// `accentTint`, so it is the dark end of the green rather than the light end.
     static let accentMuted = Color(light: "4A8A69", dark: "8FCFAF")
+    /// `#5C7A68` — the meta line under the venue you are standing in ("6 courts · 50 kids ·
+    /// you're on Court 1", `design/rebuild/section-t4.html:150`).
+    ///
+    /// The third of these green-tinted greys, and the quietest. The plate under it is white; only
+    /// its border is green, and the line follows that border about a fifth of the way. Measured
+    /// against the ramp it is `inkSecondary` with 26 points poured into the green channel and
+    /// nothing else moved (`5C6068` → `5C7A68`) — which is the whole of what the design does here.
+    ///
+    /// Not `accentMuted` (`#4A8A69`), which is a real green: substituted in, the venue's subtitle
+    /// stops being a subtitle and becomes a second accent under its name, competing with the tick
+    /// that is the only thing on the row meant to say "this one". Two values four hex digits apart
+    /// doing opposite jobs is exactly why the diff that found this palette's other nine greys was
+    /// worth running.
+    ///
+    /// The dark counterpart carries the same +26 of green over `inkSecondary`'s *own* dark value,
+    /// so the two stay one matched step apart rather than drifting the first time either moves.
+    /// 4.7:1 on white and 9.5:1 on the dark surface — it is body copy at 12.5pt and has to clear
+    /// AA on its own, with no fill behind it to help.
+    static let accentMeta = Color(light: "5C7A68", dark: "A8C7B5")
     /// The 1pt lip along the top edge of the tab-bar pill — `inset 0 1px 0 rgba(255,255,255,.95)`.
     /// Carries its alpha in the hex because the two schemes need different amounts of it: a
     /// 95% white lip on a dark plate reads as a seam rather than as a catch of light.
@@ -438,6 +457,20 @@ enum Shadows {
     static let tabItem = ShadowToken(color: cast.opacity(0.18), radius: 4.5, y: 2)
     /// `0 12px 28px rgba(11,11,12,.16)` — a row lifted for dragging in Rank.
     static let liftedRow = ShadowToken(color: cast.opacity(0.28), radius: 14, y: 12)
+
+    /// `0 -12px 40px rgba(11,11,12,.18)` — the cast a bottom sheet throws *up* the screen
+    /// (`design/rebuild/section-t4.html:143`, and the same line on every sheet in sections 4 and 5).
+    ///
+    /// The only negative `y` in the file, because it is the only shadow whose caster is pinned to
+    /// the bottom edge of the frame: everything below the plate is off-screen, so the whole of this
+    /// shadow is the seam along the top of the sheet and none of it is wasted under one.
+    ///
+    /// Alpha left at the design's `.18` rather than carried up the way the three above are. Those
+    /// are cast onto `grouped` — a near-white page, where the design's own alpha all but vanishes.
+    /// This one lands on `Theme.scrim`, which is already `0B0B0C` at 36% and, being deliberately
+    /// non-adaptive, is that in both schemes. There is no pale backdrop to lose it against, and
+    /// doubling it would read as a thicker scrim rather than as a higher sheet.
+    static let sheetLift = ShadowToken(color: cast.opacity(0.18), radius: 20, y: -12)
 }
 
 extension View {
@@ -455,7 +488,8 @@ extension View {
         ("inkFaint", Theme.inkFaint), ("inkGhost", Theme.inkGhost),
         ("chevron", Theme.chevron), ("accent", Theme.accent),
         ("accentDark", Theme.accentDark), ("accentTint", Theme.accentTint),
-        ("accentBorder", Theme.accentBorder), ("lime", Theme.lime),
+        ("accentBorder", Theme.accentBorder), ("accentMeta", Theme.accentMeta),
+        ("lime", Theme.lime),
         ("danger", Theme.danger), ("dangerBorder", Theme.dangerBorder),
         ("surface", Theme.surface), ("grouped", Theme.grouped),
         ("canvas", Theme.canvas), ("fill", Theme.fill),

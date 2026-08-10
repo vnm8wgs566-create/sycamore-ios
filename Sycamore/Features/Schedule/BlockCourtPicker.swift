@@ -31,12 +31,22 @@ struct BlockCourtPicker: View {
     /// `BlockCoachPicker` takes its people, so the sheet owns the one call to the camp.
     let courts: [CourtGroup]
     @Binding var selection: Set<Group.ID>
-    /// Who is standing on each court, for the second half of a row's grey line.
+    /// Who is standing on each court — the whole of a row's grey line now, rather than half of it.
     ///
     /// Handed in already resolved, like `BlockCoachPicker`'s people, so the one call into the camp
     /// graph is the sheet's — see `coachNames(in:venueID:)`. A `Camp` on this view instead would
     /// put graph-walking inside a `body` that re-runs on every keystroke in the title field.
     var coachNames: [Group.ID: String] = [:]
+
+    // A `closures: [Group.ID: String]` used to sit beside `coachNames`, threaded in by the editor
+    // out of `store.courts`. Its doc argued that closure was "a `CourtCard` fact about *this
+    // morning* rather than a `Group` fact about the camp, so it is not on the graph this view
+    // could walk even if it wanted to" — which was true when it was written and is not now.
+    // `Group.closedReason` (`Models.swift:563-582`) is that column on the graph, so a court handed
+    // to this view already knows why it is shut, and the parameter was a second route to a fact
+    // sitting on the value beside it. The editor's own copy came from `store.courts`, which is
+    // loaded for one venue, so on a two-venue camp it came back empty and a shut court drew as an
+    // ordinary one; dropping the parameter is what closes that, not a wider filter.
 
     var body: some View {
         Card(radius: ScheduleMetrics.cardRadius) {
@@ -59,27 +69,57 @@ struct BlockCourtPicker: View {
 
     private func row(_ court: CourtGroup) -> some View {
         let isOn = selection.contains(court.id)
+        let closure = court.closedReason
 
         return BlockPickRow(
             title: court.label,
-            detail: headcount(court),
+            detail: detail(court, closedFor: closure),
+            detailColor: detailColor(court, closedFor: closure),
             isOn: isOn,
+            isMuted: closure != nil,
             hint: isOn ? "Takes this block off the court" : "Puts this block on the court"
         ) {
             selection.toggle(court.id)
         }
     }
 
-    /// `8 kids`, and `8 kids · Nass` once somebody is standing on it.
+    /// `Nass coaches here`, `Needs a coach`, or `Closed — Net down`.
     ///
-    /// `playerCount` rather than `presentCount`: this is a timetable being written, possibly for
-    /// Thursday, and who happens to be away today is not a fact about which courts a block should
-    /// use. `Group.headcountLine` is the other reading — "Court 1 · 8 here" — and belongs to the
-    /// screens that are about today.
-    private func headcount(_ court: CourtGroup) -> String {
-        let kids = "\(court.playerCount) kid\(court.playerCount == 1 ? "" : "s")"
-        guard let coach = coachNames[court.id] else { return kids }
-        return "\(kids) · \(coach)"
+    /// **The head-count is gone from this line, and it was there.** It read `8 kids · Nass`, on the
+    /// argument that a timetable wants the roll rather than today's attendance. `5b` draws neither
+    /// number (`design/rebuild/section-t5.html:104-106`), and the reason it is right to drop is
+    /// that the count answers a question this card is not asking: which courts a block runs on is
+    /// decided by which courts are *free and staffed*, and how many children happen to be standing
+    /// on Court 2 right now is about to be changed by the Kids card two sections down. The count
+    /// still has a reader — `PlayerCourtChoices.meta` draws `6 of 8 · Nass` on the sheet that
+    /// *is* about where a child goes.
+    ///
+    /// Closure leads, for `PlayerCourtOption.flag`'s reason: a court out of play is out of play
+    /// whoever is nominally on it, so the reason replaces the coach rather than joining it. It is
+    /// read straight off `court.closedReason` — see the note where the `closures` parameter used
+    /// to be for why nothing threads it in any more.
+    ///
+    /// The reason is printed as it was typed. The design writes `Closed — net down` in lower case
+    /// and this writes `Closed — Net down`, which is the one place these rows depart from the
+    /// frame: the reason is free text somebody typed into Overview, and "Tom is on it" lower-cased
+    /// mid-sentence is a person's name spelled wrong. `CoachAvailability.subtitle` makes the same
+    /// call in the other direction and says why — it lower-cases "roaming" because that word is the
+    /// app's own, and this one is not.
+    private func detail(_ court: CourtGroup, closedFor closure: String?) -> String {
+        if let closure { return "Closed — \(closure)" }
+        guard let coach = coachNames[court.id] else { return CoachPill.needsACoach }
+        return "\(coach) coaches here"
+    }
+
+    /// Grey for a court with somebody on it, amber for one without, faint for one that is shut.
+    ///
+    /// The amber is the same amber as the three warning lines under the time fields, and means the
+    /// same thing: worth knowing, never a refusal. A block on an unstaffed court is an ordinary
+    /// morning — the Coaches card below is where it gets fixed, and it may well be fixed by
+    /// somebody walking over at ten to eleven rather than by this sheet at all.
+    private func detailColor(_ court: CourtGroup, closedFor closure: String?) -> Color {
+        if closure != nil { return Theme.inkFaint }
+        return coachNames[court.id] == nil ? Theme.warning : Theme.inkMuted
     }
 
     /// A venue with no courts. Drawn rather than left blank, for the reason `BlockCoachPicker`'s
@@ -149,8 +189,14 @@ private struct BlockCourtPickerPreview: View {
     private let camp = SampleData.uclaTennisCamp
     private let courts: [CourtGroup]
 
-    init(selected: Int) {
-        let courts = BlockCourtPicker.pool(in: SampleData.uclaTennisCamp, venueID: SampleData.sycamore.id)
+    init(selected: Int, closingLast: Bool = false) {
+        // Shut on the court itself rather than in a dictionary beside it, which is the whole of
+        // what changed: a closed court is a `Group` carrying a reason, and the preview has to
+        // build one the same way the camp graph hands one over.
+        var courts = BlockCourtPicker.pool(in: SampleData.uclaTennisCamp, venueID: SampleData.sycamore.id)
+        if closingLast, !courts.isEmpty {
+            courts[courts.count - 1].closedReason = "Net down"
+        }
         self.courts = courts
         _selection = State(initialValue: Set(courts.prefix(selected).map(\.id)))
     }
@@ -173,6 +219,12 @@ private struct BlockCourtPickerPreview: View {
 
 #Preview("Court picker — none yet") {
     BlockCourtPickerPreview(selected: 0)
+}
+
+/// The three readings of the grey line side by side: a court with a coach on it, one without —
+/// amber, and still tappable — and the last one shut, drawn back but not disabled.
+#Preview("Court picker — one closed") {
+    BlockCourtPickerPreview(selected: 2, closingLast: true)
 }
 
 #Preview("Court picker — a venue with no courts") {

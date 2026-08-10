@@ -46,8 +46,41 @@ enum Motion {
     /// is precisely what Reduce Motion is about, so the state still changes — it simply arrives
     /// rather than slides. `nil` rather than a near-zero duration, because `withAnimation(nil)`
     /// and `.animation(nil, value:)` are both the real "do not animate this".
+    ///
+    /// **A known discrepancy, recorded rather than fixed.** `.snappy` is `bounce: 0.15`, and the
+    /// design system's own rule is no bounce and no spring overshoot — the rule `ProgressTrack`
+    /// was corrected to (`Components.swift:787-794`). A fold overshooting by a point and settling
+    /// is nothing like a 4pt bar overshooting the number printed beside it, which is why that one
+    /// was a fix and this one is a note: this curve drives every fold and unfold in the app, and
+    /// retiming all of them is a decision to take deliberately and see, not a cleanup to slip in
+    /// beside one.
     static func fold(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : fold
+    }
+
+    /// The press: `scale(.975)` over 90ms, or nothing at all under Reduce Motion.
+    ///
+    /// Admitted on a different ground from `fold`, and the header's bar — a second file needing
+    /// it — is not the ground. This one has a single caller. What it has that the fourteen
+    /// `withAnimation` literals do not is that **the number is not this file's to choose**: the
+    /// design system states the press as `scale(.975)` over 90ms, so it is one decision already
+    /// taken, for every screen, and the only question left is where it is written down. Nothing
+    /// carried it, so the one screen that wanted a press guessed — and guessed a bouncing spring,
+    /// which is a press that recoils past its own resting size on the way back up. A literal at
+    /// the site is the right home for a curve chosen against the screen it runs on. This was
+    /// chosen against all of them.
+    ///
+    /// `.easeOut` and emphatically not a spring, for `ProgressTrack`'s reason
+    /// (`Components.swift:787-794`). A press is a finger arriving: it should decelerate into the
+    /// smaller size and stop there, because there is nothing physical for it to overshoot.
+    ///
+    /// 90ms is short by design. A press is feedback for a touch that has already landed, so any
+    /// longer and it is reporting the touch rather than confirming it.
+    ///
+    /// Gated on Reduce Motion like `fold(reduceMotion:)` and for the same reason, though the scale
+    /// itself still applies — the row still reads as pressed, it simply does not travel there.
+    static func press(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.09)
     }
 
     /// The cold-launch entrance, in seconds from its first frame.

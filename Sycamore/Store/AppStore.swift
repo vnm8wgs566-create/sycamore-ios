@@ -81,10 +81,21 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     case profile
     /// `8t` — admin only, reached from Profile.
     case campSettings
-    /// Section 8 folds ranking into Groups (`8o` is titled "Kids in ranking order"), so this
-    /// screen has no home in the new navigation. It stays reachable so the reorder logic keeps
-    /// running and keeps being testable until Groups absorbs it.
+    /// The drag-to-reorder ladder, one row per kid, every kid at once.
+    ///
+    /// This used to say the screen "has no home in the new navigation … until Groups absorbs it".
+    /// 4c is that home, and it arrived from the other direction than the comment expected: Groups
+    /// does not swallow this screen, it opens `firstSort` beside it. The two are different jobs on
+    /// the same order — this one edits a ladder that already exists, `firstSort` builds the first
+    /// one there has ever been — so both stay, and `commitRankOrder(_:)` is what they share.
     case rank
+    /// `4c` — the first sort. One venue's kids, two at a time, until there is an order.
+    ///
+    /// Carries the venue rather than reading `readVenueID`, and that is the same call
+    /// `PushedScreen.court` and `.player` make: the sort runs over `camp.players(in:)` for one
+    /// venue and takes minutes, and a venue pill tapped on the tab underneath must not change
+    /// which kids the question on screen is about.
+    case firstSort(Venue.ID)
     /// `8m` — attendance for one session, reached from a block on `8l`.
     ///
     /// A block runs across courts ("Courts 1–3"), so this carries the whole list rather than one,
@@ -115,6 +126,7 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
         case .profile: return "profile"
         case .campSettings: return "camp-settings"
         case .rank: return "rank"
+        case .firstSort(let id): return "first-sort-\(id.uuidString)"
         case .attendance(let groupIDs, let block):
             let courts = groupIDs.map(\.uuidString).joined(separator: "+")
             return "attendance-\(courts)-\(block?.id.uuidString ?? "no-block")"
@@ -132,9 +144,15 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     ///
     /// The court screen draws `8q`'s header — mock status bar, back caret, serif title — so it
     /// answers the question the same way and for the same reason.
+    ///
+    /// `firstSort` is the strongest case of all and takes the frame for a second reason besides
+    /// its own ✕: it is a question asked over and over until an order exists, and a sheet leaves
+    /// the tab bar and a slice of the screen behind it live under the reader's thumb. A stray tap
+    /// on Groups halfway through a hundred kids would lose the sort — there is no draft of it
+    /// anywhere, `firstSort` is store state and nothing writes it down.
     var isFullScreen: Bool {
         switch self {
-        case .attendance, .player, .court: true
+        case .attendance, .player, .court, .firstSort: true
         case .profile, .campSettings, .rank: false
         }
     }
@@ -165,6 +183,27 @@ enum ActiveSheet: Identifiable, Hashable, Sendable {
         case .staff: 0.73
         }
     }
+}
+
+/// What a reader can say about the two kids `4c` puts in front of them.
+///
+/// Four controls, one vocabulary. The screen draws two cards and two buttons under them, and each
+/// of the four maps onto exactly one of `FirstSort`'s mutating methods — so this enum is the store
+/// naming the *taps* while `FirstSort` names the arithmetic, and neither has to know the other's
+/// spelling. The alternative, four intents on `AppStore`, would put the same `guard`, the same
+/// reassignment and the same doc comment in four places.
+///
+/// `candidate` is the top card and `incumbent` the bottom one, which is the order
+/// `FirstSort.pair` returns them in.
+enum FirstSortAnswer: Hashable, Sendable {
+    /// The kid being placed is stronger.
+    case candidate
+    /// The kid already on the ladder is stronger.
+    case incumbent
+    /// "About even" — seats the candidate directly below the incumbent and asks nothing further.
+    case aboutEven
+    /// Set this kid aside. They land at the foot of the venue and the sort moves on.
+    case skip
 }
 
 /// The first chip row on Groups.
@@ -409,6 +448,34 @@ final class AppStore {
     var courts: [CourtCard] = []
     var scheduleBlocks: [ScheduleBlock] = []
     var inboxItems: [InboxItem] = []
+
+    /// The venue the reader has *asked* for, ahead of the one they are posted to.
+    ///
+    /// The stored half of `readVenueID` (`AppStore+SectionEight.swift:37-48`), which was a
+    /// computed three-step fallback with no setter — and 4a's venue pill and 4b's venue sheet both
+    /// write which venue the reader is looking at. Nil is the ordinary state and means "whatever
+    /// the fallback says", so a coach who never touches the pill still opens on their own posting.
+    ///
+    /// Not `venueFilter`. That is Groups' chip row, it carries an `.all` case no per-venue relation
+    /// can answer, and `readVenueID`'s own doc records the decision not to key section 8's reads
+    /// off it. This is the second stored venue in the store and deliberately so: they answer
+    /// different questions on different tabs.
+    ///
+    /// Session-only, like every other selection in this store, and cleared by `resetFilters()` —
+    /// see the argument there — because a venue id from one camp names nothing in the next.
+    var chosenVenueID: Venue.ID?
+
+    /// `4c`'s sort in flight, or nil when nobody is sorting.
+    ///
+    /// Held here rather than in the screen's `@State` for one reason, and it is the same reason
+    /// the three reads above are: a sort is a hundred questions long, and `@State` on a screen
+    /// presented from `pushedScreen` is discarded the moment anything dismisses it. The store is
+    /// what makes the answer to question forty still there at question forty-one.
+    ///
+    /// Nothing about it is written down. `FirstSort` is a pure value over `Player.ID`s
+    /// (`Models/FirstSort.swift`) and the ladder it builds is committed once, at the end, through
+    /// `commitRankOrder(_:)` — so a relaunch mid-sort loses the sort and not the camp.
+    var firstSort: FirstSort?
 
     /// What `8r`'s "Needs you · 2" counts, and the badge Inbox shows on the tab bar.
     ///
@@ -1035,11 +1102,21 @@ extension AppStore {
         }
     }
 
+    /// Everything the reader had narrowed the last camp down to.
+    ///
+    /// `chosenVenueID` joined the list when 4a's venue pill made it writable. It is not a filter in
+    /// the sense the other four are — nothing calls it one on screen — but it holds a `Venue.ID`,
+    /// and a venue id belongs to exactly one camp: carried across a switch it would name a venue
+    /// the new camp does not have, and `readVenueID` would answer it anyway, because its fallback
+    /// only runs when the chosen one is nil. Overview would then read a venue with no courts in it
+    /// and draw an empty morning. Every caller of this method is a camp boundary — `select(_:)`,
+    /// `switchCamp()`, `signOut()` — which is exactly where that has to be cleared.
     func resetFilters() {
         venueFilter = .all
         playerFilter = .everyone
         staffFilter = .all
         searchText = ""
+        chosenVenueID = nil
     }
 }
 
@@ -1155,6 +1232,115 @@ extension AppStore {
         await perform {
             self.camp = try await self.repository.reorderCamp(assignments, campID: campID)
         }
+    }
+
+    // MARK: The first sort — `4c`
+
+    /// Opens `4c` over one venue's roll.
+    ///
+    /// Seeded from the camp the store is already holding, so the screen costs no round trip: the
+    /// order it starts from is `overallRank`, which every read of the camp already carries.
+    ///
+    /// Replaces any sort in flight rather than resuming one. Two venues cannot be sorted at once —
+    /// `pushedScreen` is a single slot and `firstSort` is a single value — and a half-finished
+    /// sort of *another* venue is not something this screen could draw, so the honest thing is to
+    /// start the one that was asked for.
+    func beginFirstSort(in venueID: Venue.ID) {
+        guard let camp else { return }
+        firstSort = .seeded(venueID: venueID, players: camp.players(in: venueID))
+        pushedScreen = .firstSort(venueID)
+    }
+
+    /// One tap on `4c`. Synchronous and local: nothing is written until `finishFirstSort()`.
+    ///
+    /// The whole point of the sort living on the store rather than in the screen's `@State` is
+    /// that it survives what a `@State` would not, so this reassigns the value back rather than
+    /// mutating in place through a computed property — `firstSort` is an ordinary stored optional
+    /// and `@Observable` only notices the write.
+    func answerFirstSort(_ answer: FirstSortAnswer) {
+        guard var sort = firstSort else { return }
+        switch answer {
+        case .candidate: sort.chooseCandidate()
+        case .incumbent: sort.chooseIncumbent()
+        case .aboutEven: sort.tie()
+        case .skip: sort.skip()
+        }
+        firstSort = sort
+    }
+
+    /// Finishes `4c`: writes the sorted venue back into the camp-wide ladder, deals its courts, and
+    /// closes the screen.
+    ///
+    /// **The invariant is enforced here, and that is the change worth recording.** This used to
+    /// guard only `firstSort != nil` and bless "a caller finishing early" in this very comment,
+    /// while `FirstSortView.split()` — the only caller — guarded `isSettled` itself and called that
+    /// same early finish "the one mistake on `4c` that costs a child their place". Both cannot be
+    /// right. The screen is right: `FirstSort.playerIDs()` is `ladder + skipped`, an in-flight
+    /// candidate is in **neither**, and so a finish taken mid-question hands `commitRankOrder` an
+    /// assignment with the child on screen missing from it. A rule a view can break by being
+    /// rewritten is not a rule; it lives on the store now, where the write is, and the view's guard
+    /// is a second statement of it rather than the only one.
+    ///
+    /// **No new verb, and no new column.** Every insertion leaves a complete ladder, so what comes
+    /// out of the sort is exactly the shape `commitRankOrder(_:)` already takes: the camp's
+    /// sections as they read top to bottom, with one venue's rows replaced. `overallRank` *is* the
+    /// ladder, and `skipped` is the one piece of state it cannot carry — those kids fall to the
+    /// foot of their venue keeping their relative order, and the count of them is session-local
+    /// and gone at relaunch. That is stated rather than fixed: persisting a skip would need a
+    /// column for a fact that means nothing once the sort is over.
+    ///
+    /// **Anyone the sort did not place is still appended, not dropped.** The guard above makes a
+    /// settled sort's `playerIDs()` the whole roll *as the sort saw it*, which is not the same as
+    /// the roll now: a kid enrolled at the desk while the questions were being answered is in the
+    /// camp and not in the sort. Without the tail below they would be absent from the assignment,
+    /// `applyRankOrder` skips what it is not given (`Models.swift:1323-1338`), and `reindex()`
+    /// would thread them back in on a rank nobody meant.
+    ///
+    /// **Two writes, and the second is what makes the first mean anything.** `applyRankOrder`
+    /// renumbers `overallRank` and moves nobody between courts, so a ladder committed and left
+    /// there gives the venue a brand new order with its courts still holding whoever they held this
+    /// morning — every band on `8o` reading a range with holes in it. `spreadKids(.allKids, …)`
+    /// (`AppStore+SectionEight.swift:243`) is the venue-scoped deal: this venue's roll across this
+    /// venue's courts, touching nothing else. `evenOut()` (`:1364`) is the other candidate and is
+    /// wrong here for exactly that reason — it re-deals *every* venue in the camp, rearranging
+    /// courts nobody asked about as a side effect of ranking one.
+    ///
+    /// It was the view making that second call. It is here because it is not a drawing decision:
+    /// a ladder without the deal is a half-finished write, and which half ran should not depend on
+    /// what a screen remembered to do next.
+    ///
+    /// **The second write is skipped when the first failed.** `perform` clears `errorMessage`
+    /// before it starts and sets it on failure (`:1694-1708`), so a nil there means the ladder
+    /// landed; dealing courts against a ladder that did not would deepen one refusal into two.
+    ///
+    /// **The screen closes before the write, not after.** That is the call `CourtCoachPicker.assign`
+    /// already makes, and for its reason: a refusal belongs in the tab's banner, not inside a
+    /// screen that is still asking which of two kids is stronger about an order already decided.
+    /// A refused write leaves the ladder exactly as it was, and a first sort is repeatable — the
+    /// seed is the same roll in the same order.
+    func finishFirstSort() async {
+        guard let sort = firstSort, sort.isSettled else { return }
+        let sorted = sort.playerIDs()
+        // Hashed once, above the `map`, because it is the same set every time round: `sorted` is
+        // fixed before the loop starts. Inside the closure it was being rebuilt per venue — a walk
+        // of the whole sorted roll for each section of a camp, to serve the one section the guard
+        // below lets through.
+        let placed = Set(sorted)
+        let assignments = rankAssignments().map { assignment -> RankAssignment in
+            guard assignment.venueID == sort.venueID else { return assignment }
+            return RankAssignment(
+                venueID: assignment.venueID,
+                playerIDs: sorted + assignment.playerIDs.filter { !placed.contains($0) }
+            )
+        }
+        firstSort = nil
+        pushedScreen = nil
+        await commitRankOrder(assignments)
+
+        guard errorMessage == nil, let camp else { return }
+        await spreadKids(
+            .allKids, over: camp.groups(in: sort.venueID).map(\.id), atVenue: sort.venueID
+        )
     }
 
     func movePlayer(_ playerID: Player.ID, toVenue venueID: Venue.ID, group groupID: Group.ID? = nil) async {

@@ -170,13 +170,31 @@ enum OverviewFixtures {
 
     private static var blockCoachIDs: [StaffMember.ID] { blockCoaches.map(\.id) }
 
-    /// `8i`'s morning, unpacked — the card's full state.
+    /// What follows the skills rotation — 4a's `Next · Water & regroup · 10:30`.
+    private static let nextBlock = ScheduleBlock(
+        venueID: SampleData.sycamore.id,
+        day: day,
+        startsAt: TimeOfDay(10, 30),
+        endsAt: TimeOfDay(10, 45),
+        title: "Water & regroup"
+    )
+
+    /// The moment 4a is drawn at: 41 minutes before the running block's 10:30 end, which is what
+    /// makes the card read `On now · 41 min left` exactly as the frame does.
+    ///
+    /// Its own constant rather than the mock status bar's 9:41. The two are eight minutes apart in
+    /// the design and both are drawn — the bar says when it is, the card says how long is left, and
+    /// nothing in the frame requires them to agree.
+    private static let clock = TimeOfDay(9, 49)
+
+    /// `4a`'s morning, unpacked — the card's full state.
     static var now: OverviewNow {
-        OverviewNow(block: runningBlock, coaches: blockCoaches)
+        OverviewNow(block: runningBlock, coaches: blockCoaches, at: clock, next: nextBlock)
     }
 
-    /// The other end of the card: a block that is only a title and a time. Every camp has these —
-    /// a lunch, a briefing — and the card has to read as a card without a single optional filled in.
+    /// The other end of the card: a block that is only a title and a time, with no end to count
+    /// down to and nothing after it. Every camp has these — a lunch, a briefing — and the card has
+    /// to read as a card without a single optional filled in.
     static var bareNow: OverviewNow {
         OverviewNow(
             block: ScheduleBlock(
@@ -186,15 +204,45 @@ enum OverviewFixtures {
                 endsAt: nil,
                 title: "Lunch"
             ),
-            coaches: []
+            coaches: [],
+            at: TimeOfDay(12, 15)
         )
     }
 
-    /// What the header says on a day with nothing running — `OverviewView.venueLine`'s answer,
-    /// which is what an unscheduled day and a finished one both get. The running block's own line
-    /// is `now.headerLine` and `OverviewScreen` composes it where it draws it, so there is no
-    /// fixture for that half to drift from.
-    static let venueLine = "Sycamore · 4 courts"
+    /// The venue the pill names. The name alone — 4a puts the court count in the sheet behind it.
+    static let venueName = SampleData.sycamore.name
+
+    /// `Tuesday, 12 August · day 2 of 5`, composed the way the header composes it.
+    ///
+    /// Resolved against the fixture's own day and the real date rather than written out, for the
+    /// reason `capacity(for:)` gives about its own figure: a preview must not show a line the
+    /// screen would not. It reads "day 2 of 5" on a Tuesday and moves with the week, which is the
+    /// same trade `day` above records.
+    static var dateLine: String {
+        OverviewHeader.dateLine(for: day, on: .now, days: camp.days)
+    }
+
+    /// 4a's needs-you row — two things waiting, the newest of them named.
+    ///
+    /// `needsAction` rows, which is what `AppStore.openInboxCount` counts and what the Inbox lists
+    /// under its own "Needs you · 2". The first is the design's own sentence.
+    static let needsYou: [InboxItem] = [
+        InboxItem(
+            venueID: SampleData.sycamore.id,
+            kind: .needsAction,
+            title: "Match play has no coach",
+            detail: "Court 2 · 9:30 – 10:30",
+            actionLabel: "Assign"
+        ),
+        InboxItem(
+            venueID: SampleData.sycamore.id,
+            kind: .needsAction,
+            title: "Austin Zheng → Court 2",
+            detail: "Nass asked · 8 min ago",
+            actionLabel: "Review",
+            createdAt: .now.addingTimeInterval(-8 * 60)
+        ),
+    ]
 
     static func roster(for card: CourtCard, limit: Int) -> CourtRoster {
         TodayCourts.roster(forCourt: card.id, in: camp, day: day, limit: limit)
@@ -203,9 +251,10 @@ enum OverviewFixtures {
     /// The `8 of 8` at the head of a card, read out of the same camp the roster comes from.
     ///
     /// Resolved rather than written out, so a preview cannot show a denominator the graph does not
-    /// have. `SampleData` derives every court's ceiling from its venue's limits
-    /// (`Models.swift:1377`), and the figure the design happens to draw is what that arithmetic
-    /// produces for Sycamore — which is worth seeing rather than asserting.
+    /// have. `SampleData` seeds every court at `courtCapacity = 8` (`SampleData.swift:176`), which
+    /// is the figure the design happens to draw — read out of the graph here rather than typed in
+    /// beside it, so that the day the seed changes this preview changes with it instead of asserting
+    /// an 8 nothing else believes.
     ///
     /// Expressed through `TodayCourts.capacities(in:)` rather than `camp.group(_:)?.capacity`, for
     /// the reason `roster(for:limit:)` directly above gives about its own read: one implementation

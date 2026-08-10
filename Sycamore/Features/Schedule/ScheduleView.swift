@@ -53,6 +53,23 @@ struct ScheduleView: View {
     /// is one: both drags are vertical, and the scroll view would otherwise take them.
     @State private var draggingID: ScheduleBlock.ID?
 
+    /// The block the dragged one is currently running into, which recedes for as long as it is.
+    ///
+    /// Held here beside `draggingID` rather than inside the card, because the card that writes it
+    /// is not the card that reads it: the dragged card knows what it has run into and the
+    /// *neighbour* is what has to dim. Written only when the identity changes — see
+    /// `ScheduleBlockCard.flag(startsAt:endsAt:)`, which guards it for the same reason `draggingID`
+    /// is guarded: a write here re-runs the whole canvas.
+    @State private var runsIntoID: ScheduleBlock.ID?
+
+    /// The block whose staffing is being fixed, and nil when no sheet is up.
+    ///
+    /// `4d` makes the amber "Needs a coach" line on a card a button, and this is where it lands.
+    /// Held by the screen rather than by the card for `openedBlock`'s reason one line down: a
+    /// presentation owned per-card would be one sheet modifier per block on the canvas, all but
+    /// one of them idle, and each re-entering its own card's body.
+    @State private var staffing: ScheduleBlock?
+
     /// Which of the day's blocks are laid over which — held rather than computed in `body`,
     /// because it depends on exactly one value and that value is what re-derives it.
     /// `ScheduleConflicts` argues the cost; the `.onChange` below is what keeps it honest.
@@ -96,7 +113,7 @@ struct ScheduleView: View {
     ///
     /// Falls back to Monday–Friday twice over — for a camp that has not loaded yet, and for one
     /// holding the empty set. `CampDays.isValid` is what the camp editor refuses on
-    /// (`Models.swift:212-214`), but nothing stops a row written before that check existed, and a
+    /// (`Models.swift:271-273`), but nothing stops a row written before that check existed, and a
     /// chip row with nothing in it is a screen with no way back into itself.
     private var campDays: CampDays {
         let days = store.camp?.days ?? .weekdays
@@ -118,15 +135,46 @@ struct ScheduleView: View {
         return campDays.openingDay(from: store.today) ?? store.today
     }
 
+    /// The day's blocks, and only this day's.
+    ///
+    /// `loadedDay == selectedDay` is not sufficient on its own, and the filter is not belt and
+    /// braces. `loadedDay` is stamped in one place — the `.task(id:)` below — so it answers "has
+    /// a read for this day landed". It does **not** answer "is what landed still this day", and
+    /// those come apart on an ordinary action: `SectionEightRepository.updateScheduleBlock`
+    /// (`:514`) and `addScheduleBlock` (`:528`) both answer with
+    /// `scheduleBlocks(forVenue:day:campID:)` keyed on **the block's** day, not the viewed one.
+    ///
+    /// So: open the editor here, move the Day chip from Tuesday to Friday, save. `loadedDay` is
+    /// still Tuesday and `selectedDay` is still Tuesday, and `store.scheduleBlocks` now holds
+    /// Friday — and the Tuesday canvas draws Friday's blocks, taking `ScheduleTimeline`,
+    /// `ScheduleConflicts`, `isEmptyDay`, `dragHint` and `openingHour` with it, since all six
+    /// derive from this one property.
+    ///
+    /// `OverviewView.swift:105-115` documents this same hazard and guards against it. Schedule is
+    /// the screen the editor is usually opened from, so it needs the guard more, not less.
     private var blocks: [ScheduleBlock] {
-        loadedDay == selectedDay ? store.scheduleBlocks : []
+        guard loadedDay == selectedDay else { return [] }
+        return store.scheduleBlocks.filter { $0.day == selectedDay }
     }
 
-    /// `5 blocks`, and nothing at all on a day with none — the design only draws the count on
-    /// `8k`, and "0 blocks" beside the title would be a second way of saying the empty state.
-    private var blockCount: String? {
-        guard !blocks.isEmpty else { return nil }
-        return "\(blocks.count) block\(blocks.count == 1 ? "" : "s")"
+    /// `Hold an edge to resize · hold the middle to move` — the line under the title
+    /// (`design/rebuild/section-t5.html:140`).
+    ///
+    /// **It replaces `5 blocks`, which used to be here.** `ScreenHeader` draws one line under a
+    /// title and lets `count` win when both are passed (`ScreenHeader.swift:125-129`); the design
+    /// never draws two, and its own `5c` header is the title and this sentence. So the two are
+    /// competing for one slot and the hint takes it permanently.
+    ///
+    /// The count is the one that can go. It is re-derivable by eye — the blocks are on the screen
+    /// under it, drawn to scale — and it changes nothing about what anybody can do. Two of the
+    /// three gestures on this canvas are hold-then-drag, which nothing draws and nothing announces:
+    /// the grabber says an edge moves and says nothing about the hold in front of it, and the move
+    /// has no affordance at all. An undiscoverable gesture outranks a visible tally.
+    ///
+    /// Nil on a day with nothing on it, on the count's own reasoning: there is nothing to hold, and
+    /// `8f` is already saying what to do with an empty day two lines below.
+    private var dragHint: String? {
+        blocks.isEmpty ? nil : "Hold an edge to resize · hold the middle to move"
     }
 
     /// Whether the canvas is showing a real answer yet: a venue to schedule against, and this
@@ -142,7 +190,13 @@ struct ScheduleView: View {
             VStack(spacing: 0) {
                 StatusBarMock()
 
-                ScreenHeader(title: "Schedule", count: blockCount, initials: store.avatarInitials) {
+                // `subtitle:` and not `count:` — see `dragHint`. Deliberately not a second slot on
+                // `ScreenHeader`: that component models its one line as `SecondLine` with two
+                // cases precisely because the design draws one (`ScreenHeader.swift:121-129`), and
+                // a screen that needed both would be asking for a header the design has not drawn.
+                ScreenHeader(
+                    title: "Schedule", subtitle: dragHint, initials: store.avatarInitials
+                ) {
                     store.pushedScreen = .profile
                 }
 
@@ -165,7 +219,7 @@ struct ScheduleView: View {
                         // scroll view and is only trustworthy while nothing moves it.
                         // `RankView.swift:106` and `:353` are the template. The name belongs to
                         // `ScheduleResizePlan`, whose `drag(by:)` is what assumes it. Spelled
-                        // `.named(_:)` rather than `name:`, which is `GroupsView.swift:174`'s
+                        // `.named(_:)` rather than `name:`, which is `GroupsView.swift:272`'s
                         // spelling and the one that is not deprecated.
                         .coordinateSpace(.named(ScheduleResizePlan.listSpace))
                 }
@@ -215,12 +269,12 @@ struct ScheduleView: View {
         // its macOS stand-in are in `fullScreenPresentation`, shared with the app's two other
         // covers rather than restated here.
         .fullScreenPresentation(item: $openedBlock) { block in
+            // No `isCurrent:` any more. It was `ScheduleBlock.running(in:at:)` over the whole day,
+            // read in this `body` while a cover was open, for a status dot line `5d` removed — so
+            // the walk answered a question the cover had nothing to draw with. `BlockDetailView`
+            // records the deletion from its own side.
             BlockDetailView(
                 block: block,
-                // The one place this screen still reads the clock in its own `body`, and only
-                // while a cover is open — which is a screen that wants the minute anyway.
-                isCurrent: ScheduleBlock.running(in: blocks, at: store.timeOfDay)
-                    .contains { $0.id == block.id },
                 conflict: conflicts[block.id],
                 onClose: { openedBlock = nil }
             )
@@ -242,6 +296,10 @@ struct ScheduleView: View {
             conflicts = ScheduleConflicts(day: day)
             if let dragging = draggingID, !day.contains(where: { $0.id == dragging }) {
                 draggingID = nil
+                // With it, because the card that would have cleared it is the one that has gone.
+                // A neighbour left dimmed by a drag nobody is holding any more is a card that
+                // stays half-there until the next write.
+                runsIntoID = nil
             }
         }
         // The cover reads its block from this binding rather than from the store, so a write
@@ -395,7 +453,9 @@ struct ScheduleView: View {
                     conflicts: conflicts,
                     timeColumn: timeColumn,
                     draggingID: $draggingID,
+                    runsIntoID: $runsIntoID,
                     onOpen: { openedBlock = $0 },
+                    onStaffing: { staffing = $0 },
                     onResize: resize,
                     onMove: shift
                 )
@@ -405,6 +465,22 @@ struct ScheduleView: View {
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, ScheduleMetrics.listTop)
+            // Attached to the canvas rather than to the screen, where the editor and `8l` are.
+            // Three presentations on one view is one more than SwiftUI is willing to be clear
+            // about, and this one has a narrower home available for free: the only thing that can
+            // open it is a card, and cards exist only in here.
+            .sheet(item: $staffing) { block in
+                BlockCourtStaffingSheet(
+                    block: block,
+                    // The court, when the block names exactly one. A card draws one flag for the
+                    // whole block and names no court on it, so one is all it can honestly pass —
+                    // and on a `.regular` block, which claims no courts at all, the answer is
+                    // rightly nothing.
+                    courtID: block.courtIDs.count == 1 ? block.courtIDs.first : nil,
+                    onDismiss: { staffing = nil }
+                )
+                .environment(store)
+            }
     }
 
     /// The calendar idiom, and the thing a canvas can offer that a list could not: a block is made
@@ -552,7 +628,7 @@ private struct ScheduleHourGrid: View {
             ForEach(ScheduleTimeline.hours) { hour in
                 HStack(alignment: .top, spacing: 0) {
                     Text(Self.label(hour))
-                        .typeStyle(ScheduleType.blockTime, color: Theme.inkFaint)
+                        .typeStyle(ScheduleType.gutterHour, color: Theme.inkFaint)
                         .lineLimit(1)
                         .frame(width: timeColumn, alignment: .leading)
                         // Under its own rule rather than straddling it. Straddling would mean a
@@ -596,13 +672,19 @@ private struct ScheduleHourGrid: View {
 private struct ScheduleBlockLayer: View {
 
     @Environment(AppStore.self) private var store
+    /// For the run-into dim below. The card keyed to the same curve reads it too
+    /// (`ScheduleBlockCard.swift`), which is what makes the two read as one thing happening —
+    /// including when a reader has asked for neither.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let blocks: [ScheduleBlock]
     let timeline: ScheduleTimeline
     let conflicts: ScheduleConflicts
     let timeColumn: CGFloat
     @Binding var draggingID: ScheduleBlock.ID?
+    @Binding var runsIntoID: ScheduleBlock.ID?
     let onOpen: (ScheduleBlock) -> Void
+    let onStaffing: (ScheduleBlock) -> Void
     let onResize: (ScheduleBlock, TimeOfDay) -> Void
     let onMove: (ScheduleBlock, TimeOfDay, TimeOfDay?) -> Void
 
@@ -644,7 +726,14 @@ private struct ScheduleBlockLayer: View {
                             // the day with a set intersection inside it, so it happens once a day
                             // in `ScheduleConflicts`.
                             conflict: conflicts[block.id],
+                            // The day itself as well as the index over it, for the question the
+                            // index cannot answer: what a block runs into at times a finger is
+                            // still holding. Walked only on settled steps of a drag — see
+                            // `ScheduleConflicts.live(_:startsAt:endsAt:in:)`.
+                            day: blocks,
+                            runsIntoID: $runsIntoID,
                             onOpen: { onOpen(block) },
+                            onStaffing: { onStaffing(block) },
                             onResize: { end in onResize(block, end) },
                             onMove: { start, end in onMove(block, start, end) }
                         )
@@ -652,6 +741,16 @@ private struct ScheduleBlockLayer: View {
                             width: placement.width(in: lanes, gap: gap),
                             height: placement.height
                         )
+                        // The block being run into recedes for the length of the drag, and only
+                        // that one: `runsIntoID` holds a single id, so the rest of the morning
+                        // stays at full strength. See `ScheduleMetrics.runIntoDim`.
+                        .opacity(runsIntoID == block.id ? ScheduleMetrics.runIntoDim : 1)
+                        // Scoped to the value that turns it on and off, so it animates the grab
+                        // and the release and nothing in between. The card's own border and lift
+                        // are keyed the same way on the same curve
+                        // (`ScheduleBlockCard.swift`'s `card`), which is what makes the three read
+                        // as one thing happening.
+                        .animation(Motion.fold(reduceMotion: reduceMotion), value: runsIntoID == block.id)
                         .offset(x: origin + placement.x(in: lanes, gap: gap), y: placement.y)
                         // A card being dragged draws over its neighbours rather than under them,
                         // which matters most in the case the lanes exist for: a block carried

@@ -197,8 +197,10 @@ struct BlockCoachPoolTests {
 
     // MARK: What the rows say
 
-    /// The same three words `BlockAssigneeList.name(for:)` puts on the logistics card, so the
-    /// screen that states who is on a block and the two that choose them agree.
+    /// The same three words in all three pickers — this one, `CourtCoachPicker` and `4d`'s
+    /// `BlockCourtStaffingSheet` — because each of them calls this function rather than spelling
+    /// it. The wording came from the "Logistics" card on `8l`, which `5d` replaced with a card per
+    /// court; the pickers outlived it and the suffix went on being theirs.
     @Test("Your own row says '· you' after your name, and nobody else's does")
     func theYouSuffix() {
         #expect(BlockCoachPicker.rowTitle(for: Self.alex, me: Self.alex.id) == "Alex · you")

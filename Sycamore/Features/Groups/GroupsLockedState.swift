@@ -178,13 +178,35 @@ struct GroupsLockedState: View {
 
     private var hiddenCount: Int { players.count - shownPlayers.count }
 
+    /// One kid in "Added so far".
+    ///
+    /// **The disc's letters are `FirstSortCopy.initials(for:)`** (`FirstSortView.swift:176`), and
+    /// this file used to hold a second copy of the same rule with the same argument written out in
+    /// the same words — first name, last initial, not `Initials.make(from:)`, because that helper
+    /// takes the first two letters of *one* string and answers "SE" for Serene Chu.
+    ///
+    /// Two copies of a rule are not a duplicate until they disagree, and these did, at both edges:
+    ///
+    /// * a kid with an empty `lastInitial` but a `lastName` — which is most of what an import
+    ///   produces, since `lastInitial` is the field the *camp* fills in — drew `S` here and `SC`
+    ///   on `4c`, so the same child wore different letters on two screens one tap apart;
+    /// * a kid with neither drew an empty disc here and `—` on `4c`.
+    ///
+    /// `FirstSortCopy`'s is the stronger of the two on both counts: it trims, it falls back to
+    /// `lastName`, and it ends in the em dash `Initials.make` already gives a name that is not one,
+    /// so an empty disc looks the same here as it does everywhere else. So this calls it rather
+    /// than restating it. Living in `Features/Rank/` is not an obstacle — it is a `static` on an
+    /// internal enum, the same reach `GroupsView` makes for `FirstSort` — and the disc's *size* and
+    /// *font* stay this screen's, which is the part `8g` genuinely draws differently.
+    ///
+    /// `FirstSortCopyTests.theSameLettersOnEveryScreen` pins both edges so the two cannot re-diverge.
     private func playerRow(_ player: Player) -> some View {
         Button {
             store.pushedScreen = .player(player.id)
         } label: {
             CardRow(verticalPadding: Spacing.row) {
                 InitialsAvatar(
-                    initials(for: player),
+                    FirstSortCopy.initials(for: player),
                     size: avatarSize,
                     font: GroupsType.lockedInitials
                 )
@@ -231,12 +253,6 @@ struct GroupsLockedState: View {
 
     private func toggleEveryone() {
         withAnimation(Motion.fold(reduceMotion: reduceMotion)) { showsEveryone.toggle() }
-    }
-
-    /// `Serene C` → `SC`. `Initials.make(from:)` takes the first two letters of a name, which is
-    /// right for "Nass" and wrong for a kid, whose surname is already only one letter.
-    private func initials(for player: Player) -> String {
-        "\(player.firstName.prefix(1))\(player.lastInitial.prefix(1))".uppercased()
     }
 }
 
