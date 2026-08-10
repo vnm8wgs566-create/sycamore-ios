@@ -211,7 +211,7 @@ struct RankView: View {
                 .frame(width: 28, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.player.displayName)
+                Text(row.name)
                     .typeStyle(.bodyStrong, color: Theme.ink)
                 Text(row.player.metaLine)
                     .typeStyle(.meta, color: Theme.inkMuted)
@@ -246,7 +246,7 @@ struct RankView: View {
                     before: TapGesture().onEnded { store.pushedScreen = .player(row.id) }
                 )
             )
-            .accessibilityLabel("Reorder \(row.player.displayName)")
+            .accessibilityLabel("Reorder \(row.name)")
     }
 
     /// `45 MORE IN SYCAMORE` — the strip that stands in for a folded run.
@@ -417,7 +417,9 @@ struct RankView: View {
         // head row, which is the common case, and leaves its origin exactly where it was.
         guard section.rows.allSatisfy({ rowFrames[$0.id] != nil }) else { return }
 
-        state.translation += state.origin.minY - origin.minY
+        // Banked rather than added to `translation`, which the next `updateDrag` would overwrite —
+        // see `RankDrag.listTravel`.
+        state.listTravel += state.origin.minY - origin.minY
         state.origin = origin
         state.slots = dropSlots()
         state.awaitingGeometry = false
@@ -426,10 +428,11 @@ struct RankView: View {
 
     private func updateDrag(to translation: CGFloat) {
         guard var state = drag else { return }
-        state.translation = translation
+        let travelled = translation + state.listTravel
+        state.translation = travelled
 
         // Aim with the middle of the lifted card rather than the fingertip.
-        let centre = state.origin.midY + translation
+        let centre = state.origin.midY + travelled
         let nearest = state.slots.min { abs($0.y - centre) < abs($1.y - centre) }
         state.slot = nearest
 
@@ -496,6 +499,18 @@ private struct RankDrag {
     var origin: CGRect
     var slots: [RankDropSlot]
     var translation: CGFloat = 0
+    /// How far the list moved *under* the finger, kept apart from the finger's own travel.
+    ///
+    /// `updateDrag` is handed the gesture's translation, which is measured from where the touch
+    /// began and knows nothing about the rows that appeared beneath it — so it rewrites
+    /// `translation` wholesale on every frame. A correction added in place therefore survives
+    /// exactly until the next twitch of the finger. This holds the correction separately and
+    /// `updateDrag` adds it back, so it survives the whole drag.
+    ///
+    /// `GroupsMove.listTravel` is the same property for the same reason, and its doc
+    /// (`GroupsMove.swift:113-130`) is where the case is argued at length. That screen found this
+    /// and could not reach across into this file; the two now agree.
+    var listTravel: CGFloat = 0
     var slot: RankDropSlot?
     /// The section was folded when this drag began, so fold it back when the drag ends.
     var refoldOnEnd: Bool = false

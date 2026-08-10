@@ -9,6 +9,7 @@
 //  everybody arriving for the first time. What is asked now, and in this order:
 //
 //      no name on the account   -> `YourNameView`
+//      camps not arrived yet    -> nothing at all, on a held frame
 //      no camps on the account  -> `RunningOrJoiningView`, and then whichever way they chose
 //      otherwise                -> screen 3, exactly as before
 //
@@ -17,6 +18,9 @@
 //  cannot get out of step with the account it is about, so a name that failed to save leaves the
 //  question up — with `RootView`'s banner over it (`RootView.swift:80-86`) — and nothing here has
 //  to know that.
+//
+//  The second line is the new one, and it is the whole reason this branch no longer needs a
+//  loading screen over it. See `HeldFrame` at the foot of this file.
 //
 //  ---------------------------------------------------------------------------------------------
 //  THE TWO WAYS OUT ARE NOT PRESENTED THE SAME WAY, AND THAT IS ON PURPOSE
@@ -53,13 +57,41 @@ struct FirstRunView: View {
     /// "Not now" on the name question. Session-only, deliberately — see `FirstRunStep`.
     @State private var isNameSkipped = false
 
+    /// Whether the load below has been and gone. Not a copy of anything the store holds: it is
+    /// this view's record of its own task finishing, which is the one thing the store cannot
+    /// report — see `campList`.
+    @State private var hasStoppedWaiting = false
+
     private var step: FirstRunStep {
         FirstRunStep.resolve(
             displayName: store.account?.displayName ?? "",
             isNameSkipped: isNameSkipped,
+            campList: campList,
             hasCamps: !store.memberships.isEmpty,
             path: path
         )
+    }
+
+    /// How far the memberships have got, in the three states the rule is written against.
+    ///
+    /// `store.hasLoadedMemberships` supplies the first two on its own: it is raised by a fetch that
+    /// returned, so while it is down the list is still coming. The third it cannot supply.
+    /// `loadMemberships()` reports a failed fetch through `errorMessage` rather than by throwing,
+    /// so a fetch that fails leaves the flag down exactly as a fetch still in the air does — and a
+    /// flow that could not tell those apart would hold an empty page for ever, under a banner the
+    /// reader is free to dismiss.
+    ///
+    /// So the task below records that it has been and gone, and that is what turns "still coming"
+    /// into "did not come". Checked in this order on purpose: a late success still wins, so a
+    /// failed retry racing a good fetch from `finishSignIn` settles on the good one.
+    ///
+    /// The store is the right home for this and cannot have it here — `hasLoadedMemberships` is
+    /// raised on success rather than on conclusion, and `AppStore` belongs to another change in
+    /// flight. Recorded as a bandaid: a three-state on the store would delete this property, the
+    /// `@State` behind it, and the retry it times.
+    private var campList: FirstRunStep.CampList {
+        if store.hasLoadedMemberships { return .arrived }
+        return hasStoppedWaiting ? .failed : .pending
     }
 
     var body: some View {
@@ -68,6 +100,9 @@ struct FirstRunView: View {
         // on the `.name` case would be cancelled the moment the name was answered.
         SwiftUI.Group {
             switch step {
+            case .notYet:
+                HeldFrame()
+
             case .name:
                 YourNameView(
                     currentName: store.account?.displayName ?? "",
@@ -93,21 +128,25 @@ struct FirstRunView: View {
                 CampPickerView()
             }
         }
-        // Makes the rule's input true rather than assuming it.
+        // The one attempt this flow makes on its own behalf, and the thing that ends the hold.
         //
-        // `hasCamps` is `memberships.isEmpty`, and an empty list means two different things:
-        // this account belongs to no camp, or the list has not arrived. `finishSignIn` sets
-        // `auth` to `.signedIn` on the line *before* it awaits the memberships
-        // (`AppStore.swift:838-845`), so if that fetch throws, `perform` clears `isWorking`, the
-        // list stays empty, and a coach with three camps is asked whether they are starting one
-        // — the exact ambush this flow is written to avoid.
+        // `finishSignIn` fetches the memberships itself, on the line after it sets `auth`
+        // (`AppStore.swift:886-893`). If that throws, `perform` catches it into the banner and
+        // `hasLoadedMemberships` stays down — so without this the rule would decline for ever and
+        // the held frame would be a screen with nothing on it and no way off. This retries, and
+        // then reports that the asking is over whichever way the retry went, which is what turns
+        // `campList` from `.pending` into `.failed`.
         //
         // Guarded on the empty case so the common path costs nothing: a list that already has
         // camps in it is not in doubt, and `CampPickerView` loads again on its own behalf when
-        // the flow reaches it.
+        // the flow reaches it. It does mean that during a normal sign-in this fetch and
+        // `finishSignIn`'s overlap — the view is on screen before that await returns — which is
+        // one wasted request against the alternative of a first run with no way to recover from a
+        // failed one.
         .task {
             guard store.memberships.isEmpty else { return }
             await store.loadMemberships()
+            hasStoppedWaiting = true
         }
     }
 
@@ -121,7 +160,7 @@ struct FirstRunView: View {
     ///
     /// The usual objection to `Binding(get:set:)` does not apply. It is aimed at bindings that do
     /// *work* on write — the ones that should be `@State` plus an `onChange` — and at fields that
-    /// rebuild one on every keystroke (`ProfileView.swift:49-52` and `CampPickerView.swift:334-336`
+    /// rebuild one on every keystroke (`ProfileView.swift:49-52` and `CampPickerView.swift:342-344`
     /// each argue that case). There is no effect here to move: it is a pure view of the answer,
     /// read once per pass of a body that is a four-way switch.
     ///
@@ -151,7 +190,49 @@ struct FirstRunView: View {
     }
 }
 
+// MARK: - Nothing asked yet
+
+/// The frame, held, with no question in it.
+///
+/// On screen for `FirstRunStep.notYet` — the moment between `auth` becoming `.signedIn` and the
+/// memberships arriving, when an account with three camps and an account with none are the same
+/// empty array.
+///
+/// **Deliberately nothing.** There is no loading indicator anywhere in this app and this is not
+/// the place to introduce the first one. The "Working…" capsule went for the reason written up at
+/// `Components.swift:1092-1104` — a wait too short to read is a wait not worth drawing, and one
+/// drawn at random reads as a fault — and the full-screen seed fall went with it. A mark parked in
+/// the middle here would be `SeedLoadingView` under a new name, which `FallingSeeds.swift` argues
+/// against in its own words: the logo used as a progress indicator is the fastest way to stop
+/// people seeing it.
+///
+/// So what is held is the page, and only the page: `surfaceWarm`, which is what all three
+/// questions and screen 3 are drawn on. Nothing appears and then moves — the question simply
+/// arrives on the surface it was always going to be on. The header plate would have been the other
+/// candidate and is the wrong one twice over: it is the header *of a question*, and drawing it
+/// here means a fourth copy of the three literals `FirstRunHeader` exists to stop being copied
+/// (`FirstRunHeader.swift:4-13`).
+private struct HeldFrame: View {
+    var body: some View {
+        Theme.surfaceWarm
+            // Nothing is drawn, and for VoiceOver nothing drawn is indistinguishable from an app
+            // that has stopped. `FallingSeeds` named itself while it fell for exactly this reason
+            // and this inherits the job — as a label, which costs the screen nothing.
+            .accessibilityElement()
+            .accessibilityLabel("Loading your camps")
+    }
+}
+
 // MARK: - Previews
+
+/// The held frame, drawn on its own. Reaching it through `FirstRunView` would take a repository
+/// that never answers — a stub the size of the whole protocol, for a page with nothing on it.
+///
+/// No `showsMockStatusBar()`, unlike every other preview in this file: there is no header here to
+/// draw one, which is rather the point of the preview.
+#Preview("First run — nothing to ask yet") {
+    HeldFrame()
+}
 
 /// A brand-new account: no name, no camps. The first of the three questions.
 #Preview("First run — no name") {

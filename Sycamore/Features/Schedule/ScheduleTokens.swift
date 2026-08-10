@@ -18,12 +18,16 @@
 //  The geometry below is still local, and every value is a hoist candidate the moment a second
 //  feature draws the same thing.
 //
-//  Two of them are **not** transcriptions, and the header should say so rather than let the
-//  paragraph above cover them: the resize handle is an affordance the design never drew, so its
-//  numbers were chosen against the screen instead of read off it. They live here anyway, beside
-//  the geometry they sit in, rather than in `ScheduleResize.swift` the way `SwipeMetrics` lives
-//  beside `SwipeRevealPlan` — the ratio a drag is measured by is in that file, because the
-//  arithmetic is what depends on it, and what is left here is what is actually drawn.
+//  Some of it is **not** transcribed, and the header should say so rather than let the paragraph
+//  above cover it. The resize handle is an affordance the design never drew, and the day canvas is
+//  a screen the design never drew — `8k` was transcribed as a list of equal cards and is a
+//  duration-proportional timeline now (`ScheduleTimeline.swift`). Those numbers were chosen against
+//  the screen instead of read off it, and every one of them says so where it stands.
+//
+//  They live here anyway, beside the geometry they sit in, rather than in `ScheduleResize.swift`
+//  the way `SwipeMetrics` lives beside `SwipeRevealPlan`. The split is by *kind* and not by
+//  provenance: what a drag is measured **by** is in that file and in `ScheduleTimeline`, because
+//  the arithmetic is what depends on it; what is actually **drawn** is here, chosen or transcribed.
 //
 
 import SwiftUI
@@ -42,24 +46,74 @@ enum ScheduleMetrics {
     /// `5` — `margin-top:5px` on a card's grey second line.
     static let detailGap: CGFloat = 5
 
-    // MARK: The day list
+    // MARK: The day canvas
 
-    /// `14` — `8k`'s drop from the header's rule to the first block.
+    /// `14` — `8k`'s drop from the header's rule to the first block, which is now the drop to the
+    /// canvas's first hour rule. The same gap doing the same job on a screen that changed shape.
     static let listTop: CGFloat = 14
-    /// `16` — `8f` starts its content two points lower than `8k` does.
-    static let emptyListTop: CGFloat = 16
+    /// Where the block columns begin: after the gutter, and clear of it by the gap the block card
+    /// used to keep between its own time and its own plate.
+    ///
+    /// A function of the gutter rather than a number, because the gutter is `@ScaledMetric` and
+    /// grows with the type in it. Three things have to agree on this line — the columns start at
+    /// it, their available width is what is left after it, and the now-line's dot straddles it —
+    /// and written out three times they agree only until somebody retunes the gutter.
+    ///
+    /// `emptyListTop` used to sit here: `16`, the two points lower than `8k` that `8f` began its
+    /// content at. `8f`'s hero is centred over the day's own grid now rather than starting under
+    /// the header, so there is no top for it to start at.
+    static func laneOrigin(after timeColumn: CGFloat) -> CGFloat {
+        timeColumn + Spacing.medium
+    }
     /// `9` — `gap:9px` between two blocks, and between `8l`'s cards.
+    ///
+    /// It is also the gap between two blocks drawn *side by side*, which is the arrangement the
+    /// canvas added: two blocks running at once are still two blocks with a gap between them, and
+    /// a second number for the same relationship turned ninety degrees is a second number to keep
+    /// in step. `ScheduleTimeline.Placement.width(in:gap:)` is what it is handed to.
     static let blockGap: CGFloat = 9
     /// `14` — `8f`'s outer `gap:14px`, between the hero card and the shapes below it.
     static let sectionGap: CGFloat = 14
 
+    /// `130` / `90` / `60` — the heights a block card changes layout at.
+    ///
+    /// Not transcribed; there was nothing to transcribe. On a proportional canvas a card is handed
+    /// its height rather than growing to fit its contents, so it has to decide what it can say.
+    /// Each number is measured against what the type actually occupies at the default size, inside
+    /// `cardPadding` either side:
+    ///
+    ///   - **130** (`blockLayoutRich`, an hour and five minutes) — everything the old list drew: a
+    ///     title, the span, a grey line, and the rule and note row under them. The note block alone
+    ///     costs 10 + 1 + 10 + 15.
+    ///   - **90** (`blockLayoutFull`, three quarters of an hour) — 28 of padding and 62 of copy: a
+    ///     20pt title, a 16pt span and one 16pt grey line with `detailGap` between them. Exactly
+    ///     one grey line, which is why `ScheduleBlockCard` has to choose between the clash and the
+    ///     subtitle rather than drawing both.
+    ///   - **60** (`blockLayoutCompact`, half an hour) — a title and a start.
+    ///   - under that, one line, and it is the title: a block whose time you cannot read is still
+    ///     findable by eye, because it is *drawn* at that time, and one whose name you cannot read
+    ///     is not.
+    ///
+    /// A block's height is `ScheduleTimeline.pointsPerMinute` times its length. They are
+    /// `@ScaledMetric` at the call site rather than fixed here, so a half-hour block at
+    /// `.accessibility1` drops to its one line instead of clipping two.
+    static let blockLayoutRich: CGFloat = 130
+    static let blockLayoutFull: CGFloat = 90
+    static let blockLayoutCompact: CGFloat = 60
+
     // MARK: The time gutter
 
     /// `52` — the column running down the left of `8k`.
+    ///
+    /// It held one time per block when the day was a list. It holds one label per *hour* now, and
+    /// the blocks are placed after it rather than beside it — same column, same width, different
+    /// thing in it.
+    ///
+    /// `timeBaseline` used to sit here: `15`, the `padding-top` that dropped a gutter time onto its
+    /// card's title rather than onto the card's top edge. There is no such alignment left to make.
+    /// A gutter label now belongs to a rule and sits directly under it (`Spacing.hairGap`), and the
+    /// block beside it may start anywhere in that hour — so a fixed drop would align it to nothing.
     static let timeColumn: CGFloat = 52
-    /// `15` — `padding-top` on the gutter time, so it sits on the card's title rather than on
-    /// the card's top edge.
-    static let timeBaseline: CGFloat = 15
     /// `4` — `padding:0 4px` on the rows that carry no card of their own.
     static let rowInset: CGFloat = 4
 
@@ -72,15 +126,25 @@ enum ScheduleMetrics {
     /// it is drawn on every upcoming block rather than once at the top of a sheet. It takes that
     /// component's `Theme.grabber` too, rather than a colour of its own.
     static let resizeGrab = CGSize(width: 28, height: 3)
-    /// `76` — the width of the column that catches a finger reaching for the grabber. Wider than
-    /// the 28 drawn, so it can be hit; well short of the card, so the rest of the card keeps the
-    /// tap that opens it.
+    /// How much of a block's bottom edge takes a resize drag rather than a move.
+    ///
+    /// A rule rather than a number, and it replaces the `76`-point column this used to be. That
+    /// column was drawn against a full-width card in a list; a lane on a three-deep morning is a
+    /// third of the screen, and a fixed 76 would have been most of a narrow card — so the bottom
+    /// edge would have swallowed the body the move gesture now needs.
+    ///
+    /// The bottom half of the card, capped at the platform's minimum target. The cap is what stops
+    /// a two-hour block being 44pt of edge and 196pt of nothing in particular; the half is what
+    /// keeps a fifteen-minute block's title tappable, which no fixed height could — 44pt does not
+    /// fit inside 30pt, and a handle taller than its card would sit over the block below it.
     ///
     /// The grabber's lift off the bottom border and the readout's lift off the grabber are
     /// `Spacing.tight` and `Spacing.small`, taken from the shared scale rather than restated here.
     /// They landed on 6 and 8 by eye, which is exactly the case this file's header warns about: a
     /// chosen number that happens to equal a shared step is a second name for that step.
-    static let resizeHitWidth: CGFloat = 76
+    static func resizeHitHeight(in blockHeight: CGFloat) -> CGFloat {
+        min(HitTarget.minimum, blockHeight / 2)
+    }
 
     // MARK: A card's note line
 
@@ -184,8 +248,10 @@ enum ScheduleShadows {
     /// `0 8px 22px rgba(26,127,85,.08)` — the lift under `8l`'s court card.
     ///
     /// Only that card. `8k`'s running block wears the same green border at a point thinner and
-    /// no shadow at all, which is what keeps the list reading as one plane with one card marked
-    /// on it rather than as a card that has come loose.
+    /// no shadow at all, which is what keeps the day reading as one plane with one card marked
+    /// on it rather than as a card that has come loose. That is worth more on a canvas than it was
+    /// on a list: cards there sit *beside* each other as well as under, and a lifted one would read
+    /// as being in front of its neighbour rather than at the same hour as it.
     ///
     /// Built from `Theme.accent` rather than from the design's literal `rgba(26,127,85,…)` so
     /// the glow follows the accent into the dark scheme. It is a *tint*, not a cast shadow —

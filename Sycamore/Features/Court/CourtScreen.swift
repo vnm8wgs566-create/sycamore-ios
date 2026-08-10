@@ -284,20 +284,7 @@ struct CourtScreen: View {
     /// line that takes no gestures of its own; a list you can open is a property of this screen,
     /// not of the row, and a card that only reads must keep drawing the same kid identically.
     private func kidRow(_ row: PlayerRow) -> some View {
-        Button {
-            openKid(row.id)
-        } label: {
-            CourtRosterRow(row: row)
-                .padding(.horizontal, OnTheDayTokens.cardInset)
-                .frame(minHeight: HitTarget.minimum)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        // Set outright rather than lifted off the row inside the label — see
-        // `CourtRosterRow.spokenLabel(for:)` for why a button that leaves this to inference can
-        // end up as one of eight controls all called "Button".
-        .accessibilityLabel(CourtRosterRow.spokenLabel(for: row))
-        .accessibilityHint("Opens their screen")
+        CourtRosterButton(row: row, inset: OnTheDayTokens.cardInset) { openKid(row.id) }
     }
 
     // MARK: - Intents

@@ -2,9 +2,10 @@
 //  GroupsMoveTests.swift
 //  SycamoreTests
 //
-//  The latched move on `8p`: a kid held in the air, and the slot they come down into.
+//  The move on `8p`: a kid carried in the air, and the slot they come down into when the finger
+//  leaves the handle.
 //
-//  All three functions here are decided by arithmetic nobody can see. `isNoop` is the sharp one
+//  Everything here is decided by arithmetic nobody can see. `isNoop` is the sharp one
 //  — a drop boundary belongs to two rows at once, so the slot *below* a kid and the slot *above*
 //  whoever stands next are the same line, and putting someone back exactly where they were can
 //  be spelled either way. Recognising only one of the two spellings costs a write, a reload and
@@ -64,7 +65,8 @@ struct GroupsMoveTests {
                 sourceGroupID: group ?? courtA,
                 nextRowID: next,
                 origin: CGRect(x: 0, y: originMidY - 20, width: 300, height: 40),
-                slots: slots ?? self.slots
+                slots: slots ?? self.slots,
+                unfolded: []
             )
         }
 
@@ -257,48 +259,44 @@ struct GroupsMoveTests {
         #expect(move.nearestSlot() == only)
     }
 
-    // MARK: lastSlot
+    // MARK: carried
 
-    /// Tapping a court's card means "put them at the back of it", so the slot this returns has
-    /// to be the back-of-court one — the one with no anchor. If the measured slots ever came out
-    /// in another order, a tap would insert the kid somewhere in the middle instead.
-    @Test("The last slot in a court is its back-of-court slot")
-    func lastSlotIsTheBackOfTheCourt() {
+    /// What the autoscroll measures against the viewport's edges. The card is the mover's row,
+    /// moved — same width, same height, `translation` further down the list — and it has to be
+    /// the *card* rather than the fingertip for the same reason the aim is: the reader is
+    /// watching the thing they are carrying, not the inch of screen under their thumb.
+    @Test("The carried card is the lifted row, moved")
+    func carriedFollowsTheCard() {
         let board = Board()
-        let move = board.move(board.a1, next: board.a2)
+        var move = board.move(board.a2, next: board.a3, originMidY: 160)
 
-        #expect(move.lastSlot(in: board.courtA)?.y == 280)
-        #expect(move.lastSlot(in: board.courtA)?.landing.anchor == nil)
-        #expect(move.lastSlot(in: board.courtB)?.y == 480)
-        #expect(move.lastSlot(in: board.courtB)?.landing.anchor == nil)
+        #expect(move.carried == move.origin)
+
+        move.translation = 90
+        #expect(move.carried.minY == move.origin.minY + 90)
+        #expect(move.carried.height == move.origin.height)
+        #expect(move.carried.midY == move.centre)
     }
 
-    @Test("A court with nothing measured for it has no last slot")
-    func lastSlotOfAnUnknownCourt() {
+    /// The list moving under a still finger is travel the gesture cannot report: it measures in
+    /// `.global`, and a finger that has not moved has not moved. `listTravel` is what the next
+    /// reading is re-based on, and this is the sum the screen actually assembles — see
+    /// `GroupsView.updateMove(to:)`.
+    ///
+    /// Without it, the first twitch of a finger after an autoscroll would snap the card back to
+    /// where the list used to be, which is the length of the scroll in one frame.
+    @Test("What the list moved and what the finger moved add up rather than replacing one another")
+    func listTravelAndFingerTravelCompose() {
         let board = Board()
-        let move = board.move(board.a1, next: board.a2)
+        var move = board.move(board.a2, next: board.a3, originMidY: 160)
 
-        #expect(move.lastSlot(in: Group.ID()) == nil)
-    }
+        // Two hundred points of list walked past under a finger that never moved.
+        move.listTravel = 200
+        move.translation = move.listTravel
+        #expect(move.centre == 360)
 
-    /// The two functions have to agree: tapping the card of the court a kid is already last on
-    /// must be recognised as asking for nothing.
-    @Test("Tapping the mover's own court is a no-op when they are already last on it")
-    func tappingYourOwnCourtWhenLast() {
-        let board = Board()
-        let move = board.move(board.a3, next: nil)
-
-        let target = move.lastSlot(in: board.courtA)
-        #expect(target != nil)
-        #expect(target.map { move.isNoop($0) } == true)
-    }
-
-    @Test("Tapping the mover's own court is a real move when they are not last")
-    func tappingYourOwnCourtWhenNotLast() {
-        let board = Board()
-        let move = board.move(board.a1, next: board.a2)
-
-        let target = move.lastSlot(in: board.courtA)
-        #expect(target.map { move.isNoop($0) } == false)
+        // And then ten points of actual finger, which is what the gesture reports.
+        move.translation = 10 + move.listTravel
+        #expect(move.centre == 370)
     }
 }

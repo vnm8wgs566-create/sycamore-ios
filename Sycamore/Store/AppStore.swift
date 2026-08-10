@@ -225,7 +225,36 @@ struct PlayerRow: Identifiable, Hashable, Sendable {
     let isAway: Bool
     let leavesAt: TimeOfDay?
 
+    /// `player.displayName`, spelled once when the row is built rather than once every time it
+    /// is drawn.
+    ///
+    /// `Player.displayName` (`Models.swift:549-558`) short-circuits on an empty surname, which is
+    /// why `SampleData` never showed the cost — but a kid off a real roster has one, and then it
+    /// builds a `PersonNameComponents` and runs a `FormatStyle` over it. A Groups drag now unfolds
+    /// the whole venue, so it draws around fifty rows, each asking twice: once for the name it
+    /// shows and once for the accessibility label it assembles whether or not anybody is
+    /// listening. At display rate that is roughly twelve thousand ICU passes a second to render
+    /// text that cannot change while a finger is down.
+    ///
+    /// Rows are built inside `computeGroupsSections`, which is memoised on `campRevision`, so this
+    /// runs once per camp write instead. It is the same repair `Player.matches(search:)` took when
+    /// the search field turned out to be formatting every kid's name on every keystroke — the
+    /// formatter is fine, asking it per frame is not.
+    let name: String
+
     var isLeavingEarly: Bool { leavesAt != nil }
+
+    /// Spelled out rather than left to the memberwise synthesis, so `name` is derived here and
+    /// cannot be passed in disagreeing with `player`. The signature is deliberately the one the
+    /// synthesised init had, so no call site changes.
+    init(id: Player.ID, player: Player, rank: Int, isAway: Bool, leavesAt: TimeOfDay?) {
+        self.id = id
+        self.player = player
+        self.rank = rank
+        self.isAway = isAway
+        self.leavesAt = leavesAt
+        self.name = player.displayName
+    }
 }
 
 struct GroupsCoachCard: Identifiable, Hashable, Sendable {
@@ -394,8 +423,12 @@ final class AppStore {
     var venueFilter: VenueFilter = .all
     var playerFilter: PlayerFilter = .everyone
     var searchText: String = ""
-    /// Coach cards start expanded; this holds the ones the user folded away.
-    var collapsedGroupIDs: Set<Group.ID> = []
+    // `collapsedGroupIDs` used to sit here, with `isCollapsed` and `toggleCollapsed` beside it,
+    // holding which coach cards the user had folded away. Groups took its folding back into the
+    // screen — `GroupsView.expandedGroupIDs` — because the design's default is the *folded* card
+    // and a set of exceptions to the wrong default is a set that starts out lying. Nothing has
+    // read these three since; they are gone rather than left as a second answer to "is this card
+    // open" for the next person to find first.
 
     // MARK: Setup filter
 
@@ -566,8 +599,6 @@ extension AppStore {
     func isAway(_ id: Player.ID) -> Bool { camp?.isAway(id, on: today) == true }
     func leavesAt(_ id: Player.ID) -> TimeOfDay? { camp?.leavesAt(id, on: today) }
     func history(for id: Player.ID) -> [HistoryEvent] { camp?.history(for: id) ?? [] }
-
-    func isCollapsed(_ id: Group.ID) -> Bool { collapsedGroupIDs.contains(id) }
 
     // MARK: Chips
 
@@ -1009,7 +1040,6 @@ extension AppStore {
         playerFilter = .everyone
         staffFilter = .all
         searchText = ""
-        collapsedGroupIDs = []
     }
 }
 
@@ -1051,12 +1081,70 @@ extension AppStore {
         await setEarlyPickup(playerID: playerID, day: day ?? today, at: nil)
     }
 
-    func reorder(group groupID: Group.ID, playerIDs: [Player.ID]) async {
-        guard let campID = camp?.id else { return }
+    // `reorder(group:playerIDs:)` stood here — one court's sequence, written and awaited on its
+    // own. `land` below replaced its only caller and there is deliberately nothing left in its
+    // place: it was the *non*-optimistic spelling of exactly the write this screen just made
+    // optimistic, and leaving it as live-looking API is how the next person reaching for the
+    // obvious-sounding name gets back the snap-and-wait the change existed to remove. A court's
+    // order is never written without the ladder that numbers it, so there is no caller it could
+    // serve honestly.
+
+    /// One drop on the Groups screen, applied here first and written afterwards.
+    ///
+    /// **One intent, because the screen made one decision.** This was two awaited calls at the
+    /// call site — `commitRankOrder(plan.assignments)` and then `reorder(group:playerIDs:)` —
+    /// and that is what made a drag "not intuitive/responsive": the row snapped back to where it
+    /// started, the screen sat still for two serialised network round trips (`SupabaseRepository`
+    /// reads, edits and writes the whole ladder for each), and the kid finally reappeared
+    /// somewhere else. Nothing on screen was wrong; it simply happened a second and a half after
+    /// the gesture that asked for it. `GroupsLandingPlan` already holds both halves of the
+    /// answer, so both halves belong to one intent.
+    ///
+    /// **Applied locally before the write, and put back if the write fails.** The two model
+    /// methods are the same ones the repositories call — `InMemoryRepository.reorderGroup` and
+    /// its Postgres twin do exactly this pair to their own copy of the graph — so the optimistic
+    /// state is not an approximation of what the server will say, it is the same arithmetic run
+    /// a round trip earlier. The snapshot is the whole `Camp`, which is a value type: restoring
+    /// it is one assignment and cannot half-succeed.
+    ///
+    /// A failure lands in `perform`'s `errorMessage` and so in `MainTabView`'s banner, which is
+    /// the only place this app reports a failed write. The rollback goes first and the error is
+    /// rethrown, so the banner and the restored ladder arrive in the same frame.
+    ///
+    /// **Still two repository calls, deliberately, and only for now.** `SycamoreRepository` has
+    /// no "land a kid" verb — the ladder and the court sequence are separate writes — and adding
+    /// one is a change to `Store/Repository.swift` and both of its implementations. Worth making:
+    /// it would also close the half-failure this leaves, where the ladder lands and the court
+    /// order does not. Nobody waits on either call now, which is what the complaint was about.
+    func land(_ plan: GroupsLandingPlan, in groupID: Group.ID) async {
+        guard let campID = camp?.id, var optimistic = camp else { return }
+
+        let rollback = optimistic
+        optimistic.applyRankOrder(plan.assignments)
+        optimistic.reorder(group: groupID, playerIDs: plan.courtOrder)
+        camp = optimistic
+
         await perform {
-            self.camp = try await self.repository.reorderGroup(
-                groupID, playerIDs: playerIDs, campID: campID
-            )
+            do {
+                // The first result is deliberately discarded. Assigning it would replace a graph
+                // that already holds the whole drop with one that holds half of it, and the kid
+                // would visibly bounce through the intermediate ladder on their way to the place
+                // they were already standing in.
+                _ = try await self.repository.reorderCamp(plan.assignments, campID: campID)
+                let settled = try await self.repository.reorderGroup(
+                    groupID, playerIDs: plan.courtOrder, campID: campID
+                )
+                // Compared before assigning, which is not a micro-optimisation: the setter bumps
+                // `campRevision` and drops both section memos, so an unconditional write re-derives
+                // `groupsSections` and `rankSections` — twelve courts each filtering and sorting a
+                // hundred players — to arrive at the graph already on screen. The optimistic
+                // mutation ran the same model methods the repository did, so equal is the ordinary
+                // case rather than the lucky one.
+                if settled != self.camp { self.camp = settled }
+            } catch {
+                self.camp = rollback
+                throw error
+            }
         }
     }
 
@@ -1080,18 +1168,11 @@ extension AppStore {
         }
     }
 
-    /// The player sheet's "Move up a court" — one court better inside the same venue.
-    func moveUpACourt(_ playerID: Player.ID) async {
-        guard let camp,
-              let player = camp.player(playerID),
-              let venueID = player.venueID,
-              let current = player.groupID,
-              let index = camp.groups(in: venueID).firstIndex(where: { $0.id == current }),
-              index > 0
-        else { return }
-        let target = camp.groups(in: venueID)[index - 1]
-        await movePlayer(playerID, toVenue: venueID, group: target.id)
-    }
+    // `moveUpACourt` used to sit here: resolve the court one better inside the same venue, and
+    // delegate to `movePlayer`. It was `8q`'s pinned bar's only caller, and that bar now opens
+    // `PlayerCourtPicker` — every court in the camp, in either direction, across venues — so the
+    // one direction it could go is a question nothing asks any more. Deleted rather than left
+    // standing: an intent with no caller is a claim about the app that nobody is checking.
 
     func partitionCamp() async {
         guard let campID = camp?.id else { return }
@@ -1418,10 +1499,6 @@ extension AppStore {
 
     func present(_ sheet: ActiveSheet) { activeSheet = sheet }
     func dismissSheet() { activeSheet = nil }
-
-    func toggleCollapsed(_ groupID: Group.ID) {
-        collapsedGroupIDs.toggle(groupID)
-    }
 
     /// Dismisses the error banner. `perform` also clears `errorMessage` the moment the
     /// next intent succeeds, so this is only for the user waving the banner away.

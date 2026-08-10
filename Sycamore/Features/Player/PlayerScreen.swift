@@ -15,10 +15,19 @@
 //  `Record 6–2` stat cell have no source; and a pick-up carries a day and a time but no collector,
 //  so the "Mum" / "Dad" column is not there. Both are noted rather than faked.
 //
-//  The pinned bar reads "Move up a court" where the design reads "Move to another group". An
-//  arbitrary move is `8p`'s — it needs the whole ladder on screen to aim at, which this screen
-//  does not have. One court up is the only move that can be made from here, and it is a real
-//  write (`AppStore.moveUpACourt`), so the bar says exactly what it does.
+//  The pinned bar reads "Move to another court" where the design reads "Move to another group",
+//  and it opens `PlayerCourtPicker` — every court in the camp, venue by venue, with its fill and
+//  its coach on it.
+//
+//  It read "Move up a court" and did exactly that, on the argument recorded here that an arbitrary
+//  move belonged to `8p` because "it needs the whole ladder on screen to aim at, which this screen
+//  does not have". That was wrong about what aiming needs, and the correction is small: a ladder
+//  is how you decide *whether* a kid should move; a list of courts is all you need to decide
+//  *where*. One court up is still the common case and is now one tap inside the picker rather than
+//  the only sentence this screen could say. `PlayerCourtPicker`'s header argues it in full.
+//
+//  `AppStore.moveUpACourt` went with it. This bar was its only caller, and the one direction it
+//  could go is a question nothing asks now that the picker offers every court in either direction.
 //
 
 import SwiftUI
@@ -33,6 +42,13 @@ struct PlayerScreen: View {
     /// asking it to present `8n` would open the sheet behind this one. `8m` reaches `8n` the same
     /// way and for the same reason; see `PickupTarget`.
     @State private var pickupTarget: PickupTarget?
+
+    /// `PlayerCourtPicker`, presented from here for the same reason and in the same way.
+    ///
+    /// A second `.sheet(item:)` on one view, which `OverviewScreen.swift:199-208` already does for
+    /// its own two — the alternative is one slot the two take turns in, and a slot is what this
+    /// screen already could not reach.
+    @State private var courtRequest: PlayerCourtRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,6 +82,9 @@ struct PlayerScreen: View {
         .overlay(alignment: .bottom) { moveBar }
         .sheet(item: $pickupTarget) { target in
             EarlyPickupSheet(store: store, playerID: target.id) { pickupTarget = nil }
+        }
+        .sheet(item: $courtRequest) { request in
+            PlayerCourtPicker(store: store, playerID: request.id) { courtRequest = nil }
         }
     }
 
@@ -261,27 +280,30 @@ struct PlayerScreen: View {
     // MARK: - The bar
 
     /// `8q`'s pinned bar. The design writes it "Move to another group"; see the file header for
-    /// why it says what it says.
+    /// why it says what it says, and `PlayerCourtPicker` for what it opens.
     private var moveBar: some View {
-        PlayerMoveBar(isEnabled: canMoveUp, action: moveUp)
-            .padding(.horizontal, Spacing.gutter)
-            .padding(.bottom, OnTheDayTokens.barInset)
+        PlayerMoveBar(isEnabled: canMoveElsewhere) {
+            courtRequest = PlayerCourtRequest(id: playerID)
+        }
+        .padding(.horizontal, Spacing.gutter)
+        .padding(.bottom, OnTheDayTokens.barInset)
     }
 
-    /// Whether there is a court above this one at all. `moveUpACourt` returns silently when there
-    /// is not, and a bar that answers a tap with nothing is worse than one that says it is spent —
-    /// the kid at the top of the top court is a real state, not a failure.
-    private var canMoveUp: Bool {
-        guard let camp = store.camp,
-              let player,
-              let venueID = player.venueID,
-              let current = player.groupID
-        else { return false }
-        return camp.groups(in: venueID).firstIndex { $0.id == current }.map { $0 > 0 } ?? false
-    }
-
-    private func moveUp() {
-        Task { await store.moveUpACourt(playerID) }
+    /// Whether there is anywhere else in the camp to put them.
+    ///
+    /// It used to ask whether there was a court *above* this one, because the bar performed that
+    /// one move and `moveUpACourt` returns silently when there is not — a bar that answers a tap
+    /// with nothing being worse than one that says it is spent. The bar opens a list now, so the
+    /// question is whether the list would have anything in it: a kid on the top court has eleven
+    /// other courts to choose from and the bar has no business standing down for them.
+    ///
+    /// Asked of `PlayerCourtChoices` — the type the sheet itself lists from — rather than with a
+    /// predicate of its own. A live bar over an empty picker, or a dead bar over a full one, is a
+    /// disagreement neither screen could show you; one answer cannot disagree with itself. A
+    /// camp still loading, or one with no courts shaped yet, comes back false through the same
+    /// route and the bar stands down and says so.
+    private var canMoveElsewhere: Bool {
+        PlayerCourtChoices(for: playerID, in: store.camp).hasSomewhereElse
     }
 }
 

@@ -11,11 +11,19 @@
 //  present ones still reads as a name. The only thing that catches any of it is arithmetic, and
 //  all of the arithmetic is out of the view and in here.
 //
-//  Three questions, in the order the screen asks them:
+//  Five questions, in the order the screen asks them:
 //
 //      rosters(in:day:)              -> who is on every court today
 //      CourtRoster.folded(to:…)      -> how much of one court the card draws
 //      roster(for:from:preview:…)    -> and whether this card draws anything at all
+//      spokenLabel(for:)             -> what one of those lines says to a reader who cannot see it
+//      the row's own identity        -> and whether tapping it can reach the right kid
+//
+//  The last two arrived with the rows becoming controls. A tapped name opens `8q` through
+//  `PushedScreen.player(row.id)` and there is nothing else in between, so what is left to check is
+//  the two things a button cannot be asked about directly: that the sentence VoiceOver reads off a
+//  line is the right one for the state the line is in, and that the identifier the row hands the
+//  route is the kid whose name is drawn on it.
 //
 
 import Foundation
@@ -43,6 +51,36 @@ private func courts(of camp: Camp) -> [Group] {
 /// One court's whole list, unfolded.
 private func wholeRoster(of camp: Camp, _ court: Group, day: Weekday = .today) -> CourtRoster {
     TodayCourts.rosters(in: camp, day: day)[court.id] ?? .none
+}
+
+/// One line of a court's list, in whichever of the three states a row can be drawn in.
+///
+/// Built by hand rather than lifted out of a camp, because two of the three cannot come out of
+/// `TodayCourts.rosters` at all — Overview drops away kids before a card ever sees them. They are
+/// still real: `CourtDetailRoster` keeps them and the court screen draws them with this same row,
+/// so the sentence has to be right for a state Overview itself never produces.
+///
+/// `lastInitial` and no surname, deliberately. `Player.displayName` runs a whole name through
+/// `PersonNameComponents`, which orders it by locale; the initial takes the plain spelling, so
+/// "Serene C" is the same string on every machine the suite runs on and the assertions below can
+/// be the literal sentence rather than an interpolation of it.
+private func rosterLine(
+    _ firstName: String,
+    rank: Int = 1,
+    gender: Gender = .f,
+    isAway: Bool = false,
+    leavesAt: TimeOfDay? = nil
+) -> PlayerRow {
+    let player = Player(
+        firstName: firstName,
+        lastInitial: "C",
+        age: 12,
+        gender: gender,
+        isReturning: false,
+        overallRank: rank,
+        courtRank: rank
+    )
+    return PlayerRow(id: player.id, player: player, rank: rank, isAway: isAway, leavesAt: leavesAt)
 }
 
 /// The card the screen would draw for a court, carrying the head-count the roster has to agree
@@ -421,4 +459,167 @@ struct TodayCourtsCardRosterTests {
             }
         }
     }
+}
+
+// MARK: - What one of those lines says out loud
+
+/// The sentence under a name, which two screens now hang a button on.
+///
+/// It is asserted here rather than left to a screenshot because it is the half of the row nobody
+/// looks at. The drawn line says "away" with a grey name and a glyph and "leaves early" with a
+/// clock; a reader who cannot see either gets only this string, and the three facts it carries
+/// arrive from three different places on `PlayerRow`. A missing clause reads as a perfectly
+/// ordinary line.
+///
+/// It is `static` for the buttons — `CourtScreen.kidRow` and `OverviewCourtCard.kidRow` both set
+/// it outright rather than trusting SwiftUI to lift the label off the row inside their own — so
+/// this is also what pins the two screens to one spelling of a roster line.
+@Suite("CourtRosterRow.spokenLabel")
+struct CourtRosterRowSpokenLabelTests {
+
+    @Test("A kid who is here is announced with their place on the court")
+    func aKidWhoIsHere() {
+        #expect(CourtRosterRow.spokenLabel(for: rosterLine("Serene")) == "1. Serene C. Girl")
+    }
+
+    /// The numeral goes, and not merely because the row draws no numeral. The column runs 1…n over
+    /// the kids who turned up, so a place read out beside a child who is not standing in it names
+    /// somebody else's.
+    @Test("A kid who is away is announced without a place, and said to be away")
+    func aKidWhoIsAway() {
+        let row = rosterLine("Liam", rank: 4, gender: .m, isAway: true)
+
+        #expect(CourtRosterRow.spokenLabel(for: row) == "Liam C. Boy. Away")
+    }
+
+    /// The one fact a coach comes to the row for, and the one the marks at the end of the line
+    /// cannot say on their own — the clock glyph carries no label of its own by design.
+    @Test("A kid going home early carries the time at the end of the sentence")
+    func aKidLeavingEarly() {
+        let row = rosterLine("Serene", rank: 2, leavesAt: TimeOfDay(12, 30))
+
+        #expect(CourtRosterRow.spokenLabel(for: row) == "2. Serene C. Girl. Leaves at 12:30")
+    }
+
+    /// Both clauses, in the order the row's own doc writes them. Only the court screen reaches
+    /// this — Overview has already dropped the kid — and it is exactly the sort of pairing that
+    /// gets tested by neither screen because each believes the other owns it.
+    @Test("A kid who is away and leaving early says both, in that order")
+    func awayAndLeavingEarly() {
+        let row = rosterLine("Ari", rank: 3, gender: .x, isAway: true, leavesAt: TimeOfDay(12, 30))
+
+        #expect(CourtRosterRow.spokenLabel(for: row) == "Ari C. Other. Away. Leaves at 12:30")
+    }
+
+    /// `Gender.label`, not the `Female` / `Male` / `Unspecified` this row used to spell privately.
+    /// Three screens each had their own three cases and the third column disagreed with itself
+    /// everywhere; a row drifting back to a local spelling is what this catches.
+    @Test("The gender is said in the app's one spelling of it", arguments: Gender.allCases)
+    func genderUsesTheSharedSpelling(gender: Gender) {
+        let spoken = CourtRosterRow.spokenLabel(for: rosterLine("Ari", gender: gender))
+
+        #expect(spoken == "1. Ari C. \(gender.label)")
+    }
+
+    /// Over the real camp rather than a hand-built line: every row a card actually draws is
+    /// somebody who turned up, so every one of them is announced with the numeral drawn beside it.
+    /// That numeral is what lets a reader who cannot see the list match a name against the
+    /// head-count in the line above it.
+    @Test("Every line an Overview card draws is announced with its numeral")
+    func everyDrawnLineIsNumbered() {
+        let rosters = TodayCourts.rosters(in: SampleData.uclaTennisCamp, day: .wed)
+        #expect(!rosters.isEmpty)
+
+        for roster in rosters.values {
+            for row in roster.rows {
+                let spoken = CourtRosterRow.spokenLabel(for: row)
+
+                // The numeral alone. "Nobody drawn is away" is a fact about the *flag*, and
+                // `nobodyDrawnIsAway` above already holds it against the same camp and day —
+                // asserting it again through the sentence would be the same claim read out of a
+                // string, and a suffix check could not see the away kid who also leaves early.
+                #expect(spoken.hasPrefix("\(row.rank). \(row.player.displayName). "))
+            }
+        }
+    }
+}
+
+// MARK: - And whether tapping it can reach the right kid
+
+/// The route from a name on a card to `8q`, which is `PushedScreen.player(row.id)` and nothing
+/// else. There is no view under test here and deliberately so: what a `Button` does is not
+/// checkable from a test, but everything the button is handed is.
+@Suite("Opening a kid from Overview")
+struct OverviewOpenKidTests {
+
+    /// Why nothing had to be plumbed for the row to become a control: `PlayerRow.id` already *is*
+    /// the kid's. The two are separate stored properties declared next to each other
+    /// (`AppStore.swift:220-221`), so any builder of a row is free to hand them different values —
+    /// and a card whose names opened the wrong child would look entirely correct.
+    ///
+    /// **Watched here rather than made impossible, which is the better fix.** `PlayerRow.id` could
+    /// be `var id: Player.ID { player.id }` and then no builder could disagree with itself; all
+    /// six construction sites in the app already write `id: player.id` verbatim. That is a change
+    /// to `AppStore.swift`, which this unit does not own. Until it lands, a walk over one camp is
+    /// what there is — and it can only see the builders that camp exercises.
+    @Test("Every row a card draws is identified by the kid it names")
+    func rowsCarryThePlayersOwnID() {
+        let camp = SampleData.uclaTennisCamp
+        let rosters = TodayCourts.rosters(in: camp, day: .wed)
+        #expect(!rosters.isEmpty)
+        // Indexed once rather than scanned per row: the loop below is every row of every court,
+        // and `contains` inside it is the roll walked once per kid on it.
+        let playerIDs = Set(camp.players.map(\.id))
+
+        for roster in rosters.values {
+            for row in roster.rows {
+                #expect(row.id == row.player.id)
+                #expect(playerIDs.contains(row.id))
+            }
+        }
+    }
+
+    // That the fold keeps the kids it draws pointing at the same children is `theFoldKeepsTheTop`
+    // above, which compares whole `PlayerRow`s — `Hashable`, so identity is inside the comparison
+    // it already makes. A second test asserting the ids alone would be that one weakened, which is
+    // the trade the note at the foot of this suite refuses for `8j`'s narrowing.
+
+    /// Two kids are two screens.
+    ///
+    /// `pushedScreen` is a `.fullScreenCover(item:)` slot that these rows *replace* rather than
+    /// stack on — see `CourtScreen.openKid` — so SwiftUI only re-presents when the item's identity
+    /// changes. A route whose identity ignored its payload would leave `8q` showing the first kid
+    /// tapped however many names were tapped after it.
+    ///
+    /// Two ids and no camp behind them: this is a property of `PushedScreen.id` and of nothing
+    /// else, and a failure should say so rather than leaving a reader to work out whether the
+    /// enum broke or a child turned up on two courts.
+    @Test("Two kids are two different pushed screens")
+    func twoKidsAreTwoPushedScreens() {
+        let first = Player.ID()
+        let second = Player.ID()
+
+        #expect(PushedScreen.player(first).id != PushedScreen.player(second).id)
+        #expect(PushedScreen.player(first).id == PushedScreen.player(first).id)
+    }
+
+    /// And the other half of "every name is its own tap", which is a fact about the roster walk
+    /// rather than about the route: a child standing on two courts at once would put the same kid
+    /// behind two names on one screen.
+    @Test("No kid is drawn on two cards at once")
+    func nobodyIsOnTwoCourts() {
+        let rows = TodayCourts.rosters(in: SampleData.uclaTennisCamp, day: .wed)
+            .values
+            .flatMap(\.rows)
+        #expect(rows.count > 1)
+
+        #expect(Set(rows.map(\.id)).count == rows.count)
+    }
+
+    // `8j`'s half — that a coach's Overview can only open the kids on their own court — is not
+    // asserted here, deliberately. It is entirely a property of the narrowing
+    // `OverviewScreen.body` passes to `rosters(in:day:venueID:courts:)`, and the suite at the top
+    // of this file already pins that four ways. A fifth test rebuilding the same dealt camp and
+    // asking the same call the same question would look like coverage of the route and be
+    // coverage of `courts:`, which is worse than not having it.
 }

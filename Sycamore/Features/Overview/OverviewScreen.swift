@@ -33,6 +33,10 @@
 //  it in place — the design's frames survive as the folded state of a screen that can now also be
 //  opened.
 //
+//  And every one of those names opens the kid. This screen lists more children than any other in
+//  the app and was, until now, the only list of them that led nowhere — see `card(for:…)` for the
+//  route and `OverviewCourtCard.kidRow` for the row that takes the tap.
+//
 //  ── The two writes this screen offers ────────────────────────────────────────────────────────
 //
 //  It had none, and was a read of a morning nobody could act on. It has two now, and they are the
@@ -302,7 +306,23 @@ struct OverviewScreen: View {
             // The header caret's destination. Nil on your own court, which draws no caret — you
             // are already standing on it. The card decides whether to draw the glyph; this
             // decides where it goes, and the two are the same question asked once each.
-            onOpenCourt: isMine ? nil : { store.pushedScreen = .court(court.id) }
+            onOpenCourt: isMine ? nil : { store.pushedScreen = .court(court.id) },
+            // And the name tapped, which is `8q`. This screen lists more children than any other
+            // in the app and was the only one of them that led nowhere; the court screen, both of
+            // Groups' lists and Rank all open a kid from a row, and this now does too.
+            //
+            // Through the root's single `pushedScreen` slot, which **replaces rather than
+            // stacks** — `CourtScreen.openKid` sets out at length why that is the slot's whole
+            // design and what goes wrong with the alternative. The consequence here is the same
+            // one it records: the kid's back caret returns to Overview, which is where the reader
+            // was, and is the behaviour every other route into that screen already has.
+            //
+            // Both frames, not one. On `8i` every card carries a full roster, so this is a route
+            // out of any of a dozen cards; on `8j` only "Your court" draws rows at all and the
+            // rest are `CondensedCourtRow`s with no kids on them by design, so it is a route out
+            // of exactly one. Handed to every card either way, because which cards have rows is a
+            // question the roster walk above has already answered.
+            onOpenPlayer: { store.pushedScreen = .player($0) }
         )
     }
 

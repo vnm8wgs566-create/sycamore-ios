@@ -1098,10 +1098,13 @@ extension View {
     /// happening is not, and the row that changes under your finger already reports it.
     ///
     /// `AppStore.isWorking` stays, but the capsule was the only consumer that wanted its general
-    /// "some intent is running" meaning. The three that remain are all camp-specific — the seed
-    /// fall over the picker, and camp creation's double-tap guard and Import dim — so `perform`
-    /// now sets a flag on every intent that only those three read. See the PR body for the split
-    /// into `isLoadingMemberships` / `isCreatingCamp` this wants.
+    /// "some intent is running" meaning. The seed fall over the camp picker used to be listed here
+    /// as a third consumer and is gone too, for the same reason and then some: raised by
+    /// `isWorking`, it also fell for the write behind "That's me" and for switching camps, so a
+    /// full-screen animation played over writes far too short to read it. What is left are two
+    /// camp-specific readers — camp creation's double-tap guard and Import's dim — so `perform`
+    /// sets a flag on every intent that only those two consult. The split into
+    /// `isCreatingCamp` / `isImporting` this wants is smaller now than when it was three.
     func storeErrorBanner(
         message: String?,
         alignment: Alignment = .top,

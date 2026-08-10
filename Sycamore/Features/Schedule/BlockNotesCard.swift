@@ -139,6 +139,8 @@ struct BlockNotesCard: View {
             )
 
             HStack(spacing: 0) {
+                if isComposing { doneButton }
+
                 Spacer(minLength: 0)
 
                 Pill(
@@ -159,6 +161,41 @@ struct BlockNotesCard: View {
         }
         .padding(.horizontal, ScheduleMetrics.cardPadding)
         .padding(.vertical, Spacing.medium)
+    }
+
+    /// The way out of the keyboard, and it has to be a word in the card rather than a bar over the
+    /// keyboard.
+    ///
+    /// `FormTextArea.keyboardDoneBar` is the app's answer to this everywhere else, and it cannot be
+    /// relied on here: a `.toolbar(placement: .keyboard)` was measured *not* installing inside a
+    /// `fullScreenCover`, and `8l` is one (`FullScreenPresentation.swift:43-45`). The same bar
+    /// declared at the same depth inside a `.sheet` appears, so it is the cover rather than the
+    /// depth. `keyboardDoneBar`'s own doc carries the finding, and with it the one shipped
+    /// counterexample nobody has settled — `AddPlayerView`'s bar lives in a cover too.
+    ///
+    /// This is drawn rather than declared because it is right under both readings: if the placement
+    /// does work in a cover this is a plain button doing what the bar would have done, and if it
+    /// does not, it is the only way out of the keyboard on this screen.
+    ///
+    /// `add()` clears `isComposing` and always did, which is why this looked covered and was not:
+    /// that is the *commit* path. Somebody who opens the composer, reads the three notes above it
+    /// and decides not to write a fourth had nothing to tap — Return types a newline in a vertical
+    /// field, `8l` has no tap-outside, and the notes they wanted to read were under the keyboard.
+    ///
+    /// Drawn only while the keyboard is up. With no keyboard there is nothing to put down, and a
+    /// permanent "Done" beside "Add note" would read as a second way to save. Quiet where the pill
+    /// is accent, for the same reason.
+    private var doneButton: some View {
+        Button { isComposing = false } label: {
+            Text("Done")
+                .typeStyle(ScheduleType.inlineAction, color: Theme.inkMuted)
+                // The word is about 13pt tall; only the frame around it reaches 44. Grown, then
+                // shaped — `BlockPickRow` states why that order is load-bearing.
+                .frame(minHeight: HitTarget.minimum)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Puts the keyboard away without adding the note")
     }
 
     private var trimmedNote: String {

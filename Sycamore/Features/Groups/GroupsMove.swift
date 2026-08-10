@@ -2,18 +2,36 @@
 //  GroupsMove.swift
 //  Sycamore
 //
-//  `8p` — a kid held in the air, and the bar that lands them.
+//  `8p` — a kid carried between groups, from the moment the handle is held to the moment the
+//  finger leaves it.
 //
-//  The move is *latched*, not a single continuous drag. Holding the handle picks the kid up and
-//  they stay up when the finger leaves: from there you can drag them, scroll the list, or tap
-//  any group to aim at it, and the move only happens when "Drop here" is pressed. That is what
-//  the design draws — a lifted card, a highlighted target and two buttons — and a plain
-//  drag-and-release could not draw it, because a finger that is still down cannot reach a
-//  Cancel button. It is also the only shape of this gesture that works on a screen taller than
-//  a thumb: the target group is often not on screen when the kid is picked up.
+//  **The move used to be latched, and is not any more.** Holding the handle picked the kid up and
+//  they stayed up when the finger left: from there you could drag them, scroll the list, or tap
+//  any group to aim at it, and the move only happened when "Drop here" was pressed. Two arguments
+//  were made for that, and both have been answered.
+//
+//  The first was that a latch is what the design draws — a lifted card, a highlighted target and
+//  two buttons — and that a plain drag-and-release cannot draw it, because a finger that is still
+//  down cannot reach a Cancel button. True, and it is not what a reader expects a dragged row to
+//  do: *"when I let go of a row it should drop into place"*. Letting go is the most natural
+//  spelling of "here", and a screen that answers it by leaving the kid hanging over a button they
+//  now have to find has turned one gesture into three. Release commits. Cancelling is the
+//  confirmation's "Leave them where they are", which only appears when the kid changes court —
+//  the one drop where a mistake costs something a reader cannot see from the row alone.
+//
+//  The second was reach: the target group is often not on screen when the kid is picked up, and
+//  the latch is what let you scroll to it. That was real, and taking the latch away is what pays
+//  for the two things that replace it. Every card in the venue unfolds for the length of the
+//  move, so no kid's place is hidden behind "+3 more" (see `GroupsView.beginMove`), and the list
+//  scrolls itself when the carried card nears an edge (`GroupsAutoscroll`). Between them a finger
+//  that never lifts can reach any position in any group, which the latch could not do either —
+//  a folded card offered three of its eight seats however long you hovered over it.
 //
 
-import SwiftUI
+// No SwiftUI here any more: the bar was the only view in this file, and what is left is the state
+// a move is, which is arithmetic and ids.
+import CoreGraphics
+import Foundation
 
 // MARK: - Coordinate space
 
@@ -43,42 +61,104 @@ struct GroupsMove: Equatable {
     let nextRowID: Player.ID?
     /// The row's rectangle at lift time, in the list's coordinate space. The lifted card is
     /// positioned from it, so it has to be captured before the row goes invisible.
-    let origin: CGRect
-    /// Every place the kid could land, measured once at lift.
+    ///
+    /// Re-anchored exactly once, if the lift's unfold moved the row down the list —
+    /// `GroupsView.refreshDragGeometry()` shifts `translation` by the same amount in the other
+    /// direction, so the card stays where the finger is holding it.
+    var origin: CGRect
+    /// Every place the kid could land, measured against the list **at rest**.
     ///
     /// The geometry these were measured from **does** move now — that is the whole of `8p`'s
     /// drag. The rows shift aside to open a space, the card the kid came out of closes up by
     /// one row and the card they are aimed at opens by one. Capturing the slots is what lets
     /// the target survive all of that.
     ///
-    /// It has to be a capture rather than a rebuild, and not merely for cheapness. The shift is
-    /// *caused by* the target, and the slots are what the target is picked from — so an array
-    /// rebuilt from the shifted layout would be chasing its own tail: aim at a boundary, the
-    /// rows move, the boundary moves, the nearest slot is now a different one, aim at that.
-    /// Frozen, a slot means one fixed thing for the length of the gesture: where that boundary
-    /// stood in the list at rest, which is the only state a drop can be measured from.
+    /// It has to be a capture rather than a per-frame rebuild, and not merely for cheapness. The
+    /// shift is *caused by* the target, and the slots are what the target is picked from — so an
+    /// array rebuilt from the shifted layout would be chasing its own tail: aim at a boundary,
+    /// the rows move, the boundary moves, the nearest slot is now a different one, aim at that.
+    /// Frozen, a slot means one fixed thing: where that boundary stood in the list at rest,
+    /// which is the only state a drop can be measured from.
     ///
-    /// The cheapness argument still holds on its own terms. Nothing else about the list changes
-    /// while a kid is in the air — a card header aims instead of folding, "+N more" is
-    /// disabled, "Add a group" is hidden, and the search field and chips are swapped out for
-    /// the moving line — so a rebuild would produce the same array a hundred times a second.
+    /// **Captured, then recaptured exactly once.** The lift unfolds every card in the venue so
+    /// that no seat is hidden behind "+3 more", and that changes the layout the first capture
+    /// described. `awaitingGeometry` below is the window in which the list is drawn at rest so
+    /// it can be measured again; `GroupsView.refreshDragGeometry()` replaces this array and
+    /// re-anchors `origin` from the same pass. After it the array is frozen for good, because
+    /// nothing else about the list changes while a kid is in the air — "Add a group" is hidden,
+    /// the search field and chips are swapped out for the moving line, and there is no "+N more"
+    /// left to press.
     ///
     /// The consequence is `GroupsGhost.top`: because a slot's y is stated against the layout
     /// before the mover left it, one row height has to come off it to find where the space
     /// actually opens. One line, derived there.
-    let slots: [GroupsDropSlot]
+    var slots: [GroupsDropSlot]
 
-    /// Offset from `origin`. Follows the finger while the handle is held; afterwards it is set
-    /// so the card sits with its top on the space that has opened for the kid — see
-    /// `GroupsView.aim(at:)`.
+    /// The cards *this move* opened, which are the only ones it may fold again.
+    ///
+    /// Inside the move rather than beside it, because that is exactly how long it is true for.
+    /// Held as a sibling `@State` the invariant was a comment — one path that cleared `move`
+    /// without reading it would leave every card the lift opened open for good, or worse, fold
+    /// one the reader had opened themselves. `RankView.RankDrag.refoldOnEnd` (`:501`) puts the
+    /// same fact in the same place.
+    ///
+    /// A card the reader opened is not in here and never fold shut underneath them: they opened
+    /// it, and a gesture that has finished is not a reason to undo that.
+    let unfolded: Set<Group.ID>
+
+    /// Offset from `origin`. Follows the finger while the handle is held, plus however far the
+    /// list has scrolled itself underneath it; on release it is set so the card sits with its top
+    /// on the space that has opened for the kid — see `GroupsView.park()`.
     var translation: CGFloat = 0
-    /// True only while the finger is actually down on the handle.
+    /// How much of `translation` the **list** put there rather than the finger.
+    ///
+    /// The drag is measured in `.global` (see `GroupCard.lift`), which knows nothing about the
+    /// content moving underneath it — so a list that autoscrolls while the finger is still
+    /// reports no travel at all, and one that grows above the mover reports none either. Two
+    /// things add to this: every tick the list actually travels, and the single re-anchor the
+    /// lift's unfold causes when it pushes the mover's row down (`GroupsView`).
+    ///
+    /// Held separately rather than simply added into `translation`, because `translation` is
+    /// **rewritten** from the gesture on every frame of a drag — `travel + listTravel`. Folded in
+    /// and forgotten, every correction would survive exactly until the next twitch of a finger
+    /// and then vanish, snapping the card back by however far the list had moved since the lift.
+    ///
+    /// `RankView` has the same shape and no equivalent: it corrects `translation` in place after
+    /// an unfold (`RankView.swift:420`) and overwrites it wholesale on the next frame (`:429`).
+    /// Not fixed here because that screen is not this change's to edit — but whoever hoists this
+    /// lift-and-re-anchor protocol into one component, which it should be, has to carry this with
+    /// it or the correction goes back to lasting one frame.
+    var listTravel: CGFloat = 0
+    /// True only while the finger is actually down on the handle. It goes false on release, and
+    /// the kid is only still in the air after that while a court change is being confirmed.
     var isDragging: Bool = false
+    /// The fold changed under the move, so what is on screen no longer describes the list these
+    /// slots were measured against.
+    ///
+    /// Set for the handful of frames between the lift unfolding the venue's cards and SwiftUI
+    /// having laid the opened rows out. While it is true the card draws itself **at rest** —
+    /// no ghost, and the lifted row keeps its space (`GroupCard`) — which is what makes the
+    /// frames measured in that pass directly usable: they describe the same layout the frozen
+    /// slots are stated against, with the unfold and nothing else applied to it.
+    ///
+    /// Copied from `RankView`'s drag, which unfolds a section at lift for exactly the same reason
+    /// and calls this the same thing (`RankView.swift:409-425`). Aiming is suspended while it is
+    /// true, because a target chosen against stale slots would move the ghost and take the
+    /// at-rest guarantee with it.
+    var awaitingGeometry: Bool = false
     var target: GroupsDropSlot?
+
+    /// The carried card's rectangle in the list's coordinate space. The card is the mover's row,
+    /// moved — which is what the autoscroll measures against the viewport's edges.
+    var carried: CGRect { origin.offsetBy(dx: 0, dy: translation) }
 
     /// Where the middle of the lifted card currently sits, which is what the drop aims with —
     /// a fingertip is a worse pointer than the thing it is carrying.
-    var centre: CGFloat { origin.midY + translation }
+    ///
+    /// Read off `carried` rather than restated as `origin.midY + translation`, so the number the
+    /// drop aims with and the rectangle the scroll reacts to cannot come apart. They were two
+    /// spellings for one line and there is nothing to gain from keeping both honest by hand.
+    var centre: CGFloat { carried.midY }
 
     /// The slot nearest the card being carried.
     func nearestSlot() -> GroupsDropSlot? {
@@ -86,10 +166,12 @@ struct GroupsMove: Equatable {
         return slots.min { abs($0.y - centre) < abs($1.y - centre) }
     }
 
-    /// The last slot in a group, which is what tapping its card means: put them at the back.
-    func lastSlot(in groupID: Group.ID) -> GroupsDropSlot? {
-        slots.last { $0.groupID == groupID }
-    }
+    // `lastSlot(in:)` lived here — the last slot in a group, which is what tapping its card meant:
+    // put them at the back. Tapping a card was the latch's other half, and there is no moment left
+    // at which it could happen: a move lasts exactly as long as the finger carrying it, plus a
+    // confirmation that has the screen to itself. Removed rather than left as a spelling nothing
+    // says, and the back of a group is still reachable — it is a slot like any other, and the two
+    // rotor actions reach it by name (`GroupsView.nudgeAcross`).
 
     /// Landing either side of where the kid already stands is not a move.
     ///
@@ -142,61 +224,12 @@ struct GroupsLanding: Equatable, Hashable {
     let anchor: Player.ID?
 }
 
-// MARK: - The bar
-
-/// `Cancel` / `Drop here`, on the same floating plate as the tab bar.
-///
-/// The design puts this *in place of* the tab bar, which this app draws from `RootView` rather
-/// than from the tab it belongs to. So it is stacked a tab bar's height higher instead — one
-/// pill above the other, both reachable, neither hidden.
-struct GroupsMoveBar: View {
-
-    /// False until the kid is aimed somewhere, which cannot happen before the first frame.
-    let canDrop: Bool
-    let onCancel: () -> Void
-    let onDrop: () -> Void
-
-    var body: some View {
-        HStack(spacing: GroupsMetrics.moveBarGap) {
-            Button(action: onCancel) {
-                Text("Cancel")
-                    .typeStyle(GroupsType.moveBarButton, color: Theme.inkMuted)
-                    .padding(.horizontal, GroupsMetrics.cancelPadding)
-                    .padding(.vertical, GroupsMetrics.moveBarButtonPadding)
-                    .frame(minHeight: HitTarget.minimum)
-                    .contentShape(Capsule(style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Pill(
-                "Drop here",
-                tone: .accent,
-                font: GroupsType.moveBarButton,
-                horizontalPadding: GroupsMetrics.dropPadding,
-                verticalPadding: GroupsMetrics.moveBarButtonPadding,
-                action: onDrop
-            )
-            .frame(minHeight: HitTarget.minimum)
-            .opacity(canDrop ? 1 : GroupsMetrics.bystanderOpacity)
-            .disabled(!canDrop)
-        }
-        .padding(.horizontal, GroupsMetrics.moveBarPadding)
-        .padding(.vertical, GroupsMetrics.moveBarPaddingVertical)
-        // The tab bar's own plate, so the two pills read as one piece of furniture while they
-        // are on screen together. See `GroupsFloatingPlate` — it is a copy awaiting a hoist.
-        .groupsFloatingPlate()
-        .accessibilityElement(children: .contain)
-    }
-}
-
-// MARK: - Previews
-
-#Preview("Move bar") {
-    VStack(spacing: Spacing.large) {
-        GroupsMoveBar(canDrop: true, onCancel: {}, onDrop: {})
-        GroupsMoveBar(canDrop: false, onCancel: {}, onDrop: {})
-    }
-    .padding(Spacing.section)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Theme.surfaceWarm)
-}
+// MARK: - The bar that is not here any more
+//
+// `Cancel` / `Drop here` sat on a frosted capsule stacked above the tab bar, and both buttons and
+// the plate they were drawn on have gone with the latch. The plate lived in `GroupsFloatingPlate`
+// and was a copy of `FloatingTabBar`'s three layers awaiting a hoist into the design system; that
+// hoist is still worth making, and it is `TabBar.swift` that should make it, from the one caller
+// left. Nothing in this feature draws a floating pill now.
+//
+// The buttons' tokens are gone from `GroupsTokens` for the same reason. See the note there.

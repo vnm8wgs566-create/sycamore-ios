@@ -31,6 +31,22 @@
 //  become conditional on a parameter, and a caller reading that comment would have to check which
 //  axis it was talking about.
 //
+//  ── Which is also why it needs a way out, and every caller must give it one ────────────────────
+//
+//  That last paragraph names the trap it walks into. A horizontal field's Return key is its way out
+//  — `submitLabel(.done)` and an `onSubmit` that drops focus. Return here types a newline, so a
+//  field on a screen with no bar, no drag-to-dismiss and no tap-outside is a keyboard that cannot
+//  be put down: the block editor's description had exactly that, with the Save button underneath it
+//  and out of reach. **A screen that draws one of these owes it a way out**, and there is no way
+//  for this file to enforce that — so it is written down here instead.
+//
+//  Which way out depends on how the screen is presented, and that is not a detail:
+//
+//  * **In a sheet** — `keyboardDoneBar` below. One per screen. Measured working.
+//  * **Inside a `fullScreenCover`** — do not rely on `keyboardDoneBar`; draw the control in the
+//    view. `BlockNotesCard.doneButton` is the worked example and carries the evidence, including
+//    the one case that argues the other way.
+//
 
 import SwiftUI
 
@@ -106,11 +122,82 @@ struct FormTextArea: View {
     }
 }
 
+// MARK: - The way out
+
+extension View {
+
+    /// The "Done" bar over the keyboard, and the app's second spelling of it.
+    ///
+    /// The first is `AddPlayerView.swift:83-96`, whose comment gives the reason a screen needs one
+    /// at all: "the number pad has no return key, and the pinned Add sits under the keyboard while
+    /// it is up. This is the way out that does not need a free hand for a drag." A `FormTextArea`
+    /// is the same shape of problem arrived at from the other side — its Return key exists and
+    /// types a newline — so it wears the same control rather than inventing a second one.
+    ///
+    /// ── Applied by the screen, not by the field ───────────────────────────────────────────────
+    ///
+    /// This is the decision worth writing down, because the obvious arrangement is the other one:
+    /// put the `.toolbar` inside `FormTextArea` and every caller is fixed at once, which is this
+    /// codebase's usual instinct about altitude. It was rejected on two counts.
+    ///
+    /// `ToolbarItemPlacement.keyboard` is a property of the *presentation context*, not of a field.
+    /// Declared on one field and the bar appears over a *sibling* field's keyboard — measured on a
+    /// simulator, two fields on one sheet, the bar declared on the first and the second focused.
+    /// So a bar declared inside the component would come up over a sibling's keyboard with its only
+    /// action being `focus.wrappedValue = false` on a field that is not the focused one. On the
+    /// block editor that sibling is the title, and a Done button that does nothing is worse than no
+    /// Done button: the reader has been told there is a way out and there is not.
+    ///
+    /// And two of these on one screen would declare the bar twice. It does not happen today — the
+    /// editor draws one (`BlockEditorSheet.swift:176`) and the notes composer draws one
+    /// (`BlockNotesCard.swift:131`), on different screens — but `FormTextAreaGallery` below puts
+    /// two side by side, which is what a screen doing the same would look like.
+    ///
+    /// So the closure is the caller's, and it clears every focus that screen owns. The cost is that
+    /// a new caller can forget; the header above says so in as many words, which is the trade.
+    ///
+    /// ── In a `fullScreenCover` it may never appear, and it fails silently ─────────────────────
+    ///
+    /// Measured on a simulator: declared inside a cover the bar did not appear — at the cover's
+    /// root, deep inside it, and with a `NavigationStack` in between — where the same declaration
+    /// on a `.sheet` rendered every time. Nothing warns either way: this compiles, reads as a fix
+    /// and does nothing, which is how `BlockNotesCard` was written and then rewritten.
+    ///
+    /// **One case argues the other way and is unresolved.** `AddPlayerView.swift:83-96` declares
+    /// this same bar and ships inside a cover — `EnrolmentFlowView` is presented through
+    /// `fullScreenPresentation` (`SetupView.swift:107`, `GroupsView.swift:120`) and wraps its own
+    /// `NavigationStack` (`:98`). Either that bar has been quietly dead since it was written, which
+    /// its `.scrollDismissesKeyboard(.interactively)` at `:138` would have hidden, or the
+    /// measurement missed an arrangement that works. Nobody has checked which on a device.
+    ///
+    /// So this is a warning rather than a law, and it is enough of one: a screen inside a cover
+    /// should draw its own control, because that works under both readings. See
+    /// `BlockNotesCard.doneButton`.
+    ///
+    /// Nothing for the Mac: `.keyboard` placement is iOS-only, and a Mac has an Escape key.
+    func keyboardDoneBar(_ dismiss: @escaping () -> Void) -> some View {
+        #if os(iOS)
+        return toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done", action: dismiss)
+            }
+        }
+        #else
+        return self
+        #endif
+    }
+}
+
 // MARK: - Previews
 
 /// Empty and filled, side by side. Each field needs its own `@FocusState`, which a `#Preview` body
 /// cannot declare two of, so the gallery is a view — the same accommodation `FormFieldGallery`
 /// makes.
+///
+/// One `keyboardDoneBar` for the pair, which is the arrangement `keyboardDoneBar`'s own comment
+/// argues for: two fields on a screen still get one bar, and it clears whichever of them has the
+/// keyboard.
 private struct FormTextAreaGallery: View {
     @State private var empty = ""
     @State private var filled = """
@@ -149,6 +236,11 @@ private struct FormTextAreaGallery: View {
             .padding(Spacing.hero)
         }
         .background(Theme.surfaceWarm)
+        .scrollDismissesKeyboard(.interactively)
+        .keyboardDoneBar {
+            emptyFocus = false
+            filledFocus = false
+        }
     }
 
     private func labelled(_ title: String, @ViewBuilder content: () -> some View) -> some View {

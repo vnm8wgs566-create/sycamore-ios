@@ -41,6 +41,35 @@
 //  camp would be an ambush. Belonging to no camp at all is the honest reading of "new here", and
 //  it is the same condition `CampPickerView` already draws its "No camps yet" state for.
 //
+//  ---------------------------------------------------------------------------------------------
+//  AND A THIRD ANSWER: NOT YET
+//  ---------------------------------------------------------------------------------------------
+//
+//  "Belonging to no camp" is read off an empty membership list, and an empty list means two
+//  different things: this account belongs to no camp, or nobody has asked yet.
+//  `AppStore.finishSignIn` sets `auth` to `.signedIn` and *then* awaits the memberships, both
+//  inside the same `perform`, so for that moment an account with three camps is indistinguishable
+//  from an account with none — and one of those readings is the ambush above.
+//
+//  A full-screen seed fall used to lie over the whole flow while that resolved, so what was on
+//  screen was seeds rather than the wrong question. It was a curtain over a bug, and it has gone
+//  (`RootView.swift:55-78`): a rule that guesses and corrects itself a moment later would now be
+//  watched doing it, by a coach of three years seeing "Running a camp, or joining one?" flick past
+//  on the way to their own list.
+//
+//  So the rule declines rather than guesses. `CampList` is how far the fetch has got, and while it
+//  is `.pending` the answer is `.notYet` — which `FirstRunView` draws as its own page with no
+//  question on it. Only the *empty* branch consults it: a camp in hand is its own proof that the
+//  list arrived, and the name question is answered off the account, which came with the sign-in.
+//  Nothing waits that does not have to.
+//
+//  `CampList` is three states rather than a `Bool` because a fetch has three outcomes and the
+//  third one is the dangerous one. `AppStore.loadMemberships` reports a failure through the shared
+//  banner rather than by throwing, so a fetch that fails leaves `hasLoadedMemberships` down for
+//  good — and a rule reading a two-state flag would either hold an empty page for ever or, worse,
+//  treat "we never found out" as "you belong to nothing" and ask the ambush anyway. Named, it can
+//  be answered: see `.failed` below.
+//
 
 import Foundation
 
@@ -55,6 +84,25 @@ enum FirstRunStep: Hashable, Sendable {
         case joiningOne
     }
 
+    /// How far the account's camp list has got, which is not the same question as what is in it.
+    ///
+    /// The empty array that `AppStore.memberships` starts every session as is all three of these
+    /// until something says otherwise, and the rule needs to tell them apart before it can read
+    /// "belongs to no camp" off it. See the header.
+    enum CampList: Hashable, Sendable {
+        /// Still coming, or not asked for yet. Nothing can be said about belonging.
+        case pending
+        /// It came. Whatever is in it is now a fact about the account.
+        case arrived
+        /// The asking is over and nothing came back. Belonging is still unknown and nothing left
+        /// on this screen is going to settle it, so the flow has to move on without the answer.
+        case failed
+    }
+
+    /// No question at all — the account's camps have not arrived, so which one comes next is not
+    /// something anybody can say yet. `FirstRunView` holds its frame on this and draws nothing.
+    /// See the header: this is the state the seed fall used to cover.
+    case notYet
     /// "What should the camp call you?"
     case name
     /// "Are you running a camp, or joining one?"
@@ -65,7 +113,7 @@ enum FirstRunStep: Hashable, Sendable {
     /// already has always landed.
     case camps
 
-    /// The next unanswered question.
+    /// The next unanswered question, or `.notYet` while there is no saying which that is.
     ///
     /// - Parameters:
     ///   - displayName: the account's, as stored. Trimmed here rather than by the caller, because
@@ -75,23 +123,48 @@ enum FirstRunStep: Hashable, Sendable {
     ///     — it is derived from the account, so it would come back on the next pass — and an
     ///     unskippable question in front of the only way into the app is a trap. It is not
     ///     remembered past the session on purpose: a name is worth asking for twice.
+    ///   - campList: how far the fetch behind `hasCamps` has got. See the header, and `CampList`
+    ///     for why a fetch's third outcome is worth a name.
     ///   - hasCamps: whether the account belongs to any camp at all. See the header for why the
     ///     path question turns on this and not on `camp == nil`.
     ///   - path: the answer to the path question, once there is one.
     static func resolve(
         displayName: String,
         isNameSkipped: Bool,
+        campList: CampList,
         hasCamps: Bool,
         path: Path?
     ) -> FirstRunStep {
+        // First, and without waiting for anything: the name is read off the account, which arrived
+        // with the sign-in. Asking for it while the camps are still in the air costs the flow
+        // nothing and usually spends the whole wait.
         if !isNameSkipped, displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .name
         }
         switch path {
         case .creatingACamp: return .createCamp
         case .joiningOne: return .camps
-        // Somebody who already belongs to a camp is not new, whatever cleared the current one.
-        case nil: return hasCamps ? .camps : .runningOrJoining
+        case nil:
+            // Somebody who already belongs to a camp is not new, whatever cleared the current one
+            // — and a camp in hand is its own proof that the list arrived. So `campList` is
+            // consulted on the empty case alone, which is the only one that is ambiguous.
+            guard !hasCamps else { return .camps }
+
+            switch campList {
+            case .pending:
+                return .notYet
+            case .arrived:
+                return .runningOrJoining
+            // The list never came, so "belongs to nothing" is a guess and the ambush is back on
+            // the table. Screen 3 is the safe answer to a question nobody can answer: it draws
+            // "No camps yet" for an empty list, prints `errorMessage` under it
+            // (`CampPickerView.swift:140`), tries the fetch again on its own `.task`, and offers
+            // both ways forward — the code field and "Create a camp" — without asking which one
+            // this person is. `.runningOrJoining` would be right for one of the two readings and
+            // an interrogation for the other.
+            case .failed:
+                return .camps
+            }
         }
     }
 }

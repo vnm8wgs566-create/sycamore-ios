@@ -26,12 +26,16 @@
 //
 //  ── The row below is `BlockCoachPicker`'s, and should not stay that way ───────────────────────
 //
-//  `row(_:courtLabel:)` draws the same person the same way `BlockCoachPicker.row` does — avatar,
-//  name, `detailLine`, trailing mark, the same 44pt frame and the same VoiceOver contract — and
+//  `row(_:courtLabel:me:)` draws the same person the same way `BlockCoachPicker.row` does — avatar,
+//  name, detail line, trailing mark, the same 44pt frame and the same VoiceOver contract — and
 //  `BlockAssigneeList` draws a third. The interaction argument above is about *what a tap does*
 //  and does not reach the drawing, so this is duplication rather than divergence, and it has
 //  already cost something: the two lists set the detail line at two different sizes until they
 //  were held side by side (see `OverviewTheme.pickerMeta`).
+//
+//  What the two rows *say* is at least shared now. `BlockCoachPicker.rowTitle(for:me:)` and
+//  `.rowDetail(for:)` spell "· you" and "· No court" once, beside the pool that decides who is on
+//  the list at all, so the wording cannot drift even while the drawing still can.
 //
 //  It is written out here because the fix is a shared `StaffPickRow` beside `BlockCoachPicker`, or
 //  in the design system, and both are folders this unit does not own. Three drawings of one row is
@@ -64,10 +68,13 @@ struct CourtCoachPicker: View {
     @ScaledMetric(relativeTo: .body) private var markSize = OverviewTheme.pickerMark
 
     var body: some View {
-        // Both resolved once and used from there. `SheetChrome` builds its content eagerly, so a
-        // computed `pool` would be read twice in one pass — a filter and a sort of the venue's whole
-        // staff list, twice — and `courtLabel` walks every group in the camp, once per row.
-        let pool = self.pool
+        // All three resolved once and used from there. `SheetChrome` builds its content eagerly, so
+        // a computed `pool` would be read twice in one pass — a filter and a sort of the venue's
+        // whole staff list, twice — and `courtLabel` walks every group in the camp, once per row.
+        // `me` joins them for the same reason and a sharper one: it is wanted by the pool *and* by
+        // every row, and `myStaffRecord` is itself a walk of `camp.staff`.
+        let me = myID
+        let pool = self.pool(me: me)
         let courtLabel = self.courtLabel
 
         return SheetChrome(
@@ -86,7 +93,7 @@ struct CourtCoachPicker: View {
             } else {
                 Card(radius: OverviewTheme.cardRadius) {
                     ForEach(pool) { member in
-                        row(member, courtLabel: courtLabel)
+                        row(member, courtLabel: courtLabel, me: me)
                     }
                 }
             }
@@ -95,25 +102,36 @@ struct CourtCoachPicker: View {
 
     // MARK: The people
 
-    /// Everybody who could take this court: the staff posted to its venue, plus the roamers who
-    /// belong to no venue at all.
+    /// Everybody who could take this court: the staff posted to its venue, the roamers who belong
+    /// to no venue at all, every admin in the camp, and you.
     ///
-    /// `BlockCoachPicker.pool(in:venueID:)` rather than a predicate of our own. It is the same
+    /// `BlockCoachPicker.pool(in:venueID:me:)` rather than a predicate of our own. It is the same
     /// question — who could plausibly be put on something at this venue — asked by the app's other
     /// people-picker, and its header records that the sort is "the design's order for a list of
     /// people at a venue". A second copy here would be a second answer to drift from the first, and
     /// the drift would be invisible: both lists look like lists of coaches.
-    private var pool: [StaffMember] {
+    ///
+    /// **Sharing it paid for itself.** "An admin can put themselves on a court" was asked for
+    /// separately from "an admin can put themselves on a block", and it arrived here for nothing
+    /// the day the pool learned about roles: an admin with no court is now in this list, and so is
+    /// the person reading it, at the top. The `me:` argument is the whole of what this file had to
+    /// add. Had the predicate been copied, this sheet would still be listing the same six coaches
+    /// it always did and nobody would have noticed until somebody tried.
+    private func pool(me: StaffMember.ID?) -> [StaffMember] {
         guard let venueID = store.group(courtID)?.venueID ?? store.readVenueID else { return [] }
-        return BlockCoachPicker.pool(in: store.camp, venueID: venueID)
+        return BlockCoachPicker.pool(in: store.camp, venueID: venueID, me: me)
     }
+
+    /// The signed-in person's own staff row, for the "· you" on their row and the sort that lifts
+    /// it. Nil for an admin with no staff record in this camp.
+    private var myID: StaffMember.ID? { store.myStaffRecord?.id }
 
     /// "Court 3". Resolved from the graph once per pass rather than handed in, so a court renamed in
     /// camp settings while this is open retitles instead of lying — freshness needs the lookup to
     /// happen per pass, not per row, which is why `body` binds it and every row is given the result.
     private var courtLabel: String { store.group(courtID)?.label ?? "this court" }
 
-    private func row(_ member: StaffMember, courtLabel: String) -> some View {
+    private func row(_ member: StaffMember, courtLabel: String, me: StaffMember.ID?) -> some View {
         let isOn = member.groupID == courtID
 
         return Button {
@@ -124,13 +142,15 @@ struct CourtCoachPicker: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                    Text(member.name)
+                    // `Nass · you` on your own row, spelled by the pool so this sheet and the
+                    // block editor cannot word it two ways — see `BlockCoachPicker.rowTitle`.
+                    Text(BlockCoachPicker.rowTitle(for: member, me: me))
                         .typeStyle(.rowTitleSm, color: Theme.ink)
 
                     // Allowed to wrap. "Worker · Sycamore · Court 3" truncated at an accessibility
                     // size loses the court, which is the segment that says whether taking this
                     // person empties another court — the exact thing the subtitle above warns about.
-                    Text(member.detailLine)
+                    Text(BlockCoachPicker.rowDetail(for: member))
                         .typeStyle(OverviewTheme.pickerMeta, color: Theme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -157,16 +177,24 @@ struct CourtCoachPicker: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
-        .accessibilityHint(isOn ? "Already on \(courtLabel)" : "Puts them on \(courtLabel)")
+        // "Puts you on Court 3" on your own row, for the reason `BlockCoachPicker.hint` gives: the
+        // label above it now ends in "· you", and taking a court yourself is what this sheet was
+        // widened to allow.
+        .accessibilityHint(
+            isOn ? "Already on \(courtLabel)"
+                 : "Puts \(member.id == me ? "you" : "them") on \(courtLabel)"
+        )
     }
 
-    /// A venue with nobody posted to it. Drawn rather than left blank, because an empty sheet is
+    /// A camp with nobody in it to offer. Drawn rather than left blank, because an empty sheet is
     /// indistinguishable from one that has not loaded — the argument `BlockCoachPicker.emptyRow`
-    /// makes about its own card.
+    /// makes about its own card, whose rewritten sentence this one now matches: the pool carries
+    /// every admin and your own row, so "nobody is posted to this venue" is no longer what an empty
+    /// list means.
     private var emptyCard: some View {
         Card(radius: OverviewTheme.cardRadius, isDivided: false) {
             CardRow(spacing: Spacing.row, verticalPadding: Spacing.row) {
-                Text("Nobody is posted to this venue yet. Add staff in camp settings and they show up here.")
+                Text("There is nobody to put on this court yet. Add staff in camp settings and they show up here.")
                     .typeStyle(OverviewTheme.cardSubtitle, color: Theme.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -175,20 +203,21 @@ struct CourtCoachPicker: View {
 
     // MARK: The write
 
-    /// Assign, then re-read the courts.
+    /// Assign, and let the store re-read the courts.
     ///
-    /// **The second call is not optional.** `assignStaff` answers with the camp graph, and a court
-    /// card's `coachName` does not come from the graph — it is a column of `today_courts`, which
-    /// `SectionEightRepository.courts(forVenue:campID:)` derives from `camp.coach(forGroup:)` at
-    /// read time. Without the re-read the write lands, the sheet closes, and the pill goes on
-    /// saying "Needs a coach" until something else happens to reload the tab.
-    /// `resolveInboxItem` is the precedent and states the same rule from the other side: it
-    /// re-reads Overview because that write is "the only place the two are known to be coupled".
-    /// This is the second such place — which is the argument for the pair belonging *inside*
-    /// `AppStore.assignStaff`, not out here. `StaffSheet.swift:141` and `:151` call the same write
-    /// and do not re-read, so one write has two behaviours depending on which screen invoked it.
-    /// The right home is the store; `AppStore.swift` is another unit's file, so this is where the
-    /// coupling is honoured for now. **Do not "simplify" the second call away.**
+    /// **The re-read is not optional, and it is no longer this file's to make.** `assignStaff`
+    /// answers with the camp graph, and a court card's `coachName` does not come from the graph —
+    /// it is a column of `today_courts`, which `SectionEightRepository.courts(forVenue:campID:)`
+    /// derives from `camp.coach(forGroup:)` at read time. Without it the write lands, the sheet
+    /// closes, and the pill goes on saying "Needs a coach" until something else reloads the tab.
+    ///
+    /// This sheet used to make that second call by hand, over a comment arguing at length that the
+    /// pair belonged inside `AppStore.assignStaff` instead — one write with two behaviours
+    /// depending on which screen invoked it, `StaffSheet.swift:141` and `:151` being the two that
+    /// forgot. It has since moved there, which is why there is one call below. `StaffSheet`'s
+    /// callers get the re-read now, and a fourth caller cannot be written without it. The old
+    /// warning against "simplifying the second call away" is kept only in this sentence, because
+    /// the call it was guarding no longer exists and a reader was left hunting for it.
     ///
     /// Closed before the write rather than after it. A sheet that sits open through a round trip
     /// with nothing moving on it reads as a tap that missed; and if the write is refused, the
@@ -197,9 +226,6 @@ struct CourtCoachPicker: View {
     /// being picked.
     private func assign(_ staffID: StaffMember.ID) {
         onClose()
-        // One call now. The re-read this used to make by hand moved into `assignStaff`, where
-        // the comment above said it belonged — so `StaffSheet`'s two callers get it too, and a
-        // third caller cannot be written without it.
         Task { await store.assignStaff(staffID, toGroup: courtID) }
     }
 }
