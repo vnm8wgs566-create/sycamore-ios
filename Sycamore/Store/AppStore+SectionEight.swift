@@ -79,6 +79,27 @@ extension AppStore {
         }
     }
 
+    /// Which courts are out of play this morning, for the screens that hold a `Group` and need to
+    /// know. `PlayerCourtChoices` is the caller: a court with "Net down" on it must not be offered
+    /// unmarked in the sheet somebody uses to decide where to send a child.
+    ///
+    /// Derived rather than stored. `courts` is the one read of `today_courts` the app keeps and
+    /// this is a question about it, so a second collection to keep in step is a second collection
+    /// to get wrong — the same call `AppStore.openInboxCount` makes about the count it derives from
+    /// `inboxItems` rather than banking beside them.
+    ///
+    /// **It knows about one venue, and that is `readVenueID`'s.** `courts(forVenue:campID:)` is a
+    /// per-venue relation and `loadOverview` asks it for the venue Overview is drawing, so on a
+    /// two-venue camp a court shut at the *other* venue is not in here and its row in the picker
+    /// says nothing. That is a narrower answer than the question deserves and it is stated rather
+    /// than hidden: the sheet lists the whole camp. Widening it means a camp-wide read — a
+    /// `courts(forCamp:)` on `SectionEightData` with both repositories behind it, and a load on a
+    /// screen that currently needs no round trip of its own — which is a change worth making on
+    /// purpose rather than smuggling in behind a `Set`.
+    var closedCourts: Set<Group.ID> {
+        Set(courts.lazy.filter(\.isClosed).map(\.id))
+    }
+
     // MARK: Schedule
 
     func loadScheduleBlocks(day: Weekday) async {

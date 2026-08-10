@@ -36,37 +36,40 @@ struct PlayerCourtOption: Identifiable, Hashable, Sendable {
     /// Nil where nobody has this court yet; said as `CoachPill.needsACoach`, which is the words
     /// Overview and Schedule already use for the same hole.
     let coachName: String?
-    /// Nil where there is nothing to measure against — see `PlayerCourtChoices.capacity(of:)`.
+    /// Nil where there is nothing to measure against — see `CourtCapacity.reading(for group:)`.
     let capacity: CourtCapacity?
+    /// Out of play today — "Net down", "Tom is on it". A fact about this morning rather than about
+    /// the camp, which is why it is handed in beside the court rather than read off it; see
+    /// `PlayerCourtChoices.init`.
+    let isClosed: Bool
     /// Where the kid stands right now. Ticked and inert, rather than absent: a picker that hid
     /// their own court would make them count courts to work out which one they were on.
     let isCurrent: Bool
 
-    /// `Full`, `1 over`, `2 over` — or nil on a court with room, which wears nothing.
+    /// The one state this row is in — `2 spots`, `Full`, `1 over`, `Closed` — or nil on a court
+    /// with no ceiling to measure against, which can say nothing about its fill at all.
+    ///
+    /// `CourtCapacity.Flag` and not this list's own words. Overview's card says the same thing
+    /// about the same court from the same enum, which is what stopped the two screens disagreeing
+    /// about which states are worth flagging; that file's header carries the argument.
+    ///
+    /// **Closure beats the arithmetic.** A court that is shut *and* over its ceiling reads
+    /// `Closed`, because the question this sheet answers is where to send a child and a court out
+    /// of play is out of play whatever its head-count. It is also what Overview does a card
+    /// earlier: `CourtCapacity.reading(for:capacity:)` returns nil on a closed court and the
+    /// `Closed` badge is the only thing in that slot.
+    ///
+    /// **Closure survives a missing ceiling, where the fill cannot.** A court with `capacity == 0`
+    /// has nothing to measure and so has no fill state — but it can still be shut, and a shut court
+    /// offered unmarked is the defect this property exists to close. Hence the branch on
+    /// `isClosed` before the optional and not inside it.
     ///
     /// **A flag, not a bar.** There is deliberately no `isEligible` beside this and nothing
-    /// downstream disables a row: the app flags a clash rather than refusing one, which is argued
-    /// at length for the schedule's overlaps in `ScheduleResize.swift:19-42` and
-    /// `BlockEditorDraft.swift:96-125` and holds here for the same reasons. A camp may
-    /// legitimately go over, somebody wants to *see* it rather than be stopped at seven in the
-    /// morning, and Overview draws the same amber on the same court without disabling anything.
-    ///
-    /// The over-capacity wording is `CourtCapacity.pillLabel`'s rather than a second phrasing of
-    /// it, so this row and Overview's card say the same thing about the same court. `Full` is this
-    /// list's own addition: `pillLabel` is nil at exactly the ceiling because `8i` had nothing to
-    /// put in that slot, and a picker that flagged nine-on-eight but not eight-on-eight would be
-    /// silent about the state it most needs to warn on.
-    ///
-    /// That addition leaves the word "Full" with two owners: `CourtCapacity.spokenLabel` already
-    /// says it, and `spokenLabel` below reads *that* one while the pill reads this one — so a row
-    /// can be seen to say one word and heard to say another. The right home is a `flagLabel`
-    /// beside `pillLabel` on `CourtCapacity`, which is where `isOver` and `overBy` already live for
-    /// exactly this argument; `Features/Overview` belongs to another unit this wave.
-    /// `PlayerCourtPickerTests.spokenLabel` pins the two together in the meantime.
-    var flag: String? {
-        guard let capacity else { return nil }
-        if capacity.isOver { return capacity.pillLabel }
-        return capacity.spotsFree == 0 ? "Full" : nil
+    /// downstream disables a row; `CourtCapacity.Flag.isWarning` carries that argument now, and
+    /// `PlayerCourtPicker` honours it by drawing an amber pill and keeping the row tappable.
+    var flag: CourtCapacity.Flag? {
+        if isClosed { return .closed }
+        return capacity?.flag
     }
 
     /// `6 of 8 · Nass`, or `6 of 8 · Needs a coach` — the line under the court's name.
@@ -82,12 +85,18 @@ struct PlayerCourtOption: Identifiable, Hashable, Sendable {
 
     /// What VoiceOver hears instead of the three runs above.
     ///
-    /// `CourtCapacity.spokenLabel` rather than `reading`, for the reason it exists: "6 of 8" on its
-    /// own reads as a score or a date. It is also the only place a court sitting exactly on its
-    /// ceiling says "Full" to somebody who cannot see the pill beside it.
+    /// `CourtCapacity.spokenReading` rather than `reading`, for the reason it exists: "6 of 8" on
+    /// its own reads as a score or a date.
+    ///
+    /// The figure and the flag are appended separately rather than through
+    /// `CourtCapacity.spokenLabel`, which folds them together for Overview's badge. This row's flag
+    /// is not always the capacity's — a closed court says `Closed` over the top of whatever its
+    /// fill is — and reading the fold would say one word here while the pill beside it said
+    /// another. Same `flag`, seen and heard, is the whole point of it being one property.
     var spokenLabel: String {
         var parts = [label]
-        if let capacity { parts.append(capacity.spokenLabel) }
+        if let capacity { parts.append(capacity.spokenReading) }
+        if let flag { parts.append(flag.spokenLabel) }
         parts.append(coachName.map { "Coach \($0)" } ?? CoachPill.needsACoach)
         return parts.joined(separator: ". ")
     }
@@ -122,7 +131,16 @@ struct PlayerCourtChoices: Equatable, Sendable {
     ///     empty one: the courts are a fact about the camp, not about them.
     ///   - camp: nil while the store is still loading, which is an empty list and not an empty
     ///     camp; `PlayerCourtPicker` draws the difference.
-    init(for playerID: Player.ID, in camp: Camp?) {
+    ///   - closedCourts: the courts `today_courts` says are out of play this morning. Handed in
+    ///     rather than read off the graph because closure is not on it: a `Group` is a court in the
+    ///     camp, and whether it is shut *today* is a `CourtCard` fact. `AppStore.closedCourts` is
+    ///     what the sheet passes, and says out loud what it can and cannot see.
+    ///
+    ///     Defaulted to none, and that default is safe rather than convenient: closure changes what
+    ///     a row *says* and never which rows exist, so `hasSomewhereElse` — the one caller that
+    ///     asks a question about the shape of the list — cannot be wrong for want of it. A caller
+    ///     that draws the rows must pass it.
+    init(for playerID: Player.ID, in camp: Camp?, closedCourts: Set<Group.ID> = []) {
         guard let camp else {
             sections = []
             return
@@ -142,7 +160,8 @@ struct PlayerCourtChoices: Equatable, Sendable {
                     venueID: venue.id,
                     label: court.label,
                     coachName: camp.coach(forGroup: court.id)?.name,
-                    capacity: Self.capacity(of: court),
+                    capacity: CourtCapacity.reading(for: court),
+                    isClosed: closedCourts.contains(court.id),
                     isCurrent: court.id == currentCourtID
                 )
             }
@@ -171,30 +190,10 @@ struct PlayerCourtChoices: Equatable, Sendable {
         sections.contains { section in section.courts.contains { !$0.isCurrent } }
     }
 
-    /// How full a court is, or nil where there is nothing to measure it against.
-    ///
-    /// `presentCount` is the numerator, not `playerCount`, and the two differ by whoever is away.
-    /// `Group.isOverCapacity` measures against today's count on purpose — `Models.swift:495-498`
-    /// argues it, and `Group.capacityBanner` and Overview's amber both follow it — so a reading
-    /// built on the roll would let a row here say "8 of 8 · Full" beside a court the rest of the
-    /// app calls in range. One numerator, or the figure and the flag drift apart the first day
-    /// somebody is off sick.
-    ///
-    /// Nil on a ceiling of zero or less, mirroring `CourtCapacity.reading(for:capacity:)`: "of 0"
-    /// is not a sentence. That entry point takes a `CourtCard` — a row of `today_courts` — so the
-    /// reading is built from the graph directly instead. The proper home for this is a sibling
-    /// `reading(for group: Group)` on the same extension, so the guard has one owner rather than
-    /// two; `Features/Overview` belongs to another unit this wave.
-    ///
-    /// **A court closed today is listed like any other, unflagged.** Closure is `CourtStatus` on a
-    /// `CourtCard` (`SectionEight.swift:88-110`), which is a row of `today_courts` per venue; the
-    /// camp graph a `Group` comes off has no such field. That is defensible as far as it goes — a
-    /// move is a roster change and a closure is a fact about this morning, so a kid can reasonably
-    /// be placed on a court that is out of play today — but "Net down" ought to be visible on the
-    /// row of somebody deciding where to send a child. Raising closure onto `Group`, or reading
-    /// `today_courts` for every venue from here, are both off-limits files.
-    private static func capacity(of court: Group) -> CourtCapacity? {
-        guard court.capacity > 0 else { return nil }
-        return CourtCapacity(here: court.presentCount, capacity: court.capacity)
-    }
+    // `capacity(of:)` used to sit here: a `CourtCapacity` built by hand behind a `capacity > 0`
+    // guard, with a comment asking for the sibling that now exists. It is
+    // `CourtCapacity.reading(for group:)`, beside the `CourtCard` overload Overview reads, so
+    // "of 0 is not a sentence" is one rule in one place rather than two copies that agreed on the
+    // day they were written. Its argument about the numerator — `presentCount` and not the roll —
+    // went with it, because that is a fact about the reading and not about this sheet.
 }

@@ -32,11 +32,21 @@
 //
 //  ── And the amber half is not in the design at all ───────────────────────────────────────────
 //
-//  `8i` never draws a court over its ceiling. `CourtCapacity` explains why the state is named
-//  anyway; what it looks like is settled by `WarningPill`, which is the plate the `Closed` badge on
-//  this very row already wears. Over-full and out-of-play are the two things on this screen
-//  somebody has to do something about, and on a court that is both they appear an inch apart — so
-//  they are one component and not two drawings that agree today.
+//  `8i` never draws a court over its ceiling, and draws the one at exactly 8 of 8 with no pill.
+//  `CourtCapacity` explains why both states are named anyway; what they look like is settled by
+//  `WarningPill`, which is the plate the `Closed` badge on this very row already wears. Full,
+//  over-full and out-of-play are the things on this screen somebody has to do something about, and
+//  on a court that is more than one of them they appear an inch apart — so they are one component
+//  and not three drawings that agree today.
+//
+//  ── The treatment table is one switch ────────────────────────────────────────────────────────
+//
+//  `pill(_:)` is the whole of what this screen decides, and it decides it over `CourtCapacity.Flag`
+//  rather than over an `isOver` test with a nil `pillLabel` underneath. That is what stops the pill
+//  and the accessibility label below it disagreeing: they read the same state, and the sentence
+//  VoiceOver hears is `spokenLabel`'s fold of that same flag. `PlayerCourtChoices` has the matching
+//  switch on the other side, and `CourtCapacity`'s header argues why the two are allowed to differ
+//  on `.room` and not on anything amber.
 //
 
 import SwiftUI
@@ -60,9 +70,7 @@ struct CourtCapacityBadge: View {
                 .monospacedDigit()
                 .lineLimit(1)
 
-            if let label = capacity.pillLabel {
-                pill(label)
-            }
+            pill(capacity.flag)
         }
         // One element, one sentence. Drawn as three runs — a figure, a mark and a count — which
         // VoiceOver would otherwise read as "6 of 8", "2 spots" with no thread between them.
@@ -72,42 +80,53 @@ struct CourtCapacityBadge: View {
 
     // MARK: The pill
 
+    /// This screen's whole treatment table, in one place. See the file header.
     @ViewBuilder
-    private func pill(_ label: String) -> some View {
-        if capacity.isOver {
-            // No disc and no `+`: there is nothing to add.
-            WarningPill(label: label)
-        } else {
-            HStack(spacing: OverviewTheme.capacityPillGap) {
-                // `surface` and a solid ring rather than the coach slot's tinted, dashed disc: this
-                // one is inside a plate that is already `accentSurface` and dashed, so a second
-                // dash within a dash reads as fraying. The design draws it `#fff` on a solid
-                // `#E4EDE7` for the same reason.
-                PlusDisc(
-                    size: discSize,
-                    glyphSize: plusSize,
-                    fill: Theme.surface,
-                    border: Theme.accentSurfaceBorder,
-                    isDashed: false
-                )
+    private func pill(_ flag: CourtCapacity.Flag) -> some View {
+        switch flag {
+        case .room:
+            roomPill(flag.label)
+        // No disc and no `+`: there is nothing to add to a court that is full, past full, or out
+        // of play. `.closed` cannot arrive here — `CourtCapacity.reading(for:capacity:)` answers
+        // nil for a shut court and this badge is not drawn — but it is listed rather than defaulted
+        // away, because if closure ever did reach this slot the amber plate is the right answer and
+        // a `default` would have silently made it the wrong one.
+        case .full, .over, .closed:
+            WarningPill(label: flag.label)
+        }
+    }
 
-                Text(label)
-                    .typeStyle(OverviewTheme.capacityPill, color: Theme.accent)
-                    .lineLimit(1)
-            }
-            .padding(.leading, OverviewTheme.capacityPillLeading)
-            .padding(.trailing, OverviewTheme.capacityPillTrailing)
-            .padding(.vertical, OverviewTheme.capacityPillVertical)
-            .background(Theme.accentSurface, in: capsule)
-            // `dash:` on the stroke, which is the design's `border:1px dashed`. The same
-            // vocabulary as the empty coach slot below it — a dashed outline is this screen's
-            // way of drawing a space with nothing in it yet.
-            .overlay {
-                capsule.strokeBorder(
-                    Theme.accentBorder,
-                    style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: OverviewTheme.dash)
-                )
-            }
+    /// The design's own pill: a `+` in a disc, a count, and a dashed green plate around both.
+    private func roomPill(_ label: String) -> some View {
+        HStack(spacing: OverviewTheme.capacityPillGap) {
+            // `surface` and a solid ring rather than the coach slot's tinted, dashed disc: this
+            // one is inside a plate that is already `accentSurface` and dashed, so a second
+            // dash within a dash reads as fraying. The design draws it `#fff` on a solid
+            // `#E4EDE7` for the same reason.
+            PlusDisc(
+                size: discSize,
+                glyphSize: plusSize,
+                fill: Theme.surface,
+                border: Theme.accentSurfaceBorder,
+                isDashed: false
+            )
+
+            Text(label)
+                .typeStyle(OverviewTheme.capacityPill, color: Theme.accent)
+                .lineLimit(1)
+        }
+        .padding(.leading, OverviewTheme.capacityPillLeading)
+        .padding(.trailing, OverviewTheme.capacityPillTrailing)
+        .padding(.vertical, OverviewTheme.capacityPillVertical)
+        .background(Theme.accentSurface, in: capsule)
+        // `dash:` on the stroke, which is the design's `border:1px dashed`. The same
+        // vocabulary as the empty coach slot below it — a dashed outline is this screen's
+        // way of drawing a space with nothing in it yet.
+        .overlay {
+            capsule.strokeBorder(
+                Theme.accentBorder,
+                style: StrokeStyle(lineWidth: BorderWidth.hairline, dash: OverviewTheme.dash)
+            )
         }
     }
 
@@ -118,7 +137,8 @@ struct CourtCapacityBadge: View {
 
 #Preview("Room on a court") {
     VStack(alignment: .trailing, spacing: Spacing.medium) {
-        // `8i`'s four readings, in the order it draws them.
+        // `8i`'s three readings, in the order it draws them — the first of which now wears the
+        // amber the design leaves it without. See the file header for why.
         CourtCapacityBadge(capacity: CourtCapacity(here: 8, capacity: 8))
         CourtCapacityBadge(capacity: CourtCapacity(here: 6, capacity: 8))
         CourtCapacityBadge(capacity: CourtCapacity(here: 7, capacity: 8))
