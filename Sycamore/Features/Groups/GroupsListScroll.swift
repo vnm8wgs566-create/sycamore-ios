@@ -40,25 +40,53 @@ struct GroupsListScroll {
     }
 }
 
+/// What the list is showing, held by reference.
+///
+/// A box, and deliberately neither `@State` holding the struct nor `@Observable`.
+/// `onScrollGeometryChange` fires on **every** frame of an ordinary scroll, so writing this into
+/// `@State` re-rendered the whole of `8o` at display rate for a value nothing on the screen draws:
+/// the only readers are `GroupsView.tickAutoscroll()` and, through it, `GroupsAutoscroll`, both of
+/// which only run while a kid is being carried.
+///
+/// Guarding the *write* on a live move instead is the obvious cheaper fix and it is wrong. Nothing
+/// reports scroll geometry when a lift begins — the list is not moving at that moment — so the box
+/// would still be holding whatever was on screen before the reader's last scroll, and the first
+/// tick of an autoscroll would compute its destination from it and throw the list back there. It
+/// is always written, and it never invalidates anybody.
+///
+/// Not `Sendable` and not isolated: `onScrollGeometryChange`'s action is a plain escaping closure
+/// on the main thread, and the two readers are `@MainActor` already.
+final class GroupsViewportBox {
+    var value = GroupsViewport()
+}
+
 extension View {
 
-    /// Hands the list's position to `scroll`, and reports back what it is showing into `viewport`.
+    /// Hands the list's position to `scroll`, keeps `viewport` current, and reports each step the
+    /// content actually took to `onTravel`.
     ///
     /// `visibleRect` is in the content's own coordinates, which is the space `GroupsSpace.list`
     /// names and the space every drop slot and row rectangle is already stated in — so "the
     /// carried card has reached the bottom edge" is two numbers measured the same way, with no
     /// conversion in between to get wrong.
+    ///
+    /// `onTravel` is called for every geometry change rather than only the ones that moved the
+    /// content, and with the raw difference rather than a filtered one: the caller is already the
+    /// place that decides whether a step counts — see `GroupsView.creditListTravel(_:)`, which
+    /// ignores a zero and ignores anything at all unless a finger is down.
     func groupsListScroll(
         _ scroll: Binding<GroupsListScroll>,
-        viewport: Binding<GroupsViewport>
+        viewport: GroupsViewportBox,
+        onTravel: @escaping (CGFloat) -> Void
     ) -> some View {
         #if os(iOS)
         return self
             .scrollPosition(scroll.position)
             .onScrollGeometryChange(for: GroupsViewport.self) {
                 GroupsViewport(visible: $0.visibleRect, contentHeight: $0.contentSize.height)
-            } action: { _, updated in
-                viewport.wrappedValue = updated
+            } action: { was, now in
+                viewport.value = now
+                onTravel(now.visible.minY - was.visible.minY)
             }
         #else
         return self

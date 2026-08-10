@@ -53,9 +53,16 @@ struct GroupsView: View {
     /// A rebuild of the slots is already queued for the end of this layout pass. See
     /// `scheduleGeometryRefresh()`.
     @State private var isRefreshScheduled = false
+    /// The venue's cards, held rather than rebuilt in `body` — see `entries(in:)` for what
+    /// building one costs and `rebuildEntries()` for what re-derives it.
+    ///
+    /// Nil until the first rebuild lands, which is the one thing the `??` in `body` is for: a
+    /// `.onChange(initial: true)` fires *after* the first pass, and an empty array on that pass is
+    /// not a screen with no groups in it drawn one frame early — it is the wrong screen.
+    @State private var listEntries: [GroupsEntry]?
     /// What the scroll view is showing, which is what the autoscroll measures the carried card
-    /// against.
-    @State private var viewport = GroupsViewport()
+    /// against. Held by reference; `GroupsViewportBox` says why.
+    @State private var viewport = GroupsViewportBox()
     @State private var listScroll = GroupsListScroll()
     /// The loop that walks the list towards the finger. Held so it can be cancelled the instant
     /// the finger leaves, rather than left to notice on its next tick.
@@ -74,7 +81,7 @@ struct GroupsView: View {
     var body: some View {
         @Bindable var store = store
         let venue = selectedVenue
-        let entries = entries(in: venue)
+        let entries = listEntries ?? entries(in: venue)
 
         return VStack(spacing: 0) {
             StatusBarMock()
@@ -128,14 +135,31 @@ struct GroupsView: View {
             move?.awaitingGeometry == true ? nil : Motion.fold(reduceMotion: reduceMotion),
             value: move == nil
         )
+        // What the venue's cards are derived from, watched rather than re-derived, the way
+        // `ScheduleView` holds `conflicts` (`:73`, `:241-246`) and for the same reason: `body`
+        // runs at display rate for the whole of a drag and not one of these can move while a
+        // finger is down. `entries(in:)` is what it costs to be wrong about that.
+        //
+        // `store.groupsSections` stands in for the graph and the filters together — it is keyed
+        // on the camp's revision as well as on the search field and the chips — and it is
+        // memoised, so a pass that changed none of them compares two references to one array and
+        // stops there.
+        //
+        // One input it does not stand in for: `rankRanges` walks the *whole* roster, including
+        // the kids a search is hiding, and a section holding only the matches cannot say when one
+        // of those was renumbered. Every drop made here moves somebody who is on screen, so the
+        // gap needs a write from another screen to reach at all, and it costs a band reading
+        // `ranked 1–8` until the next thing changes. Left open deliberately: closing it means a
+        // fourth trigger that fires on every write to the camp, which is most of what holding
+        // this was for.
+        .onChange(of: store.groupsSections, initial: true) { rebuildEntries() }
+        .onChange(of: expandedGroupIDs) { rebuildEntries() }
+        .onChange(of: move?.sourceGroupID) { rebuildEntries() }
         // A filter that changes under a kid in the air can take their group off the screen.
         // Through `cancelMove()` rather than `move = nil`, which would strand the unfolded cards,
         // the missing tab bar and the autoscroll loop behind it.
         .onChange(of: store.searchText) { cancelMove() }
         .onChange(of: store.venueFilter) { cancelMove() }
-        // The list moving is the only travel the drag itself cannot report, so it is credited
-        // where it is *observed* rather than where it is asked for — see `creditListTravel(_:)`.
-        .onChange(of: viewport.visible.minY) { was, now in creditListTravel(now - was) }
         // The autoscroll loop outlives the view otherwise. Every ordinary way a move ends stops
         // it, but a screen torn down from underneath one is not one of them, and a loop ticking
         // against state nobody is drawing is a leak that never notices.
@@ -254,7 +278,11 @@ struct GroupsView: View {
         // which is already busy carrying somebody. Two things scrolling the same list at once is
         // how a drop lands a group away from where it was aimed.
         .scrollDisabled(move != nil)
-        .groupsListScroll($listScroll, viewport: $viewport)
+        // The list moving is the only travel the drag itself cannot report, so it is credited
+        // where it is *observed* rather than where it is asked for — see `creditListTravel(_:)`.
+        // Straight off the scroll geometry rather than through an `.onChange` on the viewport,
+        // because the viewport is no longer state anybody can watch: see `GroupsViewportBox`.
+        .groupsListScroll($listScroll, viewport: viewport, onTravel: creditListTravel)
     }
 
     private func cardView(_ entry: GroupsEntry) -> some View {
@@ -262,7 +290,10 @@ struct GroupsView: View {
             card: entry.card,
             summary: entry.summary,
             visibleRows: entry.visibleRows,
-            move: move,
+            // Not the move itself. `GroupsCardMove` carries the argument and `GroupCard.==` is
+            // what cashes it in: the digest is what one card draws, so a finger travelling inside
+            // one slot produces the same digest it did last frame for every card in the venue.
+            move: GroupsCardMove(move, card: entry.id, drawnRows: entry.visibleRows),
             onToggle: { toggle(entry.id) },
             onOpenPlayer: { store.pushedScreen = .player($0.id) },
             onMoveBegan: { beginMove($0, in: entry) },
@@ -288,6 +319,12 @@ struct GroupsView: View {
                 scheduleGeometryRefresh()
             }
         )
+        // The comparison the digest above exists for. `body` runs on every frame of a drag —
+        // the carried card has to follow the finger — and rebuilds all twelve cards each time;
+        // without this every one of them redraws, which since the lift unfolds the venue is
+        // fifty rows at display rate. See `GroupCard`'s `Equatable` conformance for why the
+        // eight closures are excluded from it and why that is sound.
+        .equatable()
         .onGeometryChange(for: CGRect.self) {
             $0.frame(in: .named(GroupsSpace.list))
         } action: { frame in
@@ -553,6 +590,20 @@ struct GroupsView: View {
         var id: Group.ID { card.id }
     }
 
+    /// Re-derive the venue's cards into `listEntries`.
+    ///
+    /// The three `.onChange`s in `body` are the only callers, and that is the invariant: anything
+    /// else that changed what a card says would have to say so here as well, and would be a fourth
+    /// trigger rather than a fourth call site.
+    ///
+    /// The two places that read a *fresher* answer than this holds — `beginMove`, which needs the
+    /// venue before the unfold it is about to do, and `refreshDragGeometry`, which needs it after
+    /// — call `entries(in:)` directly on purpose. Both run inside the pass that changes the fold,
+    /// which is before the `.onChange` that would rebuild this.
+    private func rebuildEntries() {
+        listEntries = entries(in: selectedVenue)
+    }
+
     private func entries(in venue: Venue?) -> [GroupsEntry] {
         guard let camp = store.camp, let venue else { return [] }
         let ranges = rankRanges(in: camp)
@@ -576,10 +627,12 @@ struct GroupsView: View {
                         lifted: move?.sourceGroupID == card.id
                     ),
                     // The card's own array when nothing is hidden, rather than a copy of it.
-                    // `body` runs on every frame of a drag and a lift now opens every card in the
-                    // venue, so the folded case — where a copy of three rows is genuinely needed
-                    // — is exactly the case that is *not* mid-drag. The other one was twelve
-                    // hundred `PlayerRow` copies a second, for an array that already existed.
+                    // It costs nothing — the copy was for an array that already existed — and it
+                    // is now load-bearing twice over: `GroupCard.==` compares this on every frame
+                    // of a drag, and two references to one buffer answer that in O(1) where two
+                    // equal copies would walk fifty rows. The folded case, where a prefix is
+                    // genuinely needed, is exactly the case that is *not* mid-drag: a lift opens
+                    // every card in the venue.
                     visibleRows: visible == card.rows.count
                         ? card.rows
                         : Array(card.rows.prefix(visible)),
@@ -591,8 +644,11 @@ struct GroupsView: View {
     /// Every group's rank range, in one pass over the roster.
     ///
     /// `Camp.players(inGroup:)` filters and sorts the whole player array, so asking it once per
-    /// card is O(cards × players) — and `body` runs on every frame of a drag. This is the same
-    /// answer in O(players), once.
+    /// card is O(cards × players). This is the same answer in O(players), once.
+    ///
+    /// It ran on every frame of a drag until `listEntries` held the result — a hundred players
+    /// walked and a dictionary built sixty times a second for an answer that cannot change while
+    /// a finger is down. The pass itself is unchanged; what changed is how often it is asked for.
     ///
     /// The head-count is deliberately not in here: `Group.playerCount` is denormalised by
     /// `Camp.reindex()` and already holds it, so counting again would be a second answer to a
@@ -981,8 +1037,10 @@ struct GroupsView: View {
     /// is absolute, so requesting the same one twice while the geometry catches up costs nothing.
     private func tickAutoscroll() {
         guard let move, move.isDragging, !move.awaitingGeometry else { return }
-        guard let destination = GroupsAutoscroll.destination(carrying: move.carried, in: viewport)
-        else { return }
+        guard let destination = GroupsAutoscroll.destination(
+            carrying: move.carried,
+            in: viewport.value
+        ) else { return }
         listScroll.scroll(to: destination)
     }
 
