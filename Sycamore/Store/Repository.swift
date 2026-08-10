@@ -208,7 +208,7 @@ protocol SycamoreRepository: SectionEightData {
     /// admin confirms a set of kids who did not come back, and the set leaves together.
     ///
     /// A hard delete, and deliberately not the deactivation `removeStaff` performs. That method's
-    /// two stated reasons (`SupabaseRepository.swift:652-655`) are that `attendance.noted_by` and
+    /// two stated reasons (`SupabaseRepository.swift:733-736`) are that `attendance.noted_by` and
     /// `ratings.last_by` reference `coaches` with no `on delete` clause, so the delete would fail
     /// outright, and that succeeding would erase *who noted* a fact. Neither reason transfers.
     /// Every foreign key into `players` names an action, so the delete succeeds; and a player is

@@ -1,18 +1,27 @@
 //
-//  CoachMoveTests.swift
+//  RowValuesTests.swift
 //  SycamoreTests
 //
-//  The body `assignStaff` posts to `assign_coach_to_court`, tested through the seam
-//  `PostgRESTQueryTests` already picked: what actually goes on the wire.
+//  What `RowValues` actually puts on the wire, tested through the seam `PostgRESTQueryTests`
+//  already picked.
 //
-//  There is one thing here worth a test and it is the null. PostgREST resolves an RPC by the
-//  argument *names* present in the body, and a synthesised `Encodable` omits a nil `Optional`
-//  entirely rather than writing it — so `SupabaseRepository.CoachMove` hand-writes
-//  `encode(to:)` to make sure `court` is always said. Delete that method and the JSON for taking
-//  somebody off a court becomes `{"coach":…,"roaming":true}`, which names a two-argument function
-//  that does not exist, and *only* the unassign path breaks: putting a coach on a court still
-//  carries its `court`, still resolves, still works. A regression here ships half a working
-//  feature, which is why it is pinned rather than left to whoever next exercises the sheet.
+//  There is one thing here worth a test and it is the null. `JSONEncoder` omits a nil `Optional`
+//  entirely rather than writing it, and half the writes in this repository are precisely "set
+//  this column to null" — clear a coach off a court, cancel an early pick-up, take a kid out of
+//  a group. `RowValues` exists to say the difference between "leave that column alone" and
+//  "empty it", and until now nothing checked that it does.
+//
+//  The arguments below are a real payload rather than an invented one: they are what
+//  `assignStaff` posts to `assign_coach_to_court`, which is the case where the stakes are
+//  clearest. PostgREST resolves an RPC by the argument *names* present in the body, so a dropped
+//  `court` names a two-argument function that does not exist — and *only* the unassign path
+//  breaks. Putting a coach on a court still carries its `court`, still resolves, still works. A
+//  regression there ships half a working feature.
+//
+//  This file was `CoachMoveTests` and tested a bespoke `SupabaseRepository.CoachMove` that
+//  hand-wrote `encode(to:)` to do what `RowValues` already did. The struct is gone; the
+//  assertions moved down onto the shared type, which is used by every write in the actor and had
+//  no tests of its own.
 //
 //  Exact strings, for the reason the query tests give: an assertion that the body "contains
 //  coach" would pass throughout the bug it is here to catch.
@@ -23,8 +32,8 @@ import Testing
 
 @testable import Sycamore
 
-@Suite("The body of a coach move")
-struct CoachMoveTests {
+@Suite("What RowValues puts on the wire")
+struct RowValuesTests {
 
     /// Fixed so the expectations below can be written out rather than interpolated back from the
     /// thing under test.
@@ -37,7 +46,7 @@ struct CoachMoveTests {
     /// `sortedKeys` is the one addition, and it changes nothing being asserted — it fixes the key
     /// order so the whole body can be compared as a string. The three names are already in
     /// alphabetical order, so this is determinism rather than a rearrangement.
-    private static func encode(_ arguments: SupabaseRepository.CoachMove) throws -> String {
+    private static func encode(_ arguments: RowValues) throws -> String {
         let encoder = SupabaseCoding.encoder()
         encoder.outputFormatting = .sortedKeys
         return String(decoding: try encoder.encode(arguments), as: UTF8.self)
@@ -46,7 +55,7 @@ struct CoachMoveTests {
     @Test("Putting a coach on a court names the court")
     func ontoACourt() throws {
         let body = try Self.encode(
-            .init(coach: Self.coach, court: Self.court, roaming: false)
+            ["coach": .uuid(Self.coach), "court": .uuid(Self.court), "roaming": .bool(false)]
         )
         #expect(
             body == """
@@ -62,7 +71,7 @@ struct CoachMoveTests {
     @Test("Taking a coach off a court writes the null rather than dropping the key")
     func offACourt() throws {
         let body = try Self.encode(
-            .init(coach: Self.coach, court: nil, roaming: true)
+            ["coach": .uuid(Self.coach), "court": .uuid(nil), "roaming": .bool(true)]
         )
         #expect(
             body == """
@@ -78,7 +87,9 @@ struct CoachMoveTests {
     @Test("Every argument the function declares is sent, on both moves")
     func allThreeArgumentsAreAlwaysPresent() throws {
         for court in [Self.court, nil] {
-            let body = try Self.encode(.init(coach: Self.coach, court: court, roaming: false))
+            let body = try Self.encode(
+                ["coach": .uuid(Self.coach), "court": .uuid(court), "roaming": .bool(false)]
+            )
             let sent = try #require(
                 try JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any]
             )

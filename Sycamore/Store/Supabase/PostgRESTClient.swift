@@ -95,10 +95,16 @@ struct PostgRESTClient: Sendable {
         return try decode(data, relation: relation)
     }
 
-    /// A `SECURITY INVOKER` function called over REST. Nothing uses one yet — the schema's only
-    /// callable is a maintenance helper the migration explicitly revoked from `anon` — but a
-    /// client that cannot call a function forces the next piece of set-based logic back into
-    /// Swift, which is the wrong place for it.
+    /// A function called over REST, for the two things PostgREST's own verbs cannot say.
+    ///
+    /// `join_camp_by_code` reads a camp you are not yet a member of, which the members-only
+    /// SELECT policy makes impossible as a query; `assign_coach_to_court` moves two coaches in
+    /// one transaction, which two PATCHes cannot, because a policy's `using` clause filters rows
+    /// rather than refusing the request and half a move answers 204. Both are set-based logic
+    /// that belongs in SQL, and a client that could not call a function would force them back
+    /// into Swift — which is the wrong place for either.
+    ///
+    /// (This used to say "nothing uses one yet". It was already untrue when it was written.)
     func rpc<Row: Decodable & Sendable>(
         _ function: String, _ arguments: some Encodable & Sendable, returning: Row.Type = Row.self
     ) async throws -> [Row] {

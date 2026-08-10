@@ -741,7 +741,7 @@ extension SupabaseRepository: SectionEightData {
     /// Applied per call site rather than inside `PostgRESTClient`, because the mapping is only
     /// true where the policy is an admin gate. A 403 writing `attendance` would mean the row is
     /// not in a camp of yours, and "Only an admin can do that" would be a confident lie.
-    private func adminWrite<T>(_ write: () async throws -> T) async throws -> T {
+    func adminWrite<T>(_ write: () async throws -> T) async throws -> T {
         do {
             return try await write()
         } catch let refusal as SupabaseError where refusal.isPolicyRefusal {

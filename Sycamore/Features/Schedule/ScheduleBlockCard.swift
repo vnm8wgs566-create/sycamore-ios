@@ -92,7 +92,7 @@ struct ScheduleBlockCard: View {
     /// Without it the card **rubber-bands**: the plan is cleared on release, the card springs back
     /// to where the drag started, and a round trip later it jumps to where it was dropped.
     /// `AppStore.updateScheduleBlock` is not optimistic — `scheduleBlocks` is assigned after the
-    /// `await` (`AppStore+SectionEight.swift:100-105`) — so that gap is the whole latency of the
+    /// `await` (`AppStore+SectionEight.swift:121-126`) — so that gap is the whole latency of the
     /// write, on the one gesture in the app where the finger and the thing it moved were supposed
     /// to be the same object. `RankView` and `GroupCard` snap back the same way and get away with
     /// it, because a row returning to a list it is about to be re-sorted into is a much smaller

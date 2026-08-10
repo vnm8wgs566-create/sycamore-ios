@@ -408,7 +408,7 @@ struct BlockEditorDraft: Identifiable, Hashable, Sendable {
     ///
     /// Nothing at all when the draft has been moved to a day other than the one the store is
     /// holding. `AppStore.scheduleBlocks` is one venue and one day at a time
-    /// (`AppStore+SectionEight.swift:87`), so a block dragged onto Wednesday is asked about
+    /// (`AppStore+SectionEight.swift:108`), so a block dragged onto Wednesday is asked about
     /// Tuesday's list, and the venue-and-day filter inside `BlockRules.sharesSpace(_:_:)` is what
     /// makes that a quiet "nothing" rather than a confident wrong answer.
     func overlap(in day: [ScheduleBlock]) -> ScheduleBlock? {

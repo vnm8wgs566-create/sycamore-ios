@@ -638,43 +638,18 @@ actor SupabaseRepository: SycamoreRepository {
         }
     }
 
-    /// The arguments `assign_coach_to_court` takes.
-    ///
-    /// A struct rather than the `[String: String]` `joinCamp` gets away with, because these three
-    /// are not one type. `convertToSnakeCase` leaves all three single words alone, so the property
-    /// names are the parameter names.
-    ///
-    /// `CoachMove` rather than `CourtAssignment`, which is the name this wanted and is taken:
-    /// `Models.swift:644` is already where a staff member *stands*, and this is the move being
-    /// asked for. Nesting alone would not have kept them apart — a nested type shadows a module
-    /// one throughout the outer type's extensions, so the domain `CourtAssignment` that
-    /// `+Graph.swift:71` builds would have started resolving to this and stopped compiling.
-    ///
-    /// Not `private`, unlike `MovedCoach` below, and only because `encode(to:)` is tested —
-    /// `CoachMoveTests` asserts the exact body both moves put on the wire.
-    struct CoachMove: Encodable, Sendable {
-        var coach: StaffMember.ID
-        var court: Group.ID?
-        var roaming: Bool
-
-        /// Spelled out because `encode(to:)` below is: the compiler synthesises `CodingKeys` only
-        /// alongside the method it would have written, so hand-writing one costs the other.
-        private enum CodingKeys: String, CodingKey { case coach, court, roaming }
-
-        /// Written out rather than synthesised for one reason, on one line of it. A synthesised
-        /// `Encodable` encodes a nil `Optional` with `encodeIfPresent` and so leaves the key out
-        /// altogether — `{"coach":…,"roaming":true}`, checked rather than assumed — and PostgREST
-        /// resolves a function by the argument names in the body, so an omitted `court` would go
-        /// looking for a two-argument `assign_coach_to_court` and be told it does not exist.
-        /// Taking somebody off a court *is* `court: null`, and null has to be written down for it
-        /// to be said.
-        func encode(to encoder: any Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(coach, forKey: .coach)
-            try container.encode(court, forKey: .court)
-            try container.encode(roaming, forKey: .roaming)
-        }
-    }
+    // A `CoachMove` struct used to sit here: three fields and a hand-written `encode(to:)`,
+    // existing solely so that taking somebody off a court wrote `court: null` rather than letting
+    // `encodeIfPresent` drop the key. It carried a nested-type note about not being called
+    // `CourtAssignment` — a nested type shadows the module one throughout the outer type's
+    // extensions, so the domain `CourtAssignment` that `+Graph.swift:71` builds would have
+    // started resolving to it — and a carve-out from `private` so its `encode(to:)` could be
+    // tested.
+    //
+    // All of that was `RowValues`, which every other write in this actor already goes through and
+    // whose header opens on exactly this problem. Its assertions moved down onto the shared type
+    // as `RowValuesTests`, which is where they were worth more: `RowValues` is used by half the
+    // writes here and had no tests of its own.
 
     /// The single column `assign_coach_to_court` returns.
     private struct MovedCoach: Decodable, Sendable {
@@ -705,22 +680,26 @@ actor SupabaseRepository: SycamoreRepository {
             // The venue is no longer sent: the function reads it from the court, which is where
             // it is true. `is_roaming` still comes from here, because `Role.roamsByDefault` is
             // the one place that decides it and a copy in SQL would be a copy to drift.
-            let moved: [MovedCoach]
-            do {
-                moved = try await db.rpc(
-                    "assign_coach_to_court",
-                    CoachMove(
-                        coach: staffID,
-                        court: groupID,
-                        roaming: groupID == nil && member.role.roamsByDefault
-                    )
+            // `RowValues`, not a struct of its own. PostgREST resolves a function by the argument
+            // names in the body, so an omitted `court` would go looking for a two-argument
+            // `assign_coach_to_court` and be told it does not exist — taking somebody off a court
+            // *is* `court: null`, and null has to be written down for it to be said. That is the
+            // sentence `RowValues` was built for and its header opens with; `.uuid(_: UUID?)`
+            // yields `.null` for nil and `encode(to:)` writes every column it holds. It is "really
+            // just a JSON object with explicit nulls", which is a function's arguments too.
+            let moved: [MovedCoach] = try await adminWrite {
+                // The 403 `adminWrite` maps is this function saying it declined and rolled back,
+                // which is precisely "Only an admin can do that" — the one condition that makes
+                // that sentence true, and the reason the mapping is here rather than in
+                // `PostgRESTClient`.
+                let arguments: RowValues = [
+                    "coach": .uuid(staffID),
+                    "court": .uuid(groupID),
+                    "roaming": .bool(groupID == nil && member.role.roamsByDefault),
+                ]
+                return try await db.rpc(
+                    "assign_coach_to_court", arguments, returning: MovedCoach.self
                 )
-            } catch let refusal as SupabaseError where refusal.isPolicyRefusal {
-                // The 403 is the function saying it declined and rolled back, which is precisely
-                // "Only an admin can do that." Mapped here rather than in `PostgRESTClient` for
-                // the reason `adminWrite` gives next door: the sentence is only true where the
-                // policy is an admin gate, and this one is.
-                throw SycamoreError.notPermitted
             }
             guard moved.isEmpty == false else {
                 throw await missingStaffOrCourt(staffID, toGroup: groupID)

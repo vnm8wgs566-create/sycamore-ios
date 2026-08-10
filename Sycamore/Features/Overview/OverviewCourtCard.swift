@@ -114,7 +114,7 @@ struct OverviewCourtCard: View {
     /// compiler asking every caller where a name goes is the point.
     ///
     /// Two precedents, and the second is the closer one: `CondensedCourtRow.swift:42-44` makes the
-    /// same call about its own `onOpen` on the same grounds, and `GroupCard.swift:38` — the app's
+    /// same call about its own `onOpen` on the same grounds, and `GroupCard.swift:43` — the app's
     /// other card with a roster on it — already declares this exact closure under this exact name,
     /// non-optional.
     let onOpenPlayer: (Player.ID) -> Void
