@@ -26,32 +26,6 @@ enum GroupsPalette {
     /// is a plan, not a problem. Hoist it when Schedule draws its "needs a coach" amber, which
     /// is the same value in the design document.
     static let pickup = Theme.warning
-
-    /// `0 0 0 4px rgba(26,127,85,.09)` — the halo the design puts around the card a kid is
-    /// about to land in. Derived from the accent rather than spelled, so it follows it.
-    static let dropHalo = Theme.accent.opacity(0.09)
-
-    /// The lip round the greyed kid travelling to their landing — `8p` draws it `#D8DBE0`.
-    ///
-    /// Aliased rather than added to `Theme`, because `#D8DBE0` and `timelineDot`'s `#D9DBE0`
-    /// are the same grey to a tenth of a step and a palette does not need both. The alias is
-    /// what earns its keep: feature code says what the colour is *for*, and the day the design
-    /// separates the two roles there is one line to change.
-    ///
-    /// This was `gapRule`, and it was a *dashed* border round an empty rectangle — the right
-    /// drawing for the hole a kid leaves behind, which is what the screen used to show. The
-    /// ghost is not a hole: it has the kid's name in it. A dashed border round something with
-    /// content inside reads as a dropped image or a broken asset, so the same grey is drawn as
-    /// a solid one-point lip round a filled plate instead.
-    static let ghostRule = Theme.timelineDot
-
-    /// The plate the greyed kid sits on while they travel.
-    ///
-    /// `Theme.tile` — the palette's existing "a plate a thing sits on" grey, the one an icon
-    /// tile is drawn from. Aliased rather than spelled as a hex of its own: the ghost is
-    /// exactly that relationship, a surface a row is resting on rather than standing in, and
-    /// the design draws it at the same weight.
-    static let ghostFill = Theme.tile
 }
 
 // MARK: - Type
@@ -170,33 +144,19 @@ enum GroupsMetrics {
 
     // MARK: The move
 
-    /// Width of the `dropHalo` ring, drawn outside the card's own border.
-    static let dropHaloWidth: CGFloat = 4
-
     /// How far a card that is *not* the drop target fades while a kid is in the air. The design
     /// draws `opacity:.55` on the cards either side of the target.
     static let bystanderOpacity: Double = 0.55
 
-    /// The dashed rule round "Add a group".
+    /// The dashed rule round "Add a group", which is now its only caller.
     ///
-    /// Drawn once now, not twice. It used to outline the gap a lifted kid left behind as well,
-    /// and the pair said the same thing about two different things: "there is nothing here yet,
-    /// and something could be". That is true of the row under the last card and false of the
-    /// place a kid is standing in mid-air — so the ghost is a filled plate with a solid lip
-    /// (`ghostFill`, `ghostRule`) and the dashes belong to the one control that is genuinely an
-    /// invitation.
+    /// It used to outline the gap a lifted kid left behind as well, and the pair said the same
+    /// thing about two different things: "there is nothing here yet, and something could be" is
+    /// true of the row under the last card and false of the place a kid is standing in mid-air.
+    /// The distinction is moot now — the design's drag leaves no gap to outline, because the kid's
+    /// own row keeps its space at `heldOpacity` and a green rule names the landing. So the dashes
+    /// belong, undivided, to the one control that is genuinely an invitation.
     static let dash: [CGFloat] = [4, 3]
-
-    /// Height of the plate under the travelling kid. The row they came out of is 44pt of touch
-    /// target around a 30pt line of type, and it is the 30 that is drawn.
-    ///
-    /// **30 is what is drawn; `move.origin.height` is what is reserved.** The design's 30pt
-    /// plate inside a 44pt row is unchanged, but the space the card opens is the *measured*
-    /// height of the row that closed — which at accessibility type sizes is a good deal more
-    /// than 44. Only a measurement can promise that exactly one row's worth leaves and exactly
-    /// one arrives, which is what keeps a card's height unchanged to the point when a kid moves
-    /// inside it. A literal here would be a promise this file cannot keep.
-    static let ghostHeight: CGFloat = 30
 
     /// What the kid's own row fades to while they are being carried.
     ///

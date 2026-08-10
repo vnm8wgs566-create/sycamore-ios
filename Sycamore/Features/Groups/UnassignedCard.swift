@@ -140,7 +140,20 @@ struct UnassignedCard: View {
         let reason: UnassignedReason
         var rows: [PlayerRow]
 
-        var id: UnassignedReason { reason }
+        /// Keyed on the first kid in the run, **not on the reason**.
+        ///
+        /// The two populations interleave. `Camp.admit` nils `groupID` for everyone a band
+        /// refuses; `Camp.removeGroup` nils it for everyone on a deleted court whatever their age;
+        /// and `unassigned` is built in `overallRank` order, so a venue can hand this card
+        /// `[.outsideBand, .groupRemoved, .outsideBand]`. `runs` chops that into *consecutive*
+        /// runs, so keying on the reason gives two runs the same id — SwiftUI logs a duplicate-ID
+        /// warning and draws undefined results, on the one card whose entire job is that a kid it
+        /// holds and does not draw is a kid nobody can find.
+        ///
+        /// Not `let id = UUID()`: `runs` is computed on every pass of `body`, so a fresh uuid per
+        /// pass would give every run a new identity every render and take diffing and animation
+        /// with it. A run is never built empty, so its first row is a stable, unique key.
+        var id: Player.ID { rows[0].id }
     }
 
     var body: some View {
@@ -203,11 +216,27 @@ struct UnassignedCard: View {
 
     private func reasonLine(_ reason: UnassignedReason) -> some View {
         Text(reason.line)
-            .typeStyle(GroupsType.rowMeta, color: reason.isWarning ? Theme.warningDark : Theme.inkMuted)
-            .lineLimit(2)
+            // `inkTertiary` (#71757E, 4.6:1 on white) rather than `inkMuted` (#8A8E96, 3.5:1).
+            // Both halves of this sentence have to be legible, and only one of them was: the
+            // `.outsideBand` case takes `warningDark` and passes comfortably, while its
+            // `.groupRemoved` sibling — the same size, the same job, the same card — sat below the
+            // 4.5:1 floor. A reason nobody can read is a card with no reason on it.
+            .typeStyle(
+                GroupsType.rowMeta,
+                color: reason.isWarning ? Theme.warningDark : Theme.inkTertiary
+            )
+            // No line cap. This line *is* the card's justification, and a venue named at any
+            // length ("Outside this venue's 9–12 band") at an accessibility text size runs past two
+            // lines and was being truncated — the sentence explaining where a missing child went,
+            // cut off. `fixedSize` lets it take the height it needs.
+            .fixedSize(horizontal: false, vertical: true)
             // Indented to where the names start, not to where the numerals do, so it reads as a
             // heading over the names rather than as a row with the numeral column left blank —
             // which is what "+N more" uses that column for.
+            // Unscaled, deliberately. The indent's job is to line this sentence up with the
+            // *names* below it, and those are drawn by `GroupsRow` off the same unscaled
+            // `numeralWidth` — so scaling only this one would walk it out of alignment with the
+            // thing it is aligned to, at exactly the text sizes where alignment matters most.
             .padding(.leading, GroupsMetrics.cardPadding + GroupsMetrics.numeralWidth + Spacing.row)
             .padding(.trailing, GroupsMetrics.cardPadding)
             .padding(.top, Spacing.tight)

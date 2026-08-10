@@ -377,7 +377,7 @@ struct GroupsView: View {
             // Nor is it a loss. A venue with no groups has nowhere to put anybody; emptying the
             // last one is what the age band and the drag already do, and those leave the kids
             // somewhere the screen can name.
-            onDelete: (move == nil && !isOnlyGroup(entry)) ? { requestRemoval(of: entry) } : nil
+            onDelete: (move == nil && !isOnlyGroup) ? { requestRemoval(of: entry) } : nil
         ) {
             groupCard(entry)
         }
@@ -1056,6 +1056,17 @@ struct GroupsView: View {
 
     // MARK: Removing a group
 
+    /// Whether the venue on screen is down to its last group.
+    ///
+    /// Read off the drawn entries rather than the camp, so it agrees with what the reader can see:
+    /// the list is already scoped to one venue, and a count taken anywhere else could disagree
+    /// with it while a load is in flight.
+    ///
+    /// A property and not a function of an entry. The answer is a fact about the *list*, and
+    /// taking a `GroupsEntry` it never read made the call site say `!isOnlyGroup`, which
+    /// reads as a question about that card when every card gets the same answer.
+    private var isOnlyGroup: Bool { (listEntries ?? []).count <= 1 }
+
     /// A swipe reached its Remove. Ask, or just do it.
     ///
     /// **The count is the group's own `playerCount`, not its drawn rows.** A search leaves three of
@@ -1067,15 +1078,6 @@ struct GroupsView: View {
     /// Nothing is asked about an empty group. There is no cost to undo — the dashed "Add a group"
     /// row directly below puts one back — and a dialog guarding a reversible nothing is what makes
     /// readers stop reading dialogs.
-    /// Whether this is the last group standing at the venue on screen.
-    ///
-    /// Read off the drawn entries rather than the camp, so it agrees with what the reader can see:
-    /// the list is already scoped to one venue, and a count taken anywhere else could disagree with
-    /// it while a load is in flight.
-    private func isOnlyGroup(_ entry: GroupsEntry) -> Bool {
-        (listEntries ?? []).count <= 1
-    }
-
     private func requestRemoval(of entry: GroupsEntry) {
         let kids = entry.card.group.playerCount
         guard kids > 0 else {

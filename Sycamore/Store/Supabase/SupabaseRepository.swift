@@ -661,6 +661,25 @@ actor SupabaseRepository: SycamoreRepository {
             // one group.
             try await dropCourts(before: before, after: after, venueID: venueID)
 
+            // The coach's *roaming*, which `dropCourts` does not carry.
+            //
+            // That helper takes a coach off a court by writing `group_id` and `site_id`, and those
+            // are the only two columns it touches. But `Camp.removeGroup` does one more thing when
+            // it clears the assignment: it puts the coach back on their role's roaming default
+            // (`Models.swift:1887`), and that lives in `is_roaming`. Unwritten, the optimistic graph
+            // says the coach roams, the row still says they do not, and the re-read at the end of
+            // this method quietly reverts it — the half of the deletion nobody would think to check.
+            //
+            // A PATCH each rather than an upsert, because this is one coach in the ordinary case and
+            // `Self.coachRow` would post the whole staff row from a read taken a moment ago.
+            for staffer in after.staff where before.staff(staffer.id)?.isRoaming != staffer.isRoaming {
+                try await db.update(
+                    Relation.coaches,
+                    set: ["is_roaming": .bool(staffer.isRoaming)],
+                    where: PostgRESTQuery().eq("id", staffer.id)
+                )
+            }
+
             // The survivors' names. `number` is not a column — `courts(from:)` derives it from the
             // `rank_order` sequence, and `removeGroup` leaves that sparse on purpose — so the only
             // thing the renumbering leaves to write down is the label. One upsert rather than a

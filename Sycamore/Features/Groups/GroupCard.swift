@@ -55,7 +55,8 @@ struct GroupCard: View {
     /// Every drawn row's rectangle, in the list's coordinate space — the raw material for every
     /// drop slot. The screen ignores these while a kid is in the air, because a slot is only
     /// meaningful measured off the list at rest; the one exception is the settling pass, which is
-    /// drawn at rest for exactly that reason. See `GroupsView.cardView(_:)` and `isSettling`.
+    /// drawn at rest for exactly that reason. See `GroupsView.cardView(_:)` and
+    /// `GroupsMove.awaitingGeometry`, which is where that window is now named.
     let onRowFrame: (Player.ID, CGRect) -> Void
 
     /// The design writes a court's rank band as "Group 1" and keeps "Court 1" for the place it
@@ -74,20 +75,6 @@ struct GroupCard: View {
     private var isFoldable: Bool { card.rows.count > GroupsRules.previewRows + 1 }
     private var isExpanded: Bool { hiddenCount == 0 }
 
-    /// The move is still being measured, so this card draws itself exactly as it does at rest:
-    /// no ghost, and the lifted row keeping its space.
-    ///
-    /// That is not a cosmetic choice, it is what makes the pass measurable. The lift opens every
-    /// folded card in the venue and the frames arriving afterwards are what every drop slot is
-    /// rebuilt from — and a slot is only meaningful measured off the list at rest. A ghost of
-    /// height `H` arriving while a row of height `H` leaves would put two corrections into
-    /// numbers that are supposed to describe the layout without either. See
-    /// `GroupsMove.awaitingGeometry`.
-    ///
-    /// The no-ghost half is enforced a step earlier: `GroupsCardMove` builds `ghostSeat` nil for
-    /// the length of this window. What is left for this to say is the other half — the row the kid
-    /// came out of, still standing in the flow.
-    private var isSettling: Bool { move?.isSettling == true }
 
     /// Where this card opens a space for the kid in the air, if it is the one they are aimed at.
     /// Worked out in `GroupsCardMove` off the same rows this card draws, so that a `==` between

@@ -232,12 +232,16 @@ struct GroupsCardMove: Equatable {
     let heldRowID: Player.ID
     /// Where this card opens the space for them, or nil if they are not aimed here.
     let ghostSeat: GroupsGhost.Seat?
-    /// The move is still being measured, so this card draws itself exactly as it does at rest.
-    /// See `GroupsMove.awaitingGeometry` for what that pass is for.
-    let isSettling: Bool
-    /// The lifted row's measured height: what the ghost reserves, and what the row the kid came
-    /// out of gives up.
-    let ghostHeight: CGFloat
+    // `isSettling` and `ghostHeight` used to be stored here and are not any more. Both lost their
+    // readers when the design's drag landed — the kid's row stops giving up its space, so nothing
+    // needs its height, and no card draws itself differently while the list is being measured.
+    //
+    // Keeping them was not free. This struct exists to hold *only* what a card draws, so that a
+    // card not involved in a move compares equal across a frame and is not redrawn; `ghostHeight`
+    // is `move.origin.height`, and `origin` is re-anchored at the settle boundary — so a field
+    // nobody read was changing there and invalidating every card in an opened venue.
+    //
+    // `isSettling` survives as a local in `init`, below, where `ghostSeat` still gates on it.
     /// The kid's name, which is what the ghost says.
     let ghostName: String
 
@@ -258,8 +262,6 @@ struct GroupsCardMove: Equatable {
         self.ghostSeat = isSettling
             ? nil
             : GroupsGhost.seat(aimedAt: move.target, card: card, drawnRows: drawnRows)
-        self.isSettling = isSettling
-        self.ghostHeight = move.origin.height
         self.ghostName = move.row.name
     }
 }

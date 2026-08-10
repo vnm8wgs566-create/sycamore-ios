@@ -1784,11 +1784,21 @@ extension Camp {
 
         while courts.count < venue.groupCount {
             let number = courts.count + 1
+            // `number` counts positions, so it is dense; `rankOrder` is an *order* and after a
+            // `removeGroup` it is sparse — delete Group 1 of three and the survivors keep ranks 2
+            // and 3. Minting at `courts.count + 1` would then hand the new court rank 3, tying it
+            // with a court already holding that rank, and `groups(in:)` sorts on `rankOrder`: the
+            // venue would draw as "Group 3, Group 1, Group 2" offline, and against Postgres the
+            // rename upsert would collide on `unique (site_id, name)`.
+            //
+            // Allocated past the highest rank in use instead, which is the only value that cannot
+            // tie whatever the gaps look like.
+            let rank = (courts.map(\.rankOrder).max() ?? 0) + 1
             let court = Group(
                 venueID: venueID,
                 number: number,
                 label: "\(sport.groupNoun) \(number)",
-                rankOrder: number,
+                rankOrder: rank,
                 coachID: nil,
                 capacity: max(1, venue.playerMax / max(1, venue.groupCount))
             )
