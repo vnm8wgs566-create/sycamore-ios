@@ -89,6 +89,21 @@ struct SiteRecord: Decodable, Sendable {
     var playerMin: Int
     var playerMax: Int
     var sortIndex: Int
+    /// How many groups the venue splits its kids into — `sites.group_count`.
+    ///
+    /// Optional here although the column is `not null`, which is the same call `closedReason` and
+    /// `CampRecord.campDays` make one field up: a build running against a database that has not
+    /// had `20260810040000_a_venue_knows_its_own_shape` applied yet should read the rest of the
+    /// row rather than fail every camp load on a key that is not there. `Venue.init(_:)` says
+    /// what an absent value means.
+    var groupCount: Int?
+    /// Roughly how many kids a group should hold — `sites.target_per_group`. Nil in two different
+    /// senses that happen to want one spelling: the column is nullable because "no target" is a
+    /// real answer, and the property is optional because the column may not exist yet.
+    var targetPerGroup: Int?
+    /// Which ages this venue takes — `sites.age_band`. Optional for the migration reason only;
+    /// the column is `not null default 'all'`.
+    var ageBand: String?
 }
 
 struct GroupRecord: Decodable, Sendable {
@@ -318,7 +333,18 @@ extension Venue {
             subtitle: record.subtitle,
             icon: record.icon,
             tint: PostgresEnum.tint(record.tint),
-            groupCount: record.courtCount,
+            courtCount: record.courtCount,
+            // `?? record.courtCount` rather than `?? 4`, and the fallback is doing two jobs.
+            //
+            // `sites.group_count` arrived in `20260810040000_a_venue_knows_its_own_shape`, which
+            // backfilled it from `court_count` because that is exactly what every venue was
+            // already doing — the column split one number into two and started them equal. A
+            // build talking to a database one migration behind therefore gets the same answer the
+            // migration would have written, rather than a default that would quietly re-shape
+            // somebody's venue to four groups the first time it was saved back.
+            groupCount: record.groupCount ?? record.courtCount,
+            targetPerGroup: record.targetPerGroup,
+            ageBand: record.ageBand.flatMap(AgeBand.init(rawValue:)) ?? .all,
             coachMin: record.coachMin,
             coachMax: record.coachMax,
             playerMin: record.playerMin,
@@ -510,4 +536,83 @@ extension Account {
             notificationsEnabled: record.notificationsEnabled
         )
     }
+}
+
+// MARK: - The Tournament tab
+
+//
+// Five rows and no `init(_:)` into the domain, which is the difference between these and every
+// other record above.
+//
+// A `Tournament` is not assembled from a row plus a couple of child lists the way a `ScheduleBlock`
+// is; it is assembled from five relations at once, and two of its fields — an entrant's id and a
+// match's id — are not columns at all. They are short strings the model *derives* (`"e0p"`, `"m3"`)
+// and they are regenerated on the way up from `(tournament_id, seed)` and `(tournament_id, round,
+// sort_index)`, the two UNIQUE keys that stand in for them. That is a fan-in over five reads rather
+// than a row-to-value translation, so it lives beside the reads, in
+// `SupabaseRepository+Tournament.swift`.
+//
+
+struct TournamentRecord: Decodable, Sendable {
+    var id: UUID
+    var siteId: UUID
+    var name: String
+    var kind: String
+    /// `round_robin`, `knockout` or `none`. **Not `Tournament.Mode.rawValue`** — that spells
+    /// `roundRobin`, and team tennis has no mode at all where the column has a third value for it.
+    /// `tournaments_team_has_no_mode` ties the two together, so the translation is exact rather
+    /// than lenient; see `TournamentText` in the repository.
+    var mode: String
+    /// Which courts fed the pool, as ids. The model holds *positions* — see
+    /// `Tournament.courtIndices` for that trade — and `Tournament.courtIndices(of:in:)` converts.
+    var groupIds: [UUID]
+    var days: Int
+    var sortIndex: Int
+    /// Only ever a tie-break under `sort_index`, which `addTournaments` numbers densely — so a tie
+    /// should not arise. It is read anyway because Swift's sort is not stable, and a venue's draws
+    /// reordering themselves between two loads of the same list is the kind of thing that looks
+    /// like somebody else editing.
+    var createdAt: Date
+}
+
+/// One competitor. `name` is a team's; singles and doubles leave it null and build their label from
+/// the members' names, because storing it would be a second place for a kid's name to be wrong.
+struct TournamentEntrantRecord: Decodable, Sendable {
+    var id: UUID
+    var tournamentId: UUID
+    /// The 1-based dense seeding number — an entrant's offset in `Tournament.entrants` plus one, or
+    /// a `Tournament.Team.id` plus one. Deliberately **not** `Entrant.ladderIndex`, which is a
+    /// fractional strength and would truncate into collisions against `UNIQUE (tournament_id,
+    /// seed)`; the model renamed that property to keep the two apart.
+    var seed: Int
+    var name: String?
+    var isRequested: Bool
+}
+
+struct TournamentEntrantPlayerRecord: Decodable, Sendable {
+    var entrantId: UUID
+    var playerId: UUID
+    var slot: Int
+}
+
+struct TournamentEntrantCoachRecord: Decodable, Sendable {
+    var entrantId: UUID
+    var coachId: UUID
+}
+
+/// One fixture. A side is an entrant, or the winner of an earlier match, or nobody — which is a
+/// bye, and is why all four of those columns are nullable.
+struct TournamentMatchRecord: Decodable, Sendable {
+    var id: UUID
+    var tournamentId: UUID
+    var round: Int
+    /// Position within the round. `(tournament_id, round, sort_index)` is UNIQUE and is what
+    /// `Tournament.Match.id` — `"m1"`, `"m2"`, … — is regenerated from.
+    var sortIndex: Int
+    var aEntrantId: UUID?
+    var bEntrantId: UUID?
+    var aFromMatch: UUID?
+    var bFromMatch: UUID?
+    var aScore: Int?
+    var bScore: Int?
 }

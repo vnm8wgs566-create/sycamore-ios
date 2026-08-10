@@ -1,0 +1,24 @@
+<sc-if value="{{ shScore }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:9px;margin-top:13px">
+          <div style="flex:1;border:{{ scABorder }};background:{{ scABg }};border-radius:15px;padding:11px 13px;min-width:0">
+            <div style="font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:{{ scAColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ scAN }}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div onClick="{{ aDec }}" style="width:32px;height:32px;border-radius:10px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:13px;color:#5C6068"></i></div>
+              <div style="flex:1;text-align:center;font:600 20px 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums">{{ scA }}</div>
+              <div onClick="{{ aInc }}" style="width:32px;height:32px;border-radius:10px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:13px;color:#fff"></i></div>
+            </div>
+          </div>
+          <div style="flex:1;border:{{ scBBorder }};background:{{ scBBg }};border-radius:15px;padding:11px 13px;min-width:0">
+            <div style="font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:{{ scBColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ scBN }}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div onClick="{{ bDec }}" style="width:32px;height:32px;border-radius:10px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:13px;color:#5C6068"></i></div>
+              <div style="flex:1;text-align:center;font:600 20px 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums">{{ scB }}</div>
+              <div onClick="{{ bInc }}" style="width:32px;height:32px;border-radius:10px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:13px;color:#fff"></i></div>
+            </div>
+          </div>
+        </div>
+        <div onClick="{{ saveScore }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:12px;cursor:pointer;opacity:{{ scoreOp }}">{{ scoreCta }}</div>
+        <sc-if value="{{ hasScore }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ clearScore }}" style="height:44px;display:flex;align-items:center;justify-content:center;font:600 13.5px 'Instrument Sans',sans-serif;color:#C0492A;cursor:pointer">Clear this score</div>
+        </sc-if>
+      </sc-if>

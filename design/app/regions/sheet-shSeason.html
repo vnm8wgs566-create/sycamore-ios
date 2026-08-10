@@ -1,0 +1,7 @@
+<sc-if value="{{ shSeason }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:16px 0 7px">Camp name</div>
+        <input value="{{ dName }}" onInput="{{ setDName }}" style="width:100%;box-sizing:border-box;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:600 15.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em;background:#fff">
+        <div style="display:flex;align-items:baseline;margin:12px 0 7px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Season</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">optional</div></div>
+        <input value="{{ dSubtitle }}" onInput="{{ setDSubtitle }}" placeholder="Jun 22 – Aug 14" style="width:100%;box-sizing:border-box;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em;background:#fff">
+        <div onClick="{{ saveSeason }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer;opacity:{{ ctaOpacity }}">Save changes</div>
+      </sc-if>

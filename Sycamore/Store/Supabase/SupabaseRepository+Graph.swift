@@ -341,7 +341,16 @@ extension SupabaseRepository {
             "subtitle": .text(venue.subtitle),
             "icon": .text(venue.icon),
             "tint": .text(venue.tint.rawValue),
-            "court_count": .int(venue.groupCount),
+            // These two used to be one line — `"court_count": .int(venue.groupCount)` — because
+            // the model had one number for both. `20260810040000_a_venue_knows_its_own_shape`
+            // split them, and this is the write side of that split: `court_count` is now the
+            // courts the venue has, and `group_count` is how many groups it runs on them. The
+            // migration backfilled the second from the first, so every venue that existed before
+            // the split keeps writing back exactly what it read.
+            "court_count": .int(venue.courtCount),
+            "group_count": .int(venue.groupCount),
+            "target_per_group": .int(venue.targetPerGroup),
+            "age_band": .text(venue.ageBand.rawValue),
             "coach_min": .int(venue.coachMin),
             "coach_max": .int(venue.coachMax),
             "player_min": .int(venue.playerMin),

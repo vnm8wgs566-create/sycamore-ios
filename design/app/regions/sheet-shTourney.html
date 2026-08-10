@@ -1,0 +1,53 @@
+<sc-if value="{{ shTourney }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:14px">Format</div>
+        <div style="display:flex;gap:7px;margin-top:7px">
+          <sc-for list="{{ kindPills }}" as="kp" hint-placeholder-count="3">
+            <div onClick="{{ kp.pick }}" style="padding:8px 13px;border-radius:999px;background:{{ kp.bg }};color:{{ kp.color }};font:600 13px 'Instrument Sans',sans-serif;cursor:pointer">{{ kp.label }}</div>
+          </sc-for>
+        </div>
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:13px">Groups in</div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:7px">
+          <sc-for list="{{ groupChips }}" as="gc" hint-placeholder-count="3">
+            <div onClick="{{ gc.pick }}" style="padding:7px 12px;border-radius:999px;background:{{ gc.bg }};color:{{ gc.color }};border:{{ gc.border }};font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ gc.label }}</div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ tourNotTeam }}" hint-placeholder-val="{{ true }}">
+          <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:13px">Play</div>
+          <div style="display:flex;gap:7px;margin-top:7px">
+            <sc-for list="{{ modePills }}" as="mp" hint-placeholder-count="2">
+              <div onClick="{{ mp.pick }}" style="padding:8px 13px;border-radius:999px;background:{{ mp.bg }};color:{{ mp.color }};font:600 13px 'Instrument Sans',sans-serif;cursor:pointer">{{ mp.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="display:flex;gap:9px;margin-top:13px">
+          <sc-if value="{{ tourIsTeam }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1">
+              <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:6px">Teams</div>
+              <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px"><div onClick="{{ teamsDec }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div><div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif">{{ dTeams }}</div><div onClick="{{ teamsInc }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div></div>
+            </div>
+          </sc-if>
+          <div style="flex:1">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:6px">Days</div>
+            <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px"><div onClick="{{ daysDec }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div><div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif">{{ dDays }}</div><div onClick="{{ daysInc }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div></div>
+          </div>
+        </div>
+        <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:7px">{{ tourHint }}</div>
+        <sc-if value="{{ tourIsDoubles }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:baseline;margin-top:12px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Requested pairings</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">optional</div></div>
+          <sc-if value="{{ hasReqPairs2 }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">
+              <sc-for list="{{ reqPairChips2 }}" as="rp2" hint-placeholder-count="0">
+                <div onClick="{{ rp2.remove }}" style="display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;background:#0B0B0C;color:#fff;font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ rp2.label }}<i class="ph ph-x" style="font-size:11px;color:rgba(255,255,255,.6)"></i></div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px">{{ pairHint2 }}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:150px;overflow:auto">
+            <sc-for list="{{ unpairedChips2 }}" as="uc2" hint-placeholder-count="6">
+              <div onClick="{{ uc2.pick }}" style="padding:6px 11px;border-radius:999px;background:{{ uc2.bg }};color:{{ uc2.color }};border:{{ uc2.border }};font:600 12px 'Instrument Sans',sans-serif;cursor:pointer">{{ uc2.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div onClick="{{ doCreateTourney }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer;opacity:{{ tourCtaOp }}">{{ createTourneyCta }}</div>
+      </sc-if>

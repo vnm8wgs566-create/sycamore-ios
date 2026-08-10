@@ -150,15 +150,36 @@ struct MainTabView: View {
 
     // MARK: The selected tab
 
+    /// ── Two tabs are held back, and their screens are still here ────────────────────────────
+    ///
+    /// `OverviewView` and `ScheduleView` are written, tested and passing. They are not drawn
+    /// because the work they depend on — a camp whose days have a shape, blocks to hang on them —
+    /// is not finished, and a tab that half-answers is worse than one that says it is not ready.
+    /// So the tab bar keeps its four slots and two of them lead here.
+    ///
+    /// **They are not deleted, and that is the point of doing it this way.** Both screens keep
+    /// compiling, keep their previews and keep their tests, so they cannot rot while they wait —
+    /// which is exactly what happens to a screen parked on a branch while the model underneath it
+    /// moves. Turning one back on is deleting a line. The full-fidelity state of both, before this
+    /// gate, is the `parked/sections-4-5` branch.
+    ///
+    /// `AppTab.isReady` says the same thing in the routing enum, for anything that needs to ask
+    /// without switching.
     @ViewBuilder
     private var tab: some View {
         switch store.selectedTab {
         case .overview:
-            OverviewView()
+            ComingSoonView(.overview) { store.selectedTab = .groups }
         case .schedule:
-            ScheduleView()
+            ComingSoonView(.schedule) { store.selectedTab = .groups }
         case .groups:
             GroupsView()
+        case .tournament:
+            TournamentView()
+        // Not in `AppTab.bar`, so nothing selects it — the design spends the fourth slot on
+        // Tournament and reaches the inbox from a control instead. The case stays wired to the
+        // real screen rather than to a plate, because `InboxView` works: it is out of the way,
+        // not unfinished.
         case .inbox:
             InboxView()
         }
@@ -187,6 +208,11 @@ struct MainTabView: View {
             switch screen {
             case .profile:
                 ProfileView(store: store)
+            case .campHome:
+                // Presented bare: it owns a `NavigationStack` of its own and pushes the shape
+                // page into it, the same arrangement `CampPickerView` and `CreateCampView`
+                // already have. Wrapping it here would nest two stacks.
+                CampHomeView(store: store)
             case .campSettings:
                 SetupView(store: store)
             case .rank:

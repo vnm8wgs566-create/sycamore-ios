@@ -1,0 +1,202 @@
+<sc-if value="{{ anySheet }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(11,11,12,.32);z-index:7;animation:fadeIn .16s ease"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -12px 40px rgba(11,11,12,.18);padding:10px 16px 28px;z-index:8;animation:sheetUp .24s cubic-bezier(.32,.72,0,1);max-height:78%;overflow:auto">
+      <div style="width:36px;height:5px;border-radius:99px;background:#DCDEE3;margin:0 auto 12px"></div>
+      <div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96">{{ sheetContext }}</div>
+      <div style="font:400 26px/1.05 Newsreader,Georgia,serif;letter-spacing:-.02em;margin-top:5px">{{ sheetTitle }}</div>
+
+      <sc-if value="{{ shNewCamp }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:16px 0 7px">Camp name</div>
+        <input value="{{ dName }}" onInput="{{ setDName }}" placeholder="UCLA Tennis Camp" style="width:100%;box-sizing:border-box;border:1.5px solid #0B0B0C;border-radius:15px;padding:14px 15px;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.02em;background:#fff">
+        <div style="font:400 12.5px/1.55 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:12px">Venues, groups and kids come next — season and everything else live on the Camp tab.</div>
+        <div onClick="{{ createCamp }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer;opacity:{{ ctaOpacity }}">{{ createLabel }}</div>
+      </sc-if>
+
+      <sc-if value="{{ shJoin }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:16px 0 7px">Invite code</div>
+        <input value="{{ dCode }}" onInput="{{ setDCode }}" placeholder="SYC-4127" style="width:100%;box-sizing:border-box;border:1.5px solid #0B0B0C;border-radius:15px;padding:14px 15px;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:.14em;background:#fff;text-transform:uppercase">
+        <sc-if value="{{ joinFlag }}" hint-placeholder-val="{{ false }}"><div style="font:500 12.5px/1.5 'Instrument Sans',sans-serif;color:#B67A16;margin-top:10px">{{ joinFlag }}</div></sc-if>
+        <div style="font:400 12.5px/1.55 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:10px">Codes come from whoever runs the camp.</div>
+        <div onClick="{{ joinCamp }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer;opacity:{{ ctaOpacity }}">Join</div>
+      </sc-if>
+
+      <sc-if value="{{ shVenue }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:9px;margin-top:13px">
+          <div style="flex:1"><div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:6px">Name</div><input value="{{ dName }}" onInput="{{ setDName }}" placeholder="Sycamore" style="width:100%;box-sizing:border-box;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:600 15.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em;background:#fff"></div>
+        </div>
+        <div style="margin-top:12px"><div style="display:flex;align-items:baseline;margin-bottom:6px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Subtitle</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">optional</div></div><input value="{{ dSubtitle }}" onInput="{{ setDSubtitle }}" placeholder="Six courts up the hill" style="width:100%;box-sizing:border-box;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em;background:#fff"></div>
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:12px">Age group</div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:7px">
+          <sc-for list="{{ ageGroupChips }}" as="agp" hint-placeholder-count="3">
+            <div onClick="{{ agp.pick }}" style="padding:7px 12px;border-radius:999px;background:{{ agp.bg }};color:{{ agp.color }};border:{{ agp.border }};font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ agp.label }}</div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:9px;margin-top:12px">
+          <div style="flex:1">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:6px">Courts</div>
+            <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px"><div onClick="{{ decCourts }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div><div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif">{{ dCourts }}</div><div onClick="{{ incCourts }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div></div>
+          </div>
+          <div style="flex:1">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:6px">Groups</div>
+            <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px"><div onClick="{{ decGroups }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div><div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif">{{ dGroups }}</div><div onClick="{{ incGroups }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;border:1.5px solid #E4E5E9;border-radius:15px;padding:8px 8px 8px 14px;margin-top:9px">
+          <div style="flex:1;min-width:0"><div style="font:600 13px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#3F4A44">Kids per group</div><div style="font:400 11.5px 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:2px">Optional target — over flags amber, never blocks</div></div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div onClick="{{ decTarget }}" style="width:34px;height:34px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:14px;color:#5C6068"></i></div>
+            <div style="width:30px;text-align:center;font:600 16px 'Instrument Sans',sans-serif;color:{{ dTargetColor }}">{{ dTarget }}</div>
+            <div onClick="{{ incTarget }}" style="width:34px;height:34px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:14px;color:#fff"></i></div>
+          </div>
+        </div>
+        <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:{{ dealLineColor }};margin-top:7px">{{ dealLine }}</div>
+        <div style="display:flex;align-items:baseline;margin:12px 0 6px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Coaches</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">optional</div></div>
+        <sc-if value="{{ hasStaff }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-wrap:wrap;gap:7px">
+            <sc-for list="{{ staffPicks }}" as="sp" hint-placeholder-count="2">
+              <div onClick="{{ sp.pick }}" style="padding:8px 13px;border-radius:999px;background:{{ sp.bg }};color:{{ sp.color }};border:{{ sp.border }};font:600 13px 'Instrument Sans',sans-serif;cursor:pointer">{{ sp.name }}</div>
+            </sc-for>
+          </div>
+          <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px">Pick from staff who joined — sets the default staffing for this venue.</div>
+        </sc-if>
+        <sc-if value="{{ noStaff }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:11px;border:1.5px dashed #C3DFCF;border-radius:15px;padding:12px 14px">
+            <i class="ph ph-lock-simple" style="font-size:17px;color:#1A7F55"></i>
+            <div style="flex:1;min-width:0"><div style="font:600 13.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:#14684A">Invite coaches · {{ inviteCodeSheet }}</div><div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">Coaches join with the code, land in Staff, and get assigned here.</div></div>
+          </div>
+        </sc-if>
+        <div onClick="{{ saveVenue }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer;opacity:{{ ctaOpacity }}">{{ venueCta }}</div>
+        <sc-if value="{{ dEditing }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ removeVenue }}" style="height:48px;border-radius:13px;border:1.5px solid #EAD5CE;color:#C0492A;display:flex;align-items:center;justify-content:center;font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.01em;margin-top:9px;cursor:pointer">{{ removeVenueLabel }}</div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ shEvenOut }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#F8F9F8;border:1px solid #EDEEF1;border-radius:13px;margin-top:14px;overflow:hidden">
+          <sc-for list="{{ evenRows }}" as="e" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-top:{{ e.line }}">
+              <div style="flex:1;font:500 14px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ e.title }}</div>
+              <div style="font:500 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;font-variant-numeric:tabular-nums">{{ e.from }}</div>
+              <i class="ph ph-arrow-right" style="font-size:13px;color:#B3B7BE"></i>
+              <div style="font:600 13.5px 'Instrument Sans',sans-serif;color:#14684A;font-variant-numeric:tabular-nums">{{ e.to }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font:400 12.5px/1.55 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:10px">Re-deals by ladder order — Group 1 takes the top band. {{ evenMoves }}</div>
+        <div onClick="{{ applyEvenOut }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer">{{ evenCta }}</div>
+        <div onClick="{{ closeSheet }}" style="height:48px;display:flex;align-items:center;justify-content:center;font:600 14px 'Instrument Sans',sans-serif;color:#71757E;margin-top:4px;cursor:pointer">Keep as is</div>
+      </sc-if>
+
+      <sc-if value="{{ shMove }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;margin-top:12px">
+          <sc-for list="{{ moveRows }}" as="m" hint-placeholder-count="3">
+            <div onClick="{{ m.pick }}" style="display:flex;align-items:center;gap:12px;padding:13px 2px;border-top:{{ m.line }};cursor:pointer;opacity:{{ m.dim }}">
+              <div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ m.title }}</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ m.sub }}</div></div>
+              <sc-if value="{{ m.current }}" hint-placeholder-val="{{ false }}"><i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i></sc-if>
+              <sc-if value="{{ m.notCurrent }}" hint-placeholder-val="{{ false }}"><div style="width:21px;height:21px;border-radius:99px;border:1.5px solid #DCDEE3"></div></sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ shTourney }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:14px">Format</div>
+        <div style="display:flex;gap:7px;margin-top:7px">
+          <sc-for list="{{ kindPills }}" as="kp" hint-placeholder-count="3">
+            <div onClick="{{ kp.pick }}" style="padding:8px 13px;border-radius:999px;background:{{ kp.bg }};color:{{ kp.color }};font:600 13px 'Instrument Sans',sans-serif;cursor:pointer">{{ kp.label }}</div>
+          </sc-for>
+        </div>
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:13px">Groups in</div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:7px">
+          <sc-for list="{{ groupChips }}" as="gc" hint-placeholder-count="3">
+            <div onClick="{{ gc.pick }}" style="padding:7px 12px;border-radius:999px;background:{{ gc.bg }};color:{{ gc.color }};border:{{ gc.border }};font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ gc.label }}</div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ tourNotTeam }}" hint-placeholder-val="{{ true }}">
+          <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:13px">Play</div>
+          <div style="display:flex;gap:7px;margin-top:7px">
+            <sc-for list="{{ modePills }}" as="mp" hint-placeholder-count="2">
+              <div onClick="{{ mp.pick }}" style="padding:8px 13px;border-radius:999px;background:{{ mp.bg }};color:{{ mp.color }};font:600 13px 'Instrument Sans',sans-serif;cursor:pointer">{{ mp.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="display:flex;gap:9px;margin-top:13px">
+          <sc-if value="{{ tourIsTeam }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1">
+              <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:6px">Teams</div>
+              <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px"><div onClick="{{ teamsDec }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div><div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif">{{ dTeams }}</div><div onClick="{{ teamsInc }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div></div>
+            </div>
+          </sc-if>
+          <div style="flex:1">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:6px">Days</div>
+            <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px"><div onClick="{{ daysDec }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div><div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif">{{ dDays }}</div><div onClick="{{ daysInc }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div></div>
+          </div>
+        </div>
+        <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:7px">{{ tourHint }}</div>
+        <sc-if value="{{ tourIsDoubles }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:baseline;margin-top:12px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Requested pairings</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">optional</div></div>
+          <sc-if value="{{ hasReqPairs2 }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">
+              <sc-for list="{{ reqPairChips2 }}" as="rp2" hint-placeholder-count="0">
+                <div onClick="{{ rp2.remove }}" style="display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;background:#0B0B0C;color:#fff;font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ rp2.label }}<i class="ph ph-x" style="font-size:11px;color:rgba(255,255,255,.6)"></i></div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px">{{ pairHint2 }}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:150px;overflow:auto">
+            <sc-for list="{{ unpairedChips2 }}" as="uc2" hint-placeholder-count="6">
+              <div onClick="{{ uc2.pick }}" style="padding:6px 11px;border-radius:999px;background:{{ uc2.bg }};color:{{ uc2.color }};border:{{ uc2.border }};font:600 12px 'Instrument Sans',sans-serif;cursor:pointer">{{ uc2.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div onClick="{{ doCreateTourney }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer;opacity:{{ tourCtaOp }}">{{ createTourneyCta }}</div>
+      </sc-if>
+
+      <sc-if value="{{ shScore }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:9px;margin-top:13px">
+          <div style="flex:1;border:{{ scABorder }};background:{{ scABg }};border-radius:15px;padding:11px 13px;min-width:0">
+            <div style="font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:{{ scAColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ scAN }}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div onClick="{{ aDec }}" style="width:32px;height:32px;border-radius:10px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:13px;color:#5C6068"></i></div>
+              <div style="flex:1;text-align:center;font:600 20px 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums">{{ scA }}</div>
+              <div onClick="{{ aInc }}" style="width:32px;height:32px;border-radius:10px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:13px;color:#fff"></i></div>
+            </div>
+          </div>
+          <div style="flex:1;border:{{ scBBorder }};background:{{ scBBg }};border-radius:15px;padding:11px 13px;min-width:0">
+            <div style="font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:{{ scBColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ scBN }}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div onClick="{{ bDec }}" style="width:32px;height:32px;border-radius:10px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:13px;color:#5C6068"></i></div>
+              <div style="flex:1;text-align:center;font:600 20px 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums">{{ scB }}</div>
+              <div onClick="{{ bInc }}" style="width:32px;height:32px;border-radius:10px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:13px;color:#fff"></i></div>
+            </div>
+          </div>
+        </div>
+        <div onClick="{{ saveScore }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:12px;cursor:pointer;opacity:{{ scoreOp }}">{{ scoreCta }}</div>
+        <sc-if value="{{ hasScore }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ clearScore }}" style="height:44px;display:flex;align-items:center;justify-content:center;font:600 13.5px 'Instrument Sans',sans-serif;color:#C0492A;cursor:pointer">Clear this score</div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ shImport }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;border:1.5px dashed #C3DFCF;border-radius:15px;padding:14px;display:flex;align-items:center;gap:12px;margin-top:14px;cursor:pointer">
+          <input type="file" accept=".csv,.txt,.tsv" onChange="{{ fileChosen }}" style="position:absolute;inset:0;opacity:0;cursor:pointer">
+          <div style="flex:none;width:40px;height:40px;border-radius:13px;background:#F6FAF7;display:flex;align-items:center;justify-content:center"><i class="ph ph-file-arrow-up" style="font-size:19px;color:#1A7F55"></i></div>
+          <div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:#14684A">Choose a file</div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">.csv or .txt — name, age, gender per line</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin:13px 0 9px"><div style="flex:1;height:1px;background:#EDEEF1"></div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">or paste the list</div><div style="flex:1;height:1px;background:#EDEEF1"></div></div>
+        <textarea value="{{ dPaste }}" onInput="{{ setDPaste }}" placeholder="Serene Chu, 11, F&#10;Liam Prior, 12, M" style="width:100%;box-sizing:border-box;height:96px;resize:none;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:500 13.5px/1.5 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#0B0B0C;background:#fff;outline:none"></textarea>
+        <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px">{{ importHint }}</div>
+        <div onClick="{{ addPasted }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:12px;cursor:pointer;opacity:{{ pasteOp }}">{{ pasteCta }}</div>
+        <div onClick="{{ useSample }}" style="height:44px;display:flex;align-items:center;justify-content:center;font:600 13.5px 'Instrument Sans',sans-serif;color:#1A7F55;cursor:pointer;margin-top:2px">Use the sample roster · 42 kids</div>
+      </sc-if>
+
+      <sc-if value="{{ shSeason }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:16px 0 7px">Camp name</div>
+        <input value="{{ dName }}" onInput="{{ setDName }}" style="width:100%;box-sizing:border-box;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:600 15.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em;background:#fff">
+        <div style="display:flex;align-items:baseline;margin:12px 0 7px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Season</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">optional</div></div>
+        <input value="{{ dSubtitle }}" onInput="{{ setDSubtitle }}" placeholder="Jun 22 – Aug 14" style="width:100%;box-sizing:border-box;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em;background:#fff">
+        <div onClick="{{ saveSeason }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer;opacity:{{ ctaOpacity }}">Save changes</div>
+      </sc-if>
+    </div>
+  </sc-if>

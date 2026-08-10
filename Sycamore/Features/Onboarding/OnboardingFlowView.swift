@@ -116,6 +116,11 @@ struct OnboardingFlowView: View {
             if let file {
                 ImportReviewView(
                     file: file,
+                    // The bands chosen on `8b`. Omitted until now, so a file imported into a camp
+                    // whose venues had been narrowed was placed as if none of them were — the
+                    // screen whose promise is "nothing is written until the button at the bottom"
+                    // was showing a placement the button would not make.
+                    venues: shape.venues.map(\.rosterVenue),
                     onFix: { path.append(.addPlayer(.fix($0))) },
                     onCommit: finish,
                     isCommitting: store.isWorking

@@ -44,7 +44,11 @@ struct AddPlayerView: View {
 
     private enum Field: Hashable { case first, last, age }
 
-    init(mode: Mode = .new, venues: [VenueShape], onSave: @escaping (IntakePlayer) -> Void) {
+    init(
+        mode: Mode = .new,
+        venues: [VenueShape],
+        onSave: @escaping (IntakePlayer) -> Void
+    ) {
         self.mode = mode
         self.venues = venues
         self.onSave = onSave
@@ -280,9 +284,47 @@ struct AddPlayerView: View {
         .accessibilityLabel(label)
     }
 
-    /// The design's line about the under-11s. Shown only when it is true — an explanation of a
-    /// default that was not applied is just noise on the screen.
+    /// The venues as the age rule needs to see them.
+    ///
+    /// **The band is read off the shape, not off a second parameter.** This used to be a
+    /// `bands: [VenueShape.ID: AgeBand]` dictionary defaulting to `[:]`, defended by a comment
+    /// saying `VenueShape` "has no band because at onboarding there is nothing to have one". That
+    /// stopped being true the moment `VenueShapeSheet` grew `VenueAgeBandPicker` — a band is now
+    /// chosen on `8b`, two screens *before* this one — and because the parameter had a default,
+    /// the onboarding call site kept compiling while quietly passing nothing. Narrow a venue to
+    /// twelve-and-up on the shape screen and add a nine-year-old here, and they were filed into it
+    /// in silence: `venueNote` drew no warning and `RosterAgeFit` rerouted nobody.
+    ///
+    /// Reading the field the caller already carries makes both call sites right by construction,
+    /// which is the only version of this that cannot drift again.
+    private var rosterVenues: [RosterVenue] {
+        venues.map { RosterVenue(id: $0.id, name: $0.name, band: $0.ageBand) }
+    }
+
+    /// One line under the chips, and only ever one.
+    ///
+    /// Two notes stacked under a row of chips is a wall in front of a screen whose whole promise is
+    /// three fields and two rows of chips, so the band takes precedence: it describes a venue that
+    /// **will not take this kid**, which is a bigger fact than which venue the app picked for them
+    /// by default. Both are shown only when true — an explanation of a rule nobody has met is
+    /// noise, and this screen is read standing on a court at 8:55.
+    ///
+    /// The band note is a **warning, never a block**. The person holding the phone is looking at
+    /// the child; the venue's band is a filing rule written a week ago, and `save()` writes whoever
+    /// they typed either way. That is also why the sentence names where the kid would otherwise
+    /// go rather than asking a question — there is nothing here to answer.
     private var venueNote: String? {
+        // Silent while the age itself is being refused. `ageProblem` already has the field's
+        // attention with a red line under it, and a second note saying which venue will not take
+        // a number the roster will not take either is a wall in front of one fix.
+        if ageProblem == nil,
+           let band = RosterAgeFit.note(
+               forAge: PlayerRules.age(Int(age)), atVenue: chosenVenueIndex, among: rosterVenues
+           ) {
+            return band
+        }
+
+        // The design's line about the under-11s.
         guard let years = Int(age), years < 11, chosenVenueIndex == 0, let first = venues.first else { return nil }
         return "Under 11, so \(first.name) by default. Coaches can still move them once they are ranked."
     }
@@ -357,7 +399,11 @@ struct AddPlayerView: View {
         player.gender = gender
         player.venueIndex = chosenVenueIndex
 
-        onSave(player)
+        // Through the same rule the file path uses, so the note above and the kid that lands
+        // cannot come apart: if the line under the chips says "they go to LATC instead", this is
+        // what sends them there. One kid, one landing — and the fit places them at the chip they
+        // tapped whenever that venue will have them, which is every venue that is not asking.
+        onSave(RosterAgeFit([player], venues: rosterVenues).landings.first?.routed ?? player)
     }
 }
 

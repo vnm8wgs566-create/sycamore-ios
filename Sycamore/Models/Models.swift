@@ -508,6 +508,49 @@ enum StaffingStatus: Hashable, Sendable {
     var needsAttention: Bool { self != .inRange }
 }
 
+/// Which ages a venue takes.
+///
+/// Three values because the venue sheet offers three. It is a band rather than a pair of numbers
+/// on purpose: the question being asked is "which of my two groups is this kid for", not "is this
+/// kid between 9 and 11", and a camp that wants finer slicing has venues for it.
+///
+/// **What this does not do is filter a list.** It decides where an *imported* kid lands. A roster
+/// arriving at a venue is dealt onto its courts, and a kid outside the band is left unassigned
+/// and counted rather than dealt somewhere they do not belong — see `admits(_:)`.
+enum AgeBand: String, Codable, Hashable, Sendable, CaseIterable {
+    case all
+    case underTwelve = "under_twelve"
+    case twelveUp = "twelve_up"
+
+    /// The chip in the venue sheet, and the chip on the venue's card.
+    var label: String {
+        switch self {
+        case .all: "All ages"
+        case .underTwelve: "11 & under"
+        case .twelveUp: "12 & up"
+        }
+    }
+
+    /// Whether a kid of this age belongs at a venue with this band.
+    ///
+    /// **An unknown age does not satisfy a restricted band, and that is the whole point of the
+    /// method.** `Player.age` is optional — the roster importer accepts a file with no age column
+    /// and hand-added kids can be saved without one — so every caller has to decide what an
+    /// absent age means, and there are only two honest answers. Admitting them puts an eight
+    /// year old on a 12-and-up court because a spreadsheet had a blank cell. Refusing them leaves
+    /// a kid unassigned, where the screen says so out loud and somebody can place them by hand.
+    ///
+    /// The second is the one that fails where a person can see it, so it is the one taken. `.all`
+    /// admits everybody including the unknowns, because it is not asking.
+    func admits(_ age: Int?) -> Bool {
+        switch self {
+        case .all: true
+        case .underTwelve: (age ?? .max) <= 11
+        case .twelveUp: (age ?? .min) >= 12
+        }
+    }
+}
+
 struct Venue: Identifiable, Hashable, Codable, Sendable {
     var id: UUID = UUID()
     var name: String
@@ -515,7 +558,28 @@ struct Venue: Identifiable, Hashable, Codable, Sendable {
     var subtitle: String?
     var icon: String
     var tint: VenueTint
+    /// How many courts the venue has on the ground.
+    ///
+    /// **Not the same number as `groupCount`, and the difference is the point.** This is a fact
+    /// about the site: six courts exist, two are being resurfaced. `groupCount` is a decision:
+    /// split the kids four ways. They agree at almost every venue and are still different
+    /// questions, and until the venue sheet could ask both, asking for one more group silently
+    /// claimed a court that might not be there.
+    ///
+    /// Nothing is created from this. Courts as *records* are `Group`s, and `Camp.syncGroups(for:)`
+    /// makes exactly `groupCount` of them. This number is what the venue tells you about itself.
+    var courtCount: Int
+    /// How many groups the venue's kids are split into. One `Group` record each.
     var groupCount: Int
+    /// Roughly how many kids a group should hold, or nil if nobody said.
+    ///
+    /// **Never enforced.** The design is explicit: "Optional target — over flags amber, never
+    /// blocks." A group over its target draws a warning and saves anyway, because the person
+    /// holding the phone can see the court and this number cannot. Nil is "not decided", which is
+    /// a different claim from a target of zero — hence the optional rather than a sentinel.
+    var targetPerGroup: Int?
+    /// Which ages this venue takes. `.all` unless somebody narrowed it.
+    var ageBand: AgeBand = .all
     var coachMin: Int
     var coachMax: Int
     var playerMin: Int
@@ -532,6 +596,26 @@ struct Venue: Identifiable, Hashable, Codable, Sendable {
     /// The `4 – 7` reading in the venue sheet's limits card.
     var coachRangeLabel: String { "\(coachMin) – \(coachMax)" }
     var playerRangeLabel: String { "\(playerMin) – \(playerMax)" }
+
+    /// `6 courts` — the venue card's first chip. Singular at one, because "1 courts" is the kind
+    /// of thing that makes a person distrust the rest of the screen.
+    ///
+    /// The noun is the venue's own only in the sense that a camp picks one: a swim camp says
+    /// "lanes". That word lives on `Sport.groupNoun` and a `Venue` does not know its camp, so the
+    /// caller passes it. The default keeps the common case short at the call site.
+    func courtCountLabel(noun: String = "court") -> String {
+        "\(courtCount) \(noun)\(courtCount == 1 ? "" : "s")"
+    }
+
+    /// `4 groups`. Always "group" — a group is a group whatever the sport calls the ground it
+    /// stands on.
+    var groupCountLabel: String { "\(groupCount) group\(groupCount == 1 ? "" : "s")" }
+
+    /// `~12/group`, or nil when no target was set.
+    ///
+    /// The tilde is doing real work: this is a target and not a capacity, and the screen has to
+    /// stop somebody reading it as a rule they have broken.
+    var targetLabel: String? { targetPerGroup.map { "~\($0)/group" } }
 
     /// The six tiles in the venue sheet's icon grid.
     static let iconOptions = ["🌳", "🎾", "🏆", "🔥", "⭐", "🌊"]
@@ -1602,6 +1686,7 @@ extension Camp {
                 subtitle: nil,
                 icon: icon,
                 tint: .suggested(for: icon),
+                courtCount: max(1, draft.groupsPerVenue),
                 groupCount: max(1, draft.groupsPerVenue),
                 coachMin: max(1, draft.groupsPerVenue - 2),
                 coachMax: draft.groupsPerVenue + 1,

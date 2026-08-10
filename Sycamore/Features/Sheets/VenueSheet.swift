@@ -2,54 +2,140 @@
 //  VenueSheet.swift
 //  Sycamore
 //
-//  Screen 11 — tap a venue name. Its status, what it is called, what it looks like, and the
-//  limits the auto-partition works inside.
+//  Screen 11, and `design/app/regions/sheet-shVenue.html` — a venue's whole shape, asked at once.
 //
-//  Three of the pieces below it are no longer private, because "Shape the camp" grew an editor for
-//  the same venue one screen earlier (`VenueShapeSheet`) and draws the same blocks of the same
-//  drawing: `VenueNameFields` and `VenueLimitRow` live at the foot of this file, and the icon tile
-//  moved out to `VenueIconTile.swift`. The box round the two fields went further still, to
+//  What it now collects, in the design's order: name, subtitle, age band, courts, groups, an
+//  optional target per group, a live sentence saying what saving will do, and who stands here.
+//  Four of those are new, and they are new because `Venue` grew somewhere to put them — a venue
+//  knows how many courts it has *and*, separately, how many groups its kids split into, which used
+//  to be one number spent twice.
+//
+//  Three of the pieces below it are not private, because "Shape the camp" grew an editor for the
+//  same venue one screen earlier (`VenueShapeSheet`) and draws the same blocks of the same
+//  drawing: `VenueNameFields` and `VenueLimitRow` live at the foot of this file, the icon tile
+//  moved out to `VenueIconTile.swift`, and everything between the icon grid and the button is in
+//  `VenueShapeFields.swift`. The box round the two fields went further still, to
 //  `FormFieldMetrics.venueBox`, because that is where every other box in the app lives.
 //
-//  What is left here is what only a *created* venue has: a staffing banner, a stored tint to keep
-//  in step with the emoji, and a live write on every keystroke. `VenueShapeSheet` has none of the
-//  three, and its own header says why.
+//  ── The commit moved, and that is the design's doing ─────────────────────────────────────────
+//
+//  This screen used to have no button. It live-wrote every edit on a 400ms settle and flushed on
+//  close, because the frame it was drawn from ends at the icon grid and closing *was* the commit.
+//  `sheet-shVenue` draws a CTA — "Save changes" — and hangs a sentence above it that is *about
+//  pressing it*: "Save closes 2 groups…". A live write makes that sentence a lie twice over, once
+//  because the thing it describes has already happened and once because there is no moment at
+//  which it could be read before it did.
+//
+//  So the ✕ discards and the button commits, which is what a button under a warning has to mean.
+//  Everything the old debounce bought is bought better: no round trip per character, no transient
+//  "Another venue already uses that name." at a colliding prefix, and one write instead of eleven.
+//
+//  ── No Remove ────────────────────────────────────────────────────────────────────────────────
+//
+//  The design draws "Remove this venue" under the CTA for an existing venue, with a two-tap
+//  confirm that names the kids it takes with it. **There is no delete path for a created venue
+//  anywhere below this view** — not on `AppStore`, not on `Repository`, not in either
+//  implementation of it — and `Store/` is not this change's to widen. A button that cannot do what
+//  it says is worse than an absence, so the control is not drawn here at all. `VenueShapeSheet`
+//  draws it, because before the camp exists removal is a `CampShape` mutation and works.
 //
 
 import SwiftUI
 
 struct VenueSheet: View {
     let store: AppStore
-    let venueID: Venue.ID
 
-    /// Edits land here first so typing does not race the store round-trip; every change is
-    /// pushed back out by the `task(id:)` below, once the typing stops.
+    /// The venue being edited, or nil while one is being added.
+    ///
+    /// Nil is the whole of the difference between the two modes: it decides the title, the CTA's
+    /// words, which sentence sits above it, whether the staffing banner has anything to read, and
+    /// whether saving is an `updateVenue` or an `addVenue(shapedBy:)`.
+    let venueID: Venue.ID?
+
+    /// How the sheet takes itself off screen. Nil for the venue the root presents through
+    /// `ActiveSheet`, which is dismissed through the store like every other sheet it owns.
+    private let onClose: (() -> Void)?
+
+    /// Edits land here and go nowhere until the button is pressed — see the file header.
     @State private var draft: Venue
+    /// Who is picked in the coach row. A selection, not an assignment: it becomes one at save.
+    @State private var coaches: Set<StaffMember.ID>
+    /// Stops a second tap queueing a second write behind the first.
+    @State private var isSaving = false
 
+    /// What the venue looked like on the way in. Two numbers of it, which is all the sentence
+    /// above the button needs: how many groups it had, and who was standing in it.
+    private let openingGroupCount: Int
+    private let openingCoaches: Set<StaffMember.ID>
+
+    /// The venue as it stands, for editing.
     @MainActor
     init(store: AppStore, venueID: Venue.ID) {
+        let venue = store.venue(venueID) ?? .placeholder
+        let standing = Set((store.camp?.coaches(in: venueID) ?? []).map(\.id))
+
         self.store = store
         self.venueID = venueID
-        _draft = State(initialValue: store.venue(venueID) ?? .placeholder)
+        self.onClose = nil
+        self.openingGroupCount = venue.groupCount
+        self.openingCoaches = standing
+        _draft = State(initialValue: venue)
+        _coaches = State(initialValue: standing)
+    }
+
+    /// A venue that does not exist yet, in a camp that does.
+    ///
+    /// Seeded from the camp's last venue exactly as `Repository.addVenue` seeds one, so pressing
+    /// Add without touching a stepper produces the venue the old "Add" produced — with a name on
+    /// it. That is the point of the mode: `addVenue()` appended `Venue 4` carrying the previous
+    /// venue's numbers and left somebody to find it, which is why Camp settings has always had a
+    /// venue called `Venue 4` in it.
+    @MainActor
+    init(store: AppStore, onClose: @escaping () -> Void) {
+        let template = store.camp?.orderedVenues.last
+        let index = store.camp?.venues.count ?? 0
+        let icon = Venue.iconOptions[index % Venue.iconOptions.count]
+
+        self.store = store
+        self.venueID = nil
+        self.onClose = onClose
+        self.openingGroupCount = template?.groupCount ?? 6
+        self.openingCoaches = []
+        _draft = State(
+            initialValue: Venue(
+                // Empty, so the field shows its placeholder and the button stays dimmed until
+                // there is a name. The design's `ctaOpacity: name ? 1 : .45` is that rule.
+                name: "",
+                subtitle: nil,
+                icon: icon,
+                tint: .suggested(for: icon),
+                courtCount: template?.courtCount ?? 6,
+                groupCount: template?.groupCount ?? 6,
+                // Deliberately not inherited: an age band copied from the venue next door would
+                // quietly narrow who this one may take, and a target is a decision about a group
+                // size somebody has not been asked about yet.
+                targetPerGroup: nil,
+                ageBand: .all,
+                coachMin: template?.coachMin ?? 4,
+                coachMax: template?.coachMax ?? 7,
+                playerMin: template?.playerMin ?? 0,
+                playerMax: template?.playerMax ?? 60
+            )
+        )
+        _coaches = State(initialValue: [])
     }
 
     var body: some View {
         SheetChrome(
-            title: draft.name,
-            subtitle: store.camp?.sheetSummary(for: venueID),
-            detentFraction: ActiveSheet.venue(venueID).detentFraction,
-            onClose: {
-                // The debounce below is cancelled by this view going away, so the last edit has
-                // to be flushed by hand — otherwise closing the sheet within the settle window
-                // silently drops whatever was typed last. Idempotent: `updatePending` compares
-                // against the store first, and `updateVenue` is serialised per camp, so a flush
-                // racing an in-flight write is at worst the same row written twice.
-                flushPendingEdit()
-                store.dismissSheet()
-            }
+            title: title,
+            subtitle: subtitle,
+            detentFraction: ActiveSheet.venue(draft.id).detentFraction,
+            onClose: close
         ) {
-            statusBanner
-                .padding(.bottom, Spacing.large)
+            if let banner = statusBannerText {
+                InfoBanner(banner)
+                    .padding(.bottom, Spacing.large)
+            }
 
             SheetSectionHeader("Name", bottomPadding: Spacing.small)
             VenueNameFields(name: $draft.name, subtitle: $draft.subtitle)
@@ -57,52 +143,54 @@ struct VenueSheet: View {
 
             SheetSectionHeader("Icon")
             iconGrid
-                .padding(.bottom, 18)
 
-            SheetSectionHeader("Limits")
+            VenueFieldLabel(title: "Age group")
+            VenueAgeBandPicker(ageBand: $draft.ageBand)
+
+            VenueFieldLabel(title: "Numbers")
+            VenueCountsCard(
+                courtNoun: courtNoun,
+                courts: $draft.courtCount,
+                groups: $draft.groupCount,
+                targetPerGroup: $draft.targetPerGroup
+            )
+            VenueDealLine(sentence: dealSentence, isWarning: isRecutting)
+
+            SheetSectionHeader("Limits", topPadding: 18)
             limitsCard
-        }
-        // Settle, then write — not a write per change.
-        //
-        // This screen live-writes because it has no Save button: the design draws a ✕ and
-        // nothing else, so closing *is* the commit and every edit has to have already landed.
-        // That contract is kept. What went is one round trip per **character**.
-        //
-        // Each `updateVenue` is a `perform` → `serialised(campID)` → full `camp(id:)` read →
-        // PATCH → court sync → a second full `camp(id:)` read, and the mutex means character
-        // N+1 queues behind character N's two round trips. Typing "Main Courts" queued eleven
-        // of them, each one reassigning `store.camp` and invalidating every view reading it.
-        // It also surfaced "Another venue already uses that name." at every transiently
-        // colliding prefix, because `updateVenue` maps the unique violation to a 409.
-        //
-        // `task(id:)` cancels and restarts on every keystroke, so the sleep only completes once
-        // the finger stops. `Task.sleep` throwing on cancellation is the mechanism, not an
-        // error path — a superseded edit should write nothing.
-        .task(id: draft) {
-            guard draft != store.venue(venueID) else { return }
-            do {
-                try await Task.sleep(for: .milliseconds(400))
-            } catch {
-                return
-            }
-            await store.updateVenue(draft)
+
+            VenueFieldLabel(title: "Coaches", note: "optional")
+            coachBlock
+
+            saveButton
+                .padding(.top, 18)
         }
     }
 
-    /// Writes the draft now, if it still differs from what the store holds.
-    private func flushPendingEdit() {
-        guard draft != store.venue(venueID) else { return }
-        let pending = draft
-        Task { await store.updateVenue(pending) }
+    // MARK: - What it is called
+
+    private var title: String {
+        let trimmed = draft.name.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { return trimmed }
+        return venueID == nil ? "New venue" : draft.name
     }
 
-    // MARK: - Status
+    /// `50 kids · 6 coaches · 6 groups` for a venue that has some, and the camp's own name for one
+    /// that does not exist yet — which is the design's `sheetContext`, and the only thing there is
+    /// to say about a venue nobody has added.
+    private var subtitle: String? {
+        guard let venueID else { return store.camp?.name }
+        return store.camp?.sheetSummary(for: venueID)
+    }
 
-    @ViewBuilder
-    private var statusBanner: some View {
-        if let status = store.camp?.staffingStatus(for: venueID) {
-            InfoBanner(status.bannerText)
-        }
+    /// What a group stands on in this sport — "court", "field", "lane".
+    private var courtNoun: String {
+        (store.camp?.sport.groupNoun ?? "court").lowercased()
+    }
+
+    private var statusBannerText: String? {
+        guard let venueID else { return nil }
+        return store.camp?.staffingStatus(for: venueID)?.bannerText
     }
 
     // MARK: - Icon
@@ -119,16 +207,14 @@ struct VenueSheet: View {
 
     // MARK: - Limits
 
+    /// The two head-count ranges, still read-only here.
+    ///
+    /// They are set on `8b` by the camp-wide rates and per venue in `VenueShapeSheet`; this screen
+    /// has never had a control for them and the design's sheet draws none either. What it shows is
+    /// what the auto-partition and the staffing flag are measuring against, which is the only way
+    /// to find out why a venue reads "2 coaches short".
     private var limitsCard: some View {
         Card(radius: Radius.input, borderColor: Theme.strokeAlt) {
-            VenueLimitRow(title: "Groups", detail: "Courts in this venue") {
-                StepperControl(
-                    value: $draft.groupCount,
-                    range: CampDraft.groupRange,
-                    valueWidth: 34,
-                    glyphSize: 14
-                )
-            }
             VenueLimitRow(title: "Coaches, min – max", detail: "On site at once") {
                 Text(draft.coachRangeLabel)
                     .typeStyle(.stepperValue, color: Theme.ink)
@@ -137,6 +223,195 @@ struct VenueSheet: View {
                 Text(draft.playerRangeLabel)
                     .typeStyle(.stepperValue, color: Theme.ink)
             }
+        }
+    }
+
+    // MARK: - What saving does
+
+    /// Whether the group count has moved on a venue that has kids in it — the amber case.
+    private var isRecutting: Bool {
+        venueID != nil && kidCount > 0 && draft.groupCount != openingGroupCount
+    }
+
+    private var kidCount: Int {
+        guard let venueID else { return 0 }
+        return store.camp?.players(in: venueID).count ?? 0
+    }
+
+    /// The three variants, and why two of them are not the design's words: see `VenueDealSentence`.
+    private var dealSentence: String {
+        guard venueID != nil, kidCount > 0 else {
+            return VenueDealSentence.adding(groups: draft.groupCount)
+        }
+        guard draft.groupCount != openingGroupCount else {
+            return VenueDealSentence.holding(name: title, kids: kidCount)
+        }
+        return VenueDealSentence.recutting(
+            from: openingGroupCount, to: draft.groupCount, kids: kidCount
+        )
+    }
+
+    // MARK: - Coaches
+
+    /// The people who have joined, or the code that brings them.
+    ///
+    /// Roamers are in the list. A trainer with no fixed court is exactly the person somebody might
+    /// want standing at one venue for the week, and leaving them out would make the picker quietly
+    /// disagree with the Staff screen about who is on the team.
+    @ViewBuilder
+    private var coachBlock: some View {
+        if let camp = store.camp, !camp.staff.isEmpty {
+            VenueCoachPicker(
+                coaches: camp.staff.map { VenueCoachOption(id: $0.id, name: $0.name) },
+                selected: coaches
+            ) { id in
+                if coaches.contains(id) {
+                    coaches.remove(id)
+                } else {
+                    coaches.insert(id)
+                }
+            }
+        } else if let code = store.camp?.inviteCode {
+            VenueInviteRow(inviteCode: code)
+        }
+    }
+
+    // MARK: - Commit
+
+    private var saveButton: some View {
+        PrimaryButton(
+            ctaTitle,
+            height: OnboardingMetrics.ctaHeight,
+            radius: OnboardingMetrics.cardRadius,
+            font: .intakeButton
+        ) {
+            Task { await save() }
+        }
+        .opacity(canSave ? 1 : 0.45)
+        .disabled(!canSave)
+        // A dimmed button is reachable on its own by Switch Control and by a rotor jump, and
+        // "Add venue, dimmed" says nothing about what is missing.
+        .accessibilityHint(canSave ? "" : "Give the venue a name first")
+    }
+
+    private var ctaTitle: String {
+        guard venueID == nil else { return "Save changes" }
+        let trimmed = draft.name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Add venue" : "Add \(trimmed)"
+    }
+
+    /// The length bound is `CampName`'s, borrowed for the reason `VenueShapeSheet` borrows it: a
+    /// venue name and a camp name are typed into the same kind of box, and `sites.name` carries no
+    /// CHECK of its own to mirror.
+    ///
+    /// No duplicate check here, unlike the pre-creation sheet. It is not that a collision cannot
+    /// happen — it is that this write has somewhere to fail: `updateVenue` maps the unique
+    /// violation to a 409 and the store raises it, where before the camp exists there is nothing
+    /// downstream and the editor is the last chance to refuse.
+    private var canSave: Bool {
+        !isSaving && CampName.isValid(draft.name.trimmingCharacters(in: .whitespaces))
+    }
+
+    private func save() async {
+        guard canSave else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        if venueID == nil {
+            await add()
+        } else {
+            await store.updateVenue(shaped(draft))
+            await applyCoaches(to: draft.id)
+        }
+
+        // Left open on failure, with the store's banner over it, so whatever was typed is still
+        // there to try again. Closing on a write that did not land is how a name disappears.
+        guard store.errorMessage == nil else { return }
+        close()
+    }
+
+    /// Creates the venue, then gives it the shape on screen.
+    ///
+    /// `addVenue(shapedBy:)` is one intent for what used to be two writes at every call site — the
+    /// repository's `addVenue` takes no arguments, so a *named* venue has always been an append
+    /// followed by an update. The transform receives the venue the repository actually created,
+    /// which is what carries the id and the sort index neither this sheet nor its reader can know
+    /// in advance.
+    ///
+    /// The id is recovered afterwards rather than captured inside the transform: the coaches can
+    /// only be put on courts once the courts exist, and they do not exist until the write returns.
+    private func add() async {
+        let before = Set((store.camp?.venues ?? []).map(\.id))
+        await store.addVenue(shapedBy: shaped)
+
+        guard store.errorMessage == nil,
+              let created = store.camp?.venues.first(where: { !before.contains($0.id) })
+        else { return }
+
+        await applyCoaches(to: created.id)
+    }
+
+    /// The draft's answers written onto whichever `Venue` is really being saved.
+    ///
+    /// A function of the draft and nothing else, so it is the same write whether it lands on a
+    /// venue the repository has just created or on the one this sheet opened. The four fields it
+    /// does *not* touch — the two ranges, the tint's stored copy, the sort index — either have no
+    /// control on this screen or are already on the draft.
+    private func shaped(_ existing: Venue) -> Venue {
+        var updated = existing
+        updated.name = draft.name.trimmingCharacters(in: .whitespaces)
+        let subtitle = (draft.subtitle ?? "").trimmingCharacters(in: .whitespaces)
+        updated.subtitle = subtitle.isEmpty ? nil : subtitle
+        updated.icon = draft.icon
+        updated.tint = draft.tint
+        updated.courtCount = CampShape.clamp(draft.courtCount, into: CampShape.courtRange)
+        updated.groupCount = CampShape.clamp(draft.groupCount, into: CampShape.groupRange)
+        updated.targetPerGroup = draft.targetPerGroup.map {
+            CampShape.clamp($0, into: CampShape.targetRange)
+        }
+        updated.ageBand = draft.ageBand
+        return updated
+    }
+
+    /// Puts the picked coaches on courts here and takes the unpicked ones off.
+    ///
+    /// **A coach is assigned to a court, not to a venue**, and that is the model rather than a
+    /// simplification: `CourtAssignment.groupID` is not optional, so "at Sycamore, no court yet"
+    /// is not a state a `StaffMember` can be in. Picking somebody therefore seats them on the
+    /// first court here that has nobody on it — which is what "sets the default staffing for this
+    /// venue" comes to when the venue is made of courts.
+    ///
+    /// Runs only over what changed. Re-sending an assignment somebody already has would move them
+    /// off their own court onto the first free one, which is a person walking to a different court
+    /// because a sheet was opened and closed.
+    ///
+    /// Sequential rather than a task group: each of these is a full camp round trip serialised on
+    /// the camp id inside the store anyway, and firing them together only queues them somewhere
+    /// less visible.
+    private func applyCoaches(to venueID: Venue.ID) async {
+        for id in openingCoaches.subtracting(coaches) {
+            await store.assignStaff(id, toGroup: nil)
+        }
+
+        for id in coaches.subtracting(openingCoaches) {
+            // Re-read per coach: the previous iteration took a court, and the camp that knows it
+            // is the one that came back from that write.
+            guard let free = firstFreeCourt(in: venueID) else { break }
+            await store.assignStaff(id, toGroup: free)
+        }
+    }
+
+    /// The lowest-numbered court here with nobody on it.
+    private func firstFreeCourt(in venueID: Venue.ID) -> Group.ID? {
+        guard let camp = store.camp else { return nil }
+        return camp.groups(in: venueID).first { camp.coach(forGroup: $0.id) == nil }?.id
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            store.dismissSheet()
         }
     }
 }
@@ -215,10 +490,10 @@ struct VenueNameFields: View {
 /// it. `padding:11px 13px` with the title `700 14.5` over a `500 11.5` grey line
 /// (`design/Sycamore Flow.dc.html:488`).
 ///
-/// Shared with `VenueShapeSheet` rather than drawn twice, for the reason `Motion.swift:12` gives:
-/// two features needing the same thing. Both are editors for the same venue drawn from the same
-/// block of screen 11 — one before the camp exists and one after — so a row that drifted between
-/// them would be the same card in two shapes.
+/// Shared with `VenueShapeSheet` and with `VenueCountsCard` rather than drawn three times, for the
+/// reason `Motion.swift:12` gives: two features needing the same thing. All three are rows of the
+/// same card in the same drawing — before the camp exists and after — so a row that drifted
+/// between them would be one card in three shapes.
 ///
 /// Named `VenueLimitRow` rather than `LimitRow` on the way out of `private`, the same reason
 /// `IconTile` became `VenueIconTile`: a bare `LimitRow` is a name three features could each want.
@@ -233,7 +508,11 @@ struct VenueLimitRow<Trailing: View>: View {
                 Text(title)
                     .typeStyle(.rowLabel, color: Theme.ink)
                 Text(detail)
-                    .typeStyle(.rowSubtitleSmall, color: Theme.inkMuted)
+                    // `inkTertiary` rather than the design's `#8A8E96`: these lines are body copy
+                    // — one of them is the only place "over flags amber, never blocks" is said —
+                    // and `inkMuted` is under 4.5:1 on white where `inkTertiary` is 4.6:1.
+                    .typeStyle(.rowSubtitleSmall, color: Theme.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
             trailing
@@ -251,6 +530,7 @@ private extension Venue {
         subtitle: nil,
         icon: Venue.iconOptions[0],
         tint: .moss,
+        courtCount: 1,
         groupCount: 1,
         coachMin: 0,
         coachMax: 0,
@@ -262,21 +542,53 @@ private extension Venue {
 // MARK: - Previews
 
 #Preview("Venue sheet") {
-    ZStack(alignment: .bottom) {
-        Theme.scrim.ignoresSafeArea()
-        VenueSheet(store: .preview, venueID: SampleData.sycamore.id)
-            .frame(height: 612)
-    }
-    .frame(height: 700)
-    .background(Theme.canvas)
+    VenueSheetPreviewHarness(venueID: SampleData.sycamore.id)
 }
 
 #Preview("Venue sheet — short on coaches") {
-    ZStack(alignment: .bottom) {
-        Theme.scrim.ignoresSafeArea()
-        VenueSheet(store: .preview, venueID: SampleData.latc.id)
-            .frame(height: 612)
+    VenueSheetPreviewHarness(venueID: SampleData.latc.id)
+}
+
+/// Adding one to a camp that already exists — the mode that used to be an "Add" button appending
+/// `Venue 3` and nothing else.
+#Preview("Venue sheet — a new venue") {
+    VenueSheetPreviewHarness(venueID: nil)
+}
+
+/// A camp nobody has joined yet, so the coach row is the invite plate instead of a chip row.
+/// Westside Swim has three venues, 74 kids and no staff at all.
+#Preview("Venue sheet — nobody has joined") {
+    VenueSheetPreviewHarness(
+        store: .previewAdmin,
+        venueID: SampleData.westsideSwim.orderedVenues[0].id
+    )
+}
+
+#Preview("Venue sheet — accessibility1") {
+    VenueSheetPreviewHarness(venueID: SampleData.sycamore.id)
+        .environment(\.dynamicTypeSize, .accessibility1)
+}
+
+private struct VenueSheetPreviewHarness: View {
+    var store: AppStore = .preview
+    let venueID: Venue.ID?
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Theme.scrim.ignoresSafeArea()
+            sheet
+                .frame(height: 612)
+        }
+        .frame(height: 700)
+        .background(Theme.canvas)
     }
-    .frame(height: 700)
-    .background(Theme.canvas)
+
+    @ViewBuilder
+    private var sheet: some View {
+        if let venueID {
+            VenueSheet(store: store, venueID: venueID)
+        } else {
+            VenueSheet(store: store, onClose: {})
+        }
+    }
 }

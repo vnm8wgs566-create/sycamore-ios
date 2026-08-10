@@ -51,6 +51,10 @@ enum Fixture {
                     subtitle: nil,
                     icon: "🌳",
                     tint: .moss,
+                    // A fixture venue runs one group per court, which is what every venue in this
+                    // app did before `courtCount` and `groupCount` became separate numbers. No test
+                    // in this file is about the difference between them.
+                    courtCount: spec.courts,
                     groupCount: spec.courts,
                     // Coach limits are irrelevant to every test in this file, and a range wide
                     // enough to never fire keeps `staffingStatus` out of the way.
@@ -98,5 +102,28 @@ enum Fixture {
     /// How many kids each venue ended up with, in the venues' own order.
     static func venueSizes(_ camp: Camp) -> [Int] {
         camp.orderedVenues.map { camp.players(in: $0.id).count }
+    }
+}
+
+// MARK: - A day that is not today
+
+extension Weekday {
+
+    /// Some day of the week that is **not** today.
+    ///
+    /// For the tests whose whole subject is "a thing recorded against a different day does not leak
+    /// into today". Written as a literal — `.mon` was the usual choice — such a test asserts its own
+    /// opposite one day in seven and passes the other six, so it lands as a Monday-morning failure
+    /// in work that has nothing to do with attendance. Two of them did exactly that on 2026-08-10.
+    ///
+    /// Tomorrow rather than an arbitrary pick: stable within a run, and it reads as a real day to
+    /// anybody debugging a failure. `allCases` is ordered Monday-first and `Weekday` is 1-based, so
+    /// the modulo lands on the next case and wraps Sunday back to Monday.
+    static var notToday: Weekday {
+        let next = Weekday(rawValue: today.rawValue % Weekday.allCases.count + 1)
+        // `rawValue` is 1...7 and the arithmetic above stays inside it, so the failure branch is
+        // unreachable; `.wed` rather than a force-unwrap because a test helper that traps tells you
+        // less than one that keeps going.
+        return next ?? .wed
     }
 }

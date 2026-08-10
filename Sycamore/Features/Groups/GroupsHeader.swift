@@ -42,7 +42,7 @@ struct GroupsHeader: View {
     var body: some View {
         VStack(spacing: 0) {
             ScreenHeader(title: "Groups", subtitle: count, initials: store.avatarInitials) {
-                store.pushedScreen = .profile
+                store.pushedScreen = .campHome
             }
 
             if let movingName {

@@ -200,7 +200,12 @@ struct CampReindexTests {
         let court = camp.groups[0].id
         let away = camp.orderedPlayers[0].id
 
-        camp.setAttendance(playerID: away, day: .mon, present: false)
+        // Not a hard-coded `.mon`. This test asserts that a *different* day's absence leaves
+        // today alone, so the day it writes to has to be resolved against the real clock — pinned
+        // to Monday it asserted the exact opposite of its own name every Monday, and did, on
+        // 2026-08-10. `Weekday.notToday` is the fixture that cannot say "another day" and mean
+        // "today".
+        camp.setAttendance(playerID: away, day: .notToday, present: false)
 
         #expect(camp.group(court)?.presentCount == 5)
         #expect(camp.group(court)?.playerCount == 5)

@@ -67,4 +67,22 @@ enum Relation {
     /// could read them back.
     static let scheduleBlockCourts = "schedule_block_courts"
     static let inboxItems = "inbox_items"
+
+    // MARK: The Tournament tab
+    //
+    // Five relations rather than a `sites.tournaments jsonb`, which is what the design prototype
+    // keeps in localStorage. The migration's own header gives the reason: removing a venue deletes
+    // its kids, and a blob of player ids has no way to hear about that.
+
+    static let tournaments = "tournaments"
+    /// The competitor, whatever it is made of — one kid in singles, a pair in doubles, a whole
+    /// roster in team tennis. `Tournament.Entrant` **and** `Tournament.Team` both land here; which
+    /// one a row is read back as is settled by `tournaments.kind`.
+    static let tournamentEntrants = "tournament_entrants"
+    /// Who is in an entrant, and in what order — `slot` is which half of a doubles pair, and draft
+    /// order for a team.
+    static let tournamentEntrantPlayers = "tournament_entrant_players"
+    /// Team tennis only: `Tournament.Team.coachIDs`.
+    static let tournamentEntrantCoaches = "tournament_entrant_coaches"
+    static let tournamentMatches = "tournament_matches"
 }

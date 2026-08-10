@@ -1,0 +1,7 @@
+<sc-if value="{{ shJoin }}" hint-placeholder-val="{{ false }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:16px 0 7px">Invite code</div>
+        <input value="{{ dCode }}" onInput="{{ setDCode }}" placeholder="SYC-4127" style="width:100%;box-sizing:border-box;border:1.5px solid #0B0B0C;border-radius:15px;padding:14px 15px;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:.14em;background:#fff;text-transform:uppercase">
+        <sc-if value="{{ joinFlag }}" hint-placeholder-val="{{ false }}"><div style="font:500 12.5px/1.5 'Instrument Sans',sans-serif;color:#B67A16;margin-top:10px">{{ joinFlag }}</div></sc-if>
+        <div style="font:400 12.5px/1.55 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:10px">Codes come from whoever runs the camp.</div>
+        <div onClick="{{ joinCamp }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer;opacity:{{ ctaOpacity }}">Join</div>
+      </sc-if>

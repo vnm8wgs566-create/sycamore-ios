@@ -492,7 +492,14 @@ actor InMemoryRepository: SycamoreRepository {
                     subtitle: nil,
                     icon: icon,
                     tint: .suggested(for: icon),
+                    courtCount: template?.courtCount ?? 6,
                     groupCount: template?.groupCount ?? 6,
+                    // Copied from the template like every number above it. A second venue at a
+                    // camp that takes 11-and-unders is overwhelmingly likely to take them too,
+                    // and a venue that silently arrived as `.all` would deal the wrong kids onto
+                    // it the first time somebody imported a roster.
+                    targetPerGroup: template?.targetPerGroup,
+                    ageBand: template?.ageBand ?? .all,
                     coachMin: template?.coachMin ?? 4,
                     coachMax: template?.coachMax ?? 7,
                     playerMin: template?.playerMin ?? 0,

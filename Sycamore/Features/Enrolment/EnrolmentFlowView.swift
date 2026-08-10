@@ -137,6 +137,7 @@ struct EnrolmentFlowView: View {
                     file: file,
                     reconciliation: reconciliation,
                     selection: $selection,
+                    venues: rosterVenues,
                     onFix: { path.append(.addPlayer(.fix($0))) },
                     onApply: apply,
                     isApplying: store.isWorking
@@ -156,6 +157,15 @@ struct EnrolmentFlowView: View {
 
     /// The camp's venues as `8e` draws them. See `VenueShapeAdapter` for why that type.
     private var venueShapes: [VenueShape] { venues.map(\.shape) }
+
+    /// The same venues as the **age rule** needs them, in the same order.
+    ///
+    /// The order is load-bearing and is `orderedVenues`' own, because `AppStore.applyRoster`
+    /// resolves an `IntakePlayer.venueIndex` as `venues[min(index, count - 1)]` against exactly the
+    /// array `apply()` hands it — which is this one, mapped to ids. A fit computed against a
+    /// differently-ordered list would name one venue on screen and write another.
+    private var rosterVenues: [RosterVenue] { venues.map(\.rosterVenue) }
+
 
     /// Where a walk-in lands, named. The caller's venue, falling back to the first — which is what
     /// `AddPlayerView`'s own chip row defaults to, so the two agree.
@@ -264,7 +274,7 @@ struct EnrolmentFlowView: View {
     /// `OnboardingFlowView.finish()` has.
     private func apply() {
         guard !store.isWorking, let reconciliation else { return }
-        let commit = reconciliation.commit(selection)
+        let commit = reconciliation.commit(selection).routed(by: rosterVenues)
         guard !commit.isEmpty else { return }
 
         Task {

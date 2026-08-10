@@ -42,6 +42,7 @@ extension Venue {
             subtitle: subtitle,
             icon: icon,
             courts: groupCount,
+            ageBand: ageBand,
             maxKids: playerMax,
             minCoaches: coachMin
         )

@@ -284,7 +284,14 @@ struct CampShapeTests {
         let updated = try #require(shape.venue(applying: 0, to: createdVenue(from: shape)))
 
         #expect(updated.playerMax == CampShape.venueKidsRange.upperBound)
-        #expect(updated.playerMax == 384)
+        // 40 courts × 24 kids. Spelled out as well as derived on purpose — the line above would
+        // keep passing if the ceiling moved, and this is the one that notices.
+        //
+        // It noticed. This read 384 (16 × 24) until `courtRange` widened from `1...16` to the
+        // design's own stepper range of `1...40`. That is a real change and the number followed
+        // it; nothing here is being re-baselined to make a failure go away. `sites.player_max`
+        // has no upper CHECK — only `player_min <= player_max` — so 960 is writable.
+        #expect(updated.playerMax == 960)
     }
 
     @Test("A floor below zero is clamped rather than sent")

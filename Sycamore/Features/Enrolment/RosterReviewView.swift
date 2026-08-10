@@ -57,6 +57,13 @@ struct RosterReviewView: View {
     let file: IntakeImport
     let reconciliation: RosterReconciliation
     @Binding var selection: RosterSelection
+    /// The camp's venues in the order `AppStore.applyRoster` resolves a `venueIndex` against, each
+    /// carrying the ages it takes.
+    ///
+    /// Defaulted to empty so a caller with no venues to offer — and every preview — draws the
+    /// screen exactly as it drew before. Empty means nothing is asking, which is not the same as
+    /// "everybody is refused": `RosterAgeFit` places every row when it is handed no venues.
+    var venues: [RosterVenue] = []
     /// Opens `8e` on one row, prefilled, to supply what the file was missing.
     let onFix: (IntakePlayer) -> Void
     /// Writes everything ticked. The count in the button's label is what is being agreed to.
@@ -200,14 +207,43 @@ struct RosterReviewView: View {
         }
     }
 
+    /// The arrivals, each carrying the venue's answer about their age.
+    ///
+    /// -----------------------------------------------------------------------------------------
+    /// WHY THE WARNING IS ON THE ROW AND NOT IN A SECTION OF ITS OWN
+    /// -----------------------------------------------------------------------------------------
+    ///
+    /// A kid a venue will not take is still a kid arriving, so a second section listing them would
+    /// print the same names twice and leave the reader to work out that the two lists overlap —
+    /// and worse, to tick a name in one of them. `tickSection` already has a slot for exactly this
+    /// (`caution`), drawn in `Theme.warning` under the grey line, which is where `changedSection`
+    /// puts "two kids here share a name". This is the same kind of fact: something about this row
+    /// the reader should know before ticking it.
+    ///
+    /// **Computed over the ticked rows, not over all of them.** The note under the header is a
+    /// statement about what the button will do, and the button writes what is ticked. Untick the
+    /// four the venue refuses and the warning goes with them, which is the correct reading: there
+    /// is then nothing to warn about.
     private var arrivingSection: some View {
-        tickSection(
+        let ticked = reconciliation.arriving.lazy
+            .filter { selection.arriving.contains($0.id) }
+            .map(\.row)
+        let fit = RosterAgeFit(Array(ticked), venues: venues)
+
+        // Keyed once. The alternative is a linear search of `fit.unplaced` per row drawn, which on
+        // a forty-row file is forty walks of a list that is usually empty and occasionally not.
+        let cautions = Dictionary(
+            fit.unplaced.map { ($0.id, fit.reason(for: $0)) }, uniquingKeysWith: { _, last in last }
+        )
+
+        return tickSection(
             "New",
             rows: reconciliation.arriving,
             ticks: \.arriving,
+            note: fit.isEverybodyPlaced ? nil : fit.outcomeLine,
             hint: "Adds this kid to the camp"
         ) { arrival in
-            (arrival.row.displayName, arrival.row.detail, nil)
+            (arrival.row.displayName, arrival.row.detail, cautions[arrival.id])
         }
     }
 

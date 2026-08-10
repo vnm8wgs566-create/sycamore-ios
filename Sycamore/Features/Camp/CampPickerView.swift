@@ -2,25 +2,27 @@
 //  CampPickerView.swift
 //  Sycamore
 //
-//  Two screens, one view, because they are the same list asked twice.
+//  "Your camps" — every camp this login works or runs, and the two ways to get another one.
 //
-//  Screen 3 — "Which camp?" — is stage 1: identity is settled and nothing is loaded yet, so the
-//  question is which membership you are working under today.
+//  ── It used to be two screens wearing one view ────────────────────────────────────────────────
 //
-//  `8u` — "Manage camps" — is the same list from inside a camp, opened from Profile. It leads
-//  with the camp you are signed in to, offers the others with a Switch beside each, and keeps
-//  the join field and the dashed "Start a camp" card underneath.
+//  `isManagingCamps` decided between "Which camp?" (stage 1: identity settled, nothing loaded) and
+//  `8u` "Manage camps" (the same list, opened from inside a camp). It picked the title, the
+//  subtitle, the leading glyph, whether the list was one card or two under "Signed in to" and
+//  "Also yours", what the dashed card at the bottom was called, and whether a failure printed at
+//  all. Six differences to say one thing: that sometimes a camp is already loaded.
 //
-//  The only real difference is that one of them has a camp already. `isManagingCamps` says which
-//  it is; everything below the two section headers is shared.
+//  `design/app/regions/showCamps.html` draws one screen. One title, one list where every card is
+//  the same card, and two actions under it — start one, or join one. So that is what this is now,
+//  and `isManagingCamps` is down to the only thing it was ever really saying: whether this was
+//  presented over something, and therefore whether there is a way back out of it.
 //
-//  This view owns the navigation stack for stage 1's second half — "Start a camp" pushes
-//  screen 4 onto it. The app's root should present `CampPickerView` bare, without wrapping
-//  it in a stack of its own.
+//  What that bought, besides the reading: `store.errorMessage` prints in both contexts. It was
+//  guarded by `!isManagingCamps`, so a join or a switch that failed from inside a camp left the
+//  screen sitting still and saying nothing.
 //
-//  Section 8 draws `8u` and does not redraw screen 3, so every metric below is `8u`'s and screen
-//  3 inherits it. Two parallel styles inside one view would double it to keep a screen the design
-//  has stopped describing — and the rows are the same rows.
+//  This view owns the navigation stack that "Start a camp" pushes screen 4 onto. Present it bare,
+//  without wrapping it in a stack of your own.
 //
 
 import SwiftUI
@@ -29,7 +31,12 @@ struct CampPickerView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    /// `8u` rather than screen 3. Presented as a sheet from Profile, with a camp already loaded.
+    /// Whether this was presented over something — Profile, Overview's venue row, the camp page.
+    ///
+    /// Kept as the parameter's old name because three call sites outside this file pass it, and
+    /// its old meaning ("this is `8u` rather than screen 3") is a fair reading of the new one:
+    /// there is a camp loaded behind this, so there is somewhere to go back to and something to
+    /// close when the errand is done.
     let isManagingCamps: Bool
 
     @State private var isCreating = false
@@ -50,19 +57,19 @@ struct CampPickerView: View {
                 }
         }
         .task { await store.loadMemberships() }
-        // Switching, joining and creating all end in `select(_:)`. When this is `8u` that
-        // finishes the errand: close both this sheet and the Profile sheet underneath it, and
-        // the new camp is what the tabs are showing.
+        // Switching, joining and creating all end in `select(_:)`. When something is behind this,
+        // that finishes the errand: close this sheet and whatever raised it — Profile, or the camp
+        // page, both of which describe a camp that is no longer the one loaded.
         .onChange(of: store.selectedMembership?.id) { _, _ in
             guard isManagingCamps else { return }
             // Both are state changes rather than imperative dismissals, so SwiftUI settles them
-            // in one pass: this sheet and the Profile sheet under it go together.
+            // in one pass: this sheet and the screen under it go together.
             store.pushedScreen = nil
             dismiss()
         }
     }
 
-    /// Both camp screens draw their own header, so the stack's bar stays hidden.
+    /// The screen draws its own header, so the stack's bar stays hidden.
     private var screen: some View {
         VStack(spacing: 0) {
             header
@@ -85,7 +92,7 @@ struct CampPickerView: View {
                     CircleIconButton(systemName: "arrow.left", size: 36, tone: .filled) {
                         dismiss()
                     }
-                    .accessibilityLabel("Back to your profile")
+                    .accessibilityLabel("Back")
                     // The disc is 36 and the button around it is 44, which would otherwise push
                     // the title 4pt down and the disc 4pt right of where the design puts them.
                     // Saying how big the row is leaves the touch overflowing and nothing moved.
@@ -99,20 +106,16 @@ struct CampPickerView: View {
                         .padding(.bottom, Spacing.medium)
                 }
 
-                IntakeTitle(isManagingCamps ? "Your camps" : "Which camp?")
+                IntakeTitle("Your camps")
 
-                if isManagingCamps {
-                    Text("Your role comes from the camp, not the login")
-                        .typeStyle(.intakeSubtitleSm, color: Theme.inkMuted)
-                        .padding(.top, Spacing.tight)
-                } else {
-                    // `verbatim:` — an interpolated literal is still a LocalizedStringKey, so
-                    // the address would be Markdown-autolinked and render as a tinted link
-                    // instead of the design's grey.
-                    Text(verbatim: "Signed in as \(store.account?.email ?? "")")
-                        .typeStyle(.intakeSubtitleSm, color: Theme.inkMuted)
-                        .padding(.top, Spacing.tight)
-                }
+                // One line, in both contexts. It says the thing that is true either way and is
+                // the reason this screen exists at all — the login is a person, the role comes
+                // from the camp. The pair it replaces ("Signed in as …" / "Your role comes from
+                // the camp, not the login") said one of those things to each half of the audience.
+                Text("One login, every camp you work or run")
+                    .typeStyle(.intakeSubtitleSm, color: Theme.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Spacing.tight)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Spacing.header)
@@ -124,22 +127,28 @@ struct CampPickerView: View {
 
     // MARK: Content
 
+    /// The design's order: the camps, then the two things you can do about not having the one you
+    /// want — start another, or join one somebody else runs.
     private var content: some View {
         ScrollView {
             // `gap:13px` between blocks, which is what the design's flex column runs on.
             VStack(alignment: .leading, spacing: OnboardingMetrics.blockGap) {
                 camps
 
+                createButton
+
                 VStack(alignment: .leading, spacing: 0) {
-                    IntakeSectionHeader(isManagingCamps ? "Join another" : "Join with a code")
+                    IntakeSectionHeader("Join another")
                     joinRow
                 }
 
-                createButton
-
-                if let message = store.errorMessage, !isManagingCamps {
+                // Printed in both contexts now. A join that fails from inside a camp used to
+                // report nothing at all, so the only thing on screen was a code field that had
+                // stopped responding.
+                if let message = store.errorMessage {
                     Text(message)
                         .typeStyle(.intakeNote, color: Theme.danger)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
@@ -152,74 +161,59 @@ struct CampPickerView: View {
 
     // MARK: Memberships
 
-    /// `8u` splits the list in two: the camp you are in, then the ones you are not. Screen 3 has
-    /// no camp yet, so the whole list is one card under "Your camps".
+    /// One list, one row shape. The camp you are standing in — if you are standing in one — ends
+    /// in a pill instead of a caret and closes back into itself rather than reloading.
     ///
     /// A `VStack` rather than a bare `@ViewBuilder` group: the caller pads the whole block, and a
     /// `TupleView` under a padding modifier is no longer something the enclosing stack unrolls.
     private var camps: some View {
-        VStack(alignment: .leading, spacing: OnboardingMetrics.blockGap) {
-            if isManagingCamps, let current = store.selectedMembership {
-                let rest = others(besides: current)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    IntakeSectionHeader("Signed in to")
-                    currentCamp(current)
-                }
-
-                if !rest.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        IntakeSectionHeader("Also yours")
-                        Card(radius: OnboardingMetrics.cardRadius) {
-                            ForEach(rest) { membership in
-                                otherCamp(membership)
-                            }
-                        }
-                    }
-                }
-            } else if store.memberships.isEmpty {
-                // Still no inline loading state, and no longer because something else is drawing
-                // one: the seed fall that used to lie over this whole view while `isWorking` has
-                // gone (`FallingSeeds.swift`). The reason now is that nothing reaches this branch
-                // *while* it is waiting. `FirstRunView` holds a frame of its own until the
-                // memberships settle (`FirstRunStep.notYet`), and `8u` is opened from inside a
-                // camp, which is not somewhere you can be without one.
+        VStack(alignment: .leading, spacing: 0) {
+            if store.memberships.isEmpty {
+                // Still no inline loading state, and not because something else draws one:
+                // nothing reaches this branch *while* it is waiting. `FirstRunView` holds a frame
+                // of its own until the memberships settle (`FirstRunStep.notYet`), and everywhere
+                // else this is opened from inside a camp, which is not somewhere you can be
+                // without one.
                 //
                 // It is reached when the list settled at nothing, and — `FirstRunStep.CampList
                 // .failed` — when it never settled at all, which is the case a spinner would seem
                 // to be for. It is not: a fetch that has already been given up on is not one a
-                // spinner should be promising. What that reader needs is on screen already, in
-                // this view's own content — the failure printed at `:140`, the code field, "Create
-                // a camp", and the `.task` above trying the fetch once more of its own accord.
+                // spinner should be promising. What that reader needs is on screen already — the
+                // failure printed above, the code field, "Start a camp", and the `.task` trying
+                // the fetch once more of its own accord.
                 noCamps
             } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    IntakeSectionHeader("Your camps")
-                    Card(radius: OnboardingMetrics.cardRadius) {
-                        ForEach(store.memberships) { membership in
-                            Button {
-                                Task { await store.select(membership) }
-                            } label: {
-                                campRow(membership) {
-                                    DisclosureChevron(size: 15)
-                                        .accessibilityHidden(true)
-                                }
-                            }
-                            .buttonStyle(.plain)
+                Card(radius: OnboardingMetrics.cardRadius) {
+                    ForEach(store.memberships) { membership in
+                        Button {
+                            open(membership)
+                        } label: {
+                            campRow(membership)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
         }
     }
 
-    private func others(besides current: Membership) -> [Membership] {
-        store.memberships.filter { $0.id != current.id }
+    private func isCurrent(_ membership: Membership) -> Bool {
+        store.selectedMembership?.id == membership.id
     }
 
-    /// Shown in place of the `YOUR CAMPS` header and its card when the account belongs to no
-    /// camp yet. Without it the header rendered with nothing under it, which read as a screen
-    /// that had failed to load rather than one waiting for a first camp.
+    /// Tapping the camp you are already in has nothing to load. It closes, which is what the
+    /// person meant: they came here to change camps and changed their mind.
+    private func open(_ membership: Membership) {
+        if isCurrent(membership) {
+            dismiss()
+        } else {
+            Task { await store.select(membership) }
+        }
+    }
+
+    /// Shown in place of the card when the account belongs to no camp yet. Without it the screen
+    /// drew a title with nothing under it, which read as a screen that had failed to load rather
+    /// than one waiting for a first camp.
     private var noCamps: some View {
         // The mark rather than SF Symbols' tent: this is the first empty screen a new person
         // sees, and a seed that has not taken root yet says more here than a campsite glyph.
@@ -231,66 +225,17 @@ struct CampPickerView: View {
                     .frame(width: 44, height: 44)
             }
         } description: {
-            Text("Join with a code below, or create your own.")
+            Text("Start one below, or join a camp somebody else runs with their code.")
         }
         .frame(maxWidth: .infinity)
     }
 
-    /// The camp you are in: a heavier accent border, and an "Open" pill instead of a control,
-    /// because there is nothing to do to the camp you are already standing in.
-    private func currentCamp(_ membership: Membership) -> some View {
-        Card(
-            radius: OnboardingMetrics.cardRadius,
-            borderColor: Theme.accentBorder,
-            borderWidth: BorderWidth.input,
-            isDivided: false
-        ) {
-            campRow(membership, isCurrent: true) {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Theme.accent)
-                        .frame(width: 6, height: 6)
-                    Text("Open")
-                        .typeStyle(.intakeBadge, color: Theme.accentDark)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Theme.accentTint, in: Capsule(style: .continuous))
-                // The card already reads as the camp you are in; the pill is the picture of it.
-                .accessibilityHidden(true)
-            }
-        }
-    }
+    /// Tile, name and role line, and whatever closes the row: a caret for a camp you can move to,
+    /// a pill for the one you are in.
+    private func campRow(_ membership: Membership) -> some View {
+        let isCurrent = isCurrent(membership)
 
-    private func otherCamp(_ membership: Membership) -> some View {
-        campRow(membership) {
-            Button {
-                Task { await store.select(membership) }
-            } label: {
-                Text("Switch")
-                    .typeStyle(.intakeChip, color: Theme.accent)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 9)
-                    .background(
-                        Theme.accentTint,
-                        in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    )
-                    // Drawn 34pt tall and 62 wide; only what takes the touch grows to 44.
-                    .intakeTouchTarget(inset: 5)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Switch to \(membership.campName)")
-        }
-    }
-
-    /// Tile, name and role line — the shape every camp row in both screens shares. The trailing
-    /// builder is what tells them apart: a caret, an "Open" pill, or a Switch button.
-    private func campRow<Trailing: View>(
-        _ membership: Membership,
-        isCurrent: Bool = false,
-        @ViewBuilder trailing: () -> Trailing
-    ) -> some View {
-        CardRow(spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: 13) {
+        return CardRow(spacing: Spacing.medium, horizontalPadding: 13, verticalPadding: 13) {
             RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
                 .fill(Theme.color(for: membership.campTint))
                 .frame(width: tileSize, height: tileSize)
@@ -302,21 +247,94 @@ struct CampPickerView: View {
                     .typeStyle(isCurrent ? .intakeCampName : .intakeCampNameSm, color: Theme.ink)
                     .lineLimit(1)
                 Text(membership.subtitle)
-                    // The camp you are standing in wears the green-grey that matches its border;
-                    // the others are plain metadata.
+                    // The camp you are standing in wears the green-grey that names it; the others
+                    // are plain metadata. `inkTertiary` rather than the design's `#8A8E96`, which
+                    // measures about 3.3:1 on white — this line is the role and the court, which
+                    // is what somebody is reading the row for.
                     .typeStyle(
                         .intakeRowDetail,
-                        color: isCurrent ? OnboardingTheme.currentCampRole : Theme.inkMuted
+                        color: isCurrent ? OnboardingTheme.currentCampRole : Theme.inkTertiary
                     )
                     .lineLimit(1)
             }
 
             Spacer(minLength: Spacing.small)
-            trailing()
+
+            if isCurrent {
+                openPill
+            } else {
+                DisclosureChevron(size: 15)
+                    .accessibilityHidden(true)
+            }
         }
+        .frame(minHeight: HitTarget.minimum)
+        // The pill is a picture of "this one", so it is hidden and the row says it instead —
+        // otherwise VoiceOver reads "UCLA Tennis Camp, Admin · 3 venues · 74 kids, Open" and the
+        // word that matters is the one that sounds like a verb.
+        .accessibilityValue(isCurrent ? "Current camp" : "")
     }
 
-    // MARK: Join
+    /// The accent dot and "Open" on the camp you are signed in to.
+    private var openPill: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Theme.accent)
+                .frame(width: 6, height: 6)
+            Text("Open")
+                .typeStyle(.intakeBadge, color: Theme.accentDark)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Theme.accentTint, in: Capsule(style: .continuous))
+        .accessibilityHidden(true)
+    }
+
+    // MARK: Start a camp
+
+    private var createButton: some View {
+        Button {
+            isCreating = true
+        } label: {
+            HStack(spacing: Spacing.medium) {
+                IntakeIconTile(
+                    "plus",
+                    size: 42,
+                    glyphSize: 19,
+                    fill: Theme.accentSurface,
+                    border: Theme.accentSurfaceBorder,
+                    glyphColor: Theme.accent
+                )
+
+                VStack(alignment: .leading, spacing: Spacing.hairGap) {
+                    Text("Start a camp")
+                        .typeStyle(.intakeCampNameSm, color: Theme.accent)
+                    Text("You become its first admin")
+                        .typeStyle(.intakeRowMeta, color: OnboardingTheme.startCampSubtitle)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, Spacing.gutterWide)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                Theme.surface,
+                in: RoundedRectangle(cornerRadius: OnboardingMetrics.cardRadius, style: .continuous)
+            )
+            .overlay {
+                // CSS draws a dashed 1.5px border as ~3× the width per dash and gap.
+                RoundedRectangle(cornerRadius: OnboardingMetrics.cardRadius, style: .continuous)
+                    .strokeBorder(
+                        Theme.accentBorder,
+                        style: StrokeStyle(lineWidth: BorderWidth.input, dash: [4.5, 4.5])
+                    )
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Join another
 
     private var joinRow: some View {
         @Bindable var store = store
@@ -380,68 +398,41 @@ struct CampPickerView: View {
         return field
         #endif
     }
-
-    // MARK: Create
-
-    private var createButton: some View {
-        Button {
-            isCreating = true
-        } label: {
-            HStack(spacing: Spacing.medium) {
-                IntakeIconTile(
-                    "plus",
-                    size: 42,
-                    glyphSize: 19,
-                    fill: Theme.accentSurface,
-                    border: Theme.accentSurfaceBorder,
-                    glyphColor: Theme.accent
-                )
-
-                VStack(alignment: .leading, spacing: Spacing.hairGap) {
-                    Text(isManagingCamps ? "Start a camp" : "Create a camp")
-                        .typeStyle(.intakeCampNameSm, color: Theme.accent)
-                    Text("You become its first admin")
-                        .typeStyle(.intakeRowMeta, color: OnboardingTheme.startCampSubtitle)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 13)
-            .padding(.vertical, Spacing.gutterWide)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Theme.surface,
-                in: RoundedRectangle(cornerRadius: OnboardingMetrics.cardRadius, style: .continuous)
-            )
-            .overlay {
-                // CSS draws a dashed 1.5px border as ~3× the width per dash and gap.
-                RoundedRectangle(cornerRadius: OnboardingMetrics.cardRadius, style: .continuous)
-                    .strokeBorder(
-                        Theme.accentBorder,
-                        style: StrokeStyle(lineWidth: BorderWidth.input, dash: [4.5, 4.5])
-                    )
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 // MARK: - Previews
 
-#Preview("8u Manage camps") {
-    CampPickerView(isManagingCamps: true)
-        .environment(AppStore.preview)
+/// Three camps with one of them loaded — the list at its busiest, and the only state that draws
+/// the "Open" pill. `SampleData` ships two, so the third is a copy of one with a different name,
+/// tint and role: what this preview is for is the row *shape* repeating, not a third fixture.
+#Preview("Your camps — three, one open") {
+    let store = AppStore.preview
+    var third = SampleData.westsideMembership
+    third.id = UUID()
+    third.role = .trainer
+    third.campName = "Palisades Juniors"
+    third.campIcon = "⭐"
+    third.campTint = .citron
+    third.campSummary = "1 venue · 28 kids"
+    store.memberships = SampleData.memberships + [third]
+
+    return CampPickerView(isManagingCamps: true)
+        .environment(store)
         .showsMockStatusBar()
 }
 
-#Preview("Which camp?") {
-    CampPickerView()
-        .environment(AppStore.previewCampPicker)
+/// One camp, no camp loaded — the first run, where there is no way back and no pill.
+#Preview("Your camps — one, first run") {
+    let store = AppStore(repository: InMemoryRepository(memberships: [SampleData.uclaMembership]))
+    store.auth = .signedIn(SampleData.account)
+    store.memberships = [SampleData.uclaMembership]
+
+    return CampPickerView()
+        .environment(store)
         .showsMockStatusBar()
 }
 
-#Preview("Which camp? — no memberships") {
+#Preview("Your camps — none") {
     let store = AppStore(repository: InMemoryRepository(memberships: []))
     store.auth = .signedIn(SampleData.account)
     return CampPickerView()

@@ -18,6 +18,18 @@ import SwiftUI
 struct ImportReviewView: View {
 
     let file: IntakeImport
+    /// The venues this file's rows will be dealt across, each carrying the ages it takes.
+    ///
+    /// Empty at onboarding, which is every caller today: the camp is written at the *end* of that
+    /// flow, so while this screen is up there are no venues — only `8b`'s sketch, which has no band
+    /// to sketch (`Venue.ageBand` defaults to `.all` and `VenueShape` carries no control for it).
+    /// Empty means nothing is asking, and `RosterAgeFit` then places every row.
+    ///
+    /// Carried anyway rather than left out, because the *screen's* promise does not depend on which
+    /// flow reached it: "nothing is written until the button at the bottom" is only kept if what
+    /// the button will do is visible before it is pressed. The day a venue can be narrowed before
+    /// the first import, this draws without being reopened.
+    var venues: [RosterVenue] = []
     /// Opens `8e` on one row, prefilled, to supply what the file was missing.
     let onFix: (IntakePlayer) -> Void
     let onCommit: () -> Void
@@ -56,10 +68,24 @@ struct ImportReviewView: View {
         // were read seven times per pass through this body, over forty rows.
         let gaps = file.needsDetail
         let clean = file.readCleanly
+        // Every row in the file, because this screen imports all of them — there are no ticks here
+        // (see the header). Bound once for the note and the row cautions both.
+        let fit = RosterAgeFit(file.players, venues: venues)
+        let cautions = Dictionary(
+            fit.unplaced.map { ($0.id, fit.reason(for: $0)) }, uniquingKeysWith: { _, last in last }
+        )
 
         return ScrollView {
             VStack(alignment: .leading, spacing: OnboardingMetrics.cardGap) {
                 countsCard
+
+                // Above the rows, because it is a fact about the whole import and the button at the
+                // foot is the thing it qualifies. Drawn only when a venue actually turned somebody
+                // away — an explanation of a rule nobody has met is noise on a screen whose job is
+                // to be scanned.
+                if !fit.isEverybodyPlaced {
+                    IntakeNote(fit.outcomeLine)
+                }
 
                 if !gaps.isEmpty {
                     NeedsDetailSection(rows: gaps, onFix: onFix)
@@ -67,7 +93,7 @@ struct ImportReviewView: View {
                 }
 
                 if !clean.isEmpty {
-                    cleanSection(clean)
+                    cleanSection(clean, cautions: cautions)
                         .padding(.top, Spacing.tight)
                 }
             }
@@ -93,7 +119,9 @@ struct ImportReviewView: View {
 
     /// The fold, the "See all" and the four-row default are `FoldedRosterSection`'s — the same
     /// rule `RosterReviewView` folds "Already here" by. Only the row is this screen's.
-    private func cleanSection(_ rows: [IntakePlayer]) -> some View {
+    private func cleanSection(
+        _ rows: [IntakePlayer], cautions: [IntakePlayer.ID: String]
+    ) -> some View {
         FoldedRosterSection(title: "Read cleanly · \(rows.count)", rows: rows) { player in
             CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 11) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -101,6 +129,16 @@ struct ImportReviewView: View {
                         .typeStyle(.intakeRowTitleSm, color: Theme.ink)
                     Text(player.detail)
                         .typeStyle(.intakeRowDetail, color: Theme.inkMuted)
+
+                    // A row that read cleanly can still be one no venue will take — a perfectly
+                    // legible 14-year-old at an 11-and-under camp. Drawn in the amber the review
+                    // screens already use for "something about this row you should know", and
+                    // allowed to wrap: the reason is the whole content of the line.
+                    if let caution = cautions[player.id] {
+                        Text(caution)
+                            .typeStyle(.intakeRowDetail, color: Theme.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Spacer(minLength: 0)

@@ -34,12 +34,27 @@
 //  fields need `String` mirrors because a half-typed number is not an `Int`, and those are the
 //  only two things a `VenueShape` cannot hold.
 //
-//  ── No status banner ─────────────────────────────────────────────────────────────────────────
+//  ── No status banner, and no coaches ─────────────────────────────────────────────────────────
 //
 //  Screen 11 opens with "Within range" (`design/Sycamore Flow.dc.html:474`), which is a *staffing*
 //  reading — `Camp.staffingStatus(for:)` counts the coaches standing in a venue. On `8b` there is
 //  no staff, no roster and no camp, so the banner could only ever say one thing, and a banner that
 //  cannot change is a decoration.
+//
+//  The same absence takes the design's Coaches block with it, and the argument is one step
+//  stronger. `sheet-shVenue` draws either a row of staff chips or, when nobody has joined, an
+//  invite plate reading "Invite coaches · {code}". Before the camp exists there is no staff to
+//  chip **and no code to print** — `Camp.inviteCode` is minted by `Camp.make(from:)` at the end of
+//  the flow — so the block could only be drawn as an empty row or as a plate with a hole in it.
+//  `VenueSheet` draws both halves, one screen later, where both have an answer.
+//
+//  ── Add, then edit ───────────────────────────────────────────────────────────────────────────
+//
+//  This sheet opens on rows that are not on the list yet. "Add a venue" used to append a row named
+//  `Venue 3` carrying the previous venue's numbers and leave somebody to find it; it now opens
+//  here on `CampShape.newVenue()` — seeded, not appended — and the shape hears nothing until `Add
+//  {name}` is pressed. Which is why the CTA has two spellings and Remove is drawn only for a row
+//  that is already on the list: there is nothing to remove from a venue nobody has added.
 //
 
 import SwiftUI
@@ -51,6 +66,9 @@ struct VenueShapeSheet: View {
     let shape: CampShape
     /// "court", "field", "lane" — what this sport calls a group.
     let courtNoun: String
+    /// Whether this row is already on the list. Decides the CTA's words and whether Remove is
+    /// drawn at all — see the file header.
+    let isEditing: Bool
     let onSave: (VenueShape) -> Void
     /// Takes the venue back off the list.
     ///
@@ -78,8 +96,6 @@ struct VenueShapeSheet: View {
     @State private var maxKidsText: String
     @State private var minCoachesText: String
 
-    @State private var isConfirmingRemoval = false
-
     @FocusState private var isMaxKidsFocused: Bool
     @FocusState private var isMinCoachesFocused: Bool
 
@@ -89,29 +105,52 @@ struct VenueShapeSheet: View {
     /// reason (`:31-32`).
     @ScaledMetric(relativeTo: .body) private var numberFieldWidth: CGFloat = 72
 
-    /// What the row was called on the way in.
+    /// What the row was called on the way in, or nil for a row nobody has named yet.
     ///
     /// The `Venue <digits>` pattern is reserved so `CampShape.removeVenue` can tell a typed name
-    /// from a number it handed out — but the row arrives *wearing* one of those numbers, and
-    /// refusing it would mean no venue could be saved without first being renamed. So the rule is
-    /// "refused as a **typed** name": positional is fine if it is the one this row already had.
-    private let originalName: String
+    /// from a number it handed out — but an *existing* row arrives wearing one of those numbers,
+    /// and refusing it would mean no venue could be saved without first being renamed. So the rule
+    /// is "refused as a **typed** name": positional is fine if it is the one this row already had.
+    ///
+    /// Nil is what makes that exemption stop at the sheet's other door. A row being added carries
+    /// a positional name too — `newVenue()` seeds one — but it is a placeholder rather than a name
+    /// somebody is keeping, and exempting it would have made "Add Venue 3" a live button. Which is
+    /// the thing this whole change exists to stop: a venue on the list called by its number.
+    private let originalName: String?
+
+    /// Whether the name field has been touched.
+    ///
+    /// Only so that a sheet which opens on an empty field does not greet the reader with "A venue
+    /// needs a name." in red before they have done anything. The refusal is still there the whole
+    /// time — the button is dimmed from the first frame — it simply does not shout until there is
+    /// something to shout about.
+    @State private var hasTypedName = false
 
     init(
         venue: VenueShape,
         shape: CampShape,
         courtNoun: String,
+        isEditing: Bool,
         onSave: @escaping (VenueShape) -> Void,
         onRemove: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
         self.shape = shape
         self.courtNoun = courtNoun
+        self.isEditing = isEditing
         self.onSave = onSave
         self.onRemove = onRemove
         self.onClose = onClose
-        self.originalName = venue.name
-        _draft = State(initialValue: venue)
+        self.originalName = isEditing ? venue.name : nil
+
+        var opening = venue
+        // A new row opens with the field empty and the design's own placeholder showing, rather
+        // than with `Venue 3` typed into it and refused a line below. Everything *else* the seed
+        // decided — the emoji, the courts, both limits — is left in place, so this is a filled-in
+        // form with one blank at the top and not an interrogation.
+        if !isEditing { opening.name = "" }
+
+        _draft = State(initialValue: opening)
         _maxKidsText = State(initialValue: "\(venue.maxKids)")
         _minCoachesText = State(initialValue: "\(venue.minCoaches)")
     }
@@ -129,7 +168,7 @@ struct VenueShapeSheet: View {
 
         return SheetChrome(
             title: title,
-            subtitle: draft.limitsLine,
+            subtitle: draft.shapeLine(noun: courtNoun),
             detentFraction: OnboardingMetrics.venueEditorDetent,
             onClose: onClose
         ) {
@@ -139,33 +178,51 @@ struct VenueShapeSheet: View {
 
             SheetSectionHeader("Icon")
             iconGrid
-                .padding(.bottom, 18)
 
-            SheetSectionHeader("Limits")
+            VenueFieldLabel(title: "Age group")
+            VenueAgeBandPicker(ageBand: $draft.ageBand)
+
+            VenueFieldLabel(title: "Numbers")
+            VenueCountsCard(
+                courtNoun: courtNoun,
+                courts: courtsBinding,
+                groups: $draft.groups,
+                targetPerGroup: $draft.targetPerGroup
+            )
+
+            // No kids anywhere yet — the camp is not created until the end of the flow — so this
+            // is always the "what adding it will do" variant, and never amber.
+            VenueDealLine(sentence: VenueDealSentence.adding(groups: draft.groups))
+
+            SheetSectionHeader("Limits", topPadding: 18)
             limitsBlock(problem: numberProblem)
 
             saveButton(isValid: isValid, hint: nameProblem ?? numberProblem ?? "")
                 .padding(.top, 18)
 
-            removeButton
-        }
-        .confirmationDialog(
-            "Remove \(title)?",
-            isPresented: $isConfirmingRemoval,
-            titleVisibility: .visible
-        ) {
-            Button("Remove venue", role: .destructive, action: onRemove)
-            Button("Keep it", role: .cancel) {}
-        } message: {
-            Text("Nothing has been created yet, so nothing is lost but what is on this screen.")
+            if isEditing {
+                // Nought kids, always: nothing has been imported and no camp exists to import
+                // into, so the second tap reads "…it for good" rather than naming a head count.
+                VenueRemoveButton(kidCount: 0, onRemove: onRemove)
+                    .padding(.top, 9)
+            }
         }
     }
 
     /// The sheet is titled by what the venue is called, and falls back to what it was called
     /// rather than to a placeholder — a title that reads "Untitled" while somebody is midway
-    /// through clearing the field says less than the name they are replacing.
+    /// through clearing the field says less than the name they are replacing. A row that has never
+    /// had a name falls back to the design's own `sheetTitle` for the case: "New venue".
     private var title: String {
-        trimmedName.isEmpty ? originalName : trimmedName
+        if !trimmedName.isEmpty { return trimmedName }
+        return originalName ?? "New venue"
+    }
+
+    /// `Add Main Courts`, `Add venue`, or `Save changes` — the design's three, in its own words
+    /// (`state1.js:252`).
+    private var ctaTitle: String {
+        if isEditing { return "Save changes" }
+        return trimmedName.isEmpty ? "Add venue" : "Add \(trimmedName)"
     }
 
     // MARK: - Name
@@ -175,11 +232,25 @@ struct VenueShapeSheet: View {
             // The same block `VenueSheet` draws, because it is the same block of screen 11 — see
             // `VenueNameFields`. Only the error line under it belongs to this screen: there is
             // nowhere else a name can be refused before it reaches the camp.
-            VenueNameFields(name: $draft.name, subtitle: $draft.subtitle)
-            if let problem {
+            VenueNameFields(name: nameBinding, subtitle: $draft.subtitle)
+            // Held back only for the field nobody has touched on a sheet that opened empty. Every
+            // other refusal — too long, reserved, already taken — needs a name to have been typed
+            // first, so this is the one case where the message would arrive before the mistake.
+            if let problem, hasTypedName || isEditing {
                 errorLine(problem)
             }
         }
+    }
+
+    /// The name, and the note that somebody has been at it.
+    private var nameBinding: Binding<String> {
+        Binding(
+            get: { draft.name },
+            set: { typed in
+                draft.name = typed
+                hasTypedName = true
+            }
+        )
     }
 
     // MARK: - Icon
@@ -205,20 +276,20 @@ struct VenueShapeSheet: View {
         }
     }
 
+    /// The two absolutes the auto-partition works between — which the design's sheet does not draw
+    /// and this screen keeps anyway.
+    ///
+    /// `sheet-shVenue` asks for courts, groups, a target and an age band, and stops. It can: in the
+    /// design these are the venue's *whole* shape. Here they are not — `sites.player_max` and
+    /// `sites.coach_min` are columns with a CHECK between them, `8b`'s "Every venue" card is two
+    /// rates that write into them, and this sheet is the only place a venue may sit off those
+    /// rates. Dropping the pair to match the drawing would have taken the per-venue override away
+    /// from the card that offers it.
+    ///
+    /// The court stepper that used to head this card has gone up to `VenueCountsCard`, beside the
+    /// group count it is so easily confused with. Its detail line went with it.
     private var limitsCard: some View {
         Card(radius: Radius.input, borderColor: Theme.strokeAlt) {
-            VenueLimitRow(
-                title: courtsTitle,
-                detail: "Moving this re-derives both numbers below."
-            ) {
-                IntakeStepper(
-                    value: courtsBinding,
-                    range: CampShape.courtRange,
-                    label: courtsTitle,
-                    valueWidth: 34
-                )
-            }
-
             // Where the design's static `Players, min – max` reading used to be. Half of that
             // reading is now a control and the other half is a constant, so the detail line is
             // where the constant is stated in words rather than drawn as a number nobody can move.
@@ -248,9 +319,7 @@ struct VenueShapeSheet: View {
         }
     }
 
-    private var courtsTitle: String { "\(courtNoun.capitalized)s" }
-
-    /// The court stepper stays a stepper — its range is `1...16` and the row on `8b` has one too,
+    /// The court stepper stays a stepper — its range is `1...40` and the row on `8b` has one too,
     /// so this is the same control in the same units.
     ///
     /// It goes through `VenueShape.setCourts(_:kidsPerCourt:coachesPerCourt:)`, which is the same
@@ -354,8 +423,10 @@ struct VenueShapeSheet: View {
         guard CharLength.of(trimmedName, fits: CampName.lengthLimits) else {
             return "That is longer than \(CampName.lengthLimits.upperBound) characters."
         }
+        // `originalName` is nil for a row being added, so the exemption cannot fire there and the
+        // seeded `Venue 3` is refused like any other typed number — see the property's own note.
         if CampShape.isPositionalName(trimmedName),
-           trimmedName.lowercased() != originalName.lowercased() {
+           trimmedName.lowercased() != originalName?.lowercased() {
             return "\(trimmedName) is how setup numbers a venue nobody has named. Give it a name of its own."
         }
         guard shape.isVenueNameAvailable(trimmedName, excluding: draft.id) else {
@@ -387,13 +458,14 @@ struct VenueShapeSheet: View {
 
     private func saveButton(isValid: Bool, hint: String) -> some View {
         PrimaryButton(
-            "Save venue",
+            ctaTitle,
             height: OnboardingMetrics.ctaHeight,
             radius: OnboardingMetrics.cardRadius,
             font: .intakeButton
         ) {
             save()
         }
+        // `0.45`, which is the design's own `ctaOpacity` for a sheet with no name in it.
         .opacity(isValid ? 1 : 0.45)
         .disabled(!isValid)
         // The inline lines above say why, and they are read in order — but a dimmed button is
@@ -413,19 +485,6 @@ struct VenueShapeSheet: View {
         saved.subtitle = subtitle.isEmpty ? nil : subtitle
         onSave(saved)
     }
-
-    private var removeButton: some View {
-        PrimaryButton(
-            "Remove this venue",
-            tone: .danger,
-            height: nil,
-            radius: Radius.row,
-            font: .buttonCompact
-        ) {
-            isConfirmingRemoval = true
-        }
-        .padding(.top, 9)
-    }
 }
 
 // MARK: - Previews
@@ -440,18 +499,48 @@ struct VenueShapeSheet: View {
     VenueShapeSheetPreviewHarness(venueCount: 1)
 }
 
+/// "Add a venue" on a camp that already has two: a row that is not on the list, so the CTA reads
+/// `Add …` and there is no Remove under it.
+#Preview("Venue editor — a new venue") {
+    VenueShapeSheetPreviewHarness(venueCount: 2, isEditing: false)
+}
+
+/// A venue that has been given a shape of its own — four groups on six courts, a target, and an
+/// age band — which is the whole point of the sheet and the state no other preview reaches.
+#Preview("Venue editor — shaped") {
+    VenueShapeSheetPreviewHarness(venueCount: 2, shaping: true)
+}
+
+/// The type ramp at the app's cap. Every label wraps, every stepper grows, and the two number
+/// fields have to keep three digits.
+#Preview("Venue editor — accessibility1") {
+    VenueShapeSheetPreviewHarness(venueCount: 2, shaping: true)
+        .environment(\.dynamicTypeSize, .accessibility1)
+}
+
 private struct VenueShapeSheetPreviewHarness: View {
     let venueCount: Int
+    var isEditing = true
+    var shaping = false
 
     var body: some View {
-        let shape = CampShape.initial(venueCount: venueCount, courts: 6)
+        var shape = CampShape.initial(venueCount: venueCount, courts: 6)
+        if shaping {
+            shape.venues[0].name = "Main Courts"
+            shape.venues[0].subtitle = "Higher level"
+            shape.venues[0].groups = 4
+            shape.venues[0].targetPerGroup = 12
+            shape.venues[0].ageBand = .twelveUp
+        }
+        let venue = isEditing ? shape.venues[0] : shape.newVenue()
 
-        ZStack(alignment: .bottom) {
+        return ZStack(alignment: .bottom) {
             Theme.scrim.ignoresSafeArea()
             VenueShapeSheet(
-                venue: shape.venues[0],
+                venue: venue,
                 shape: shape,
                 courtNoun: "court",
+                isEditing: isEditing,
                 onSave: { _ in },
                 onRemove: {},
                 onClose: {}

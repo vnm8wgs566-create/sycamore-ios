@@ -1,0 +1,12 @@
+<sc-if value="{{ shImport }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;border:1.5px dashed #C3DFCF;border-radius:15px;padding:14px;display:flex;align-items:center;gap:12px;margin-top:14px;cursor:pointer">
+          <input type="file" accept=".csv,.txt,.tsv" onChange="{{ fileChosen }}" style="position:absolute;inset:0;opacity:0;cursor:pointer">
+          <div style="flex:none;width:40px;height:40px;border-radius:13px;background:#F6FAF7;display:flex;align-items:center;justify-content:center"><i class="ph ph-file-arrow-up" style="font-size:19px;color:#1A7F55"></i></div>
+          <div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:#14684A">Choose a file</div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">.csv or .txt — name, age, gender per line</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin:13px 0 9px"><div style="flex:1;height:1px;background:#EDEEF1"></div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">or paste the list</div><div style="flex:1;height:1px;background:#EDEEF1"></div></div>
+        <textarea value="{{ dPaste }}" onInput="{{ setDPaste }}" placeholder="Serene Chu, 11, F&#10;Liam Prior, 12, M" style="width:100%;box-sizing:border-box;height:96px;resize:none;border:1.5px solid #E4E5E9;border-radius:15px;padding:12px 14px;font:500 13.5px/1.5 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#0B0B0C;background:#fff;outline:none"></textarea>
+        <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px">{{ importHint }}</div>
+        <div onClick="{{ addPasted }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:12px;cursor:pointer;opacity:{{ pasteOp }}">{{ pasteCta }}</div>
+        <div onClick="{{ useSample }}" style="height:44px;display:flex;align-items:center;justify-content:center;font:600 13.5px 'Instrument Sans',sans-serif;color:#1A7F55;cursor:pointer;margin-top:2px">Use the sample roster · 42 kids</div>
+      </sc-if>

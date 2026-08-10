@@ -15,11 +15,11 @@ import SwiftUI
 
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
-    var tabs: [AppTab] = AppTab.allCases
+    var tabs: [AppTab] = AppTab.bar
 
     @Namespace private var capsuleNamespace
 
-    init(selection: Binding<AppTab>, tabs: [AppTab] = AppTab.allCases) {
+    init(selection: Binding<AppTab>, tabs: [AppTab] = AppTab.bar) {
         self._selection = selection
         self.tabs = tabs
     }
@@ -123,7 +123,7 @@ extension View {
     ///
     /// The bar does not reserve layout space, so scrolling content underneath it needs
     /// `Spacing.tabBarClearance` of bottom padding to clear it.
-    func floatingTabBar(selection: Binding<AppTab>, tabs: [AppTab] = AppTab.allCases) -> some View {
+    func floatingTabBar(selection: Binding<AppTab>, tabs: [AppTab] = AppTab.bar) -> some View {
         overlay(alignment: .bottom) {
             FloatingTabBar(selection: selection, tabs: tabs)
                 .padding(.bottom, Spacing.tabBarInset)
@@ -158,7 +158,7 @@ private struct TabBarPreviewHarness: View {
 
 #Preview("Tab bar — every selection") {
     return VStack(spacing: 18) {
-        ForEach(AppTab.allCases) { tab in
+        ForEach(AppTab.bar) { tab in
             FloatingTabBar(selection: .constant(tab))
         }
     }

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics="">
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&amp;family=Newsreader:opsz,wght@6..72,300..600&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/colors.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/typography.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/radii.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/borders.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/shadows.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/motion.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/tokens/base.css">
+<link rel="stylesheet" href="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/styles.css">
+<script src="_ds/sycamore-design-system-4e61fd7f-4fb8-4c15-b260-43f097638c68/_ds_bundle.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#EDEEF0;-webkit-font-smoothing:antialiased;font-family:'Instrument Sans',-apple-system,'Helvetica Neue',sans-serif}
+a{color:#1A7F55;text-decoration:none}
+a:hover{color:#14684A}
+</style>
+<script src="./image-slot.js"></script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs>
+<symbol id="sd" viewBox="0 0 200 200"><path d="M78 130 Q82 54 174 30 Q162 106 94 134 Z" fill="#14603C"></path><path d="M86 120 Q96 62 152 44 Q142 100 96 124 Z" fill="#3F7D53"></path><circle cx="72" cy="146" r="20" fill="#14603C"></circle></symbol>
+<symbol id="markA" viewBox="0 0 200 200"><g transform="translate(14 -2) scale(0.68)"><use href="#sd" width="200" height="200"></use></g><g transform="translate(128 122) rotate(150) scale(0.42) translate(-100 -100)"><use href="#sd" width="200" height="200"></use></g></symbol>
+<symbol id="markR" viewBox="0 0 200 200"><g transform="translate(10 4) scale(0.66)"><use href="#sd" width="200" height="200"></use></g><g transform="translate(138 146) rotate(160) scale(0.44) translate(-100 -100)"><use href="#sd" width="200" height="200"></use></g></symbol>
+</defs></svg>
+
+<section id="t5" style="padding:44px 48px 40px;border-bottom:1px solid rgba(0,0,0,.08);width:fit-content">
+  <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:8px">
+    <a href="#t5" style="font:600 10px Manrope,sans-serif;letter-spacing:.1em;padding:4px 8px;background:#0B0B0C;color:#fff;border-radius:4px">5</a>
+    <span style="font:600 13px Manrope,sans-serif;color:#0B0B0C">Block editor, complete — from the codebase</span>
+    <span style="font:500 12.5px Manrope,sans-serif;color:#8A8E96">Everything BlockEditorSheet holds, distilled onto <a href="#4e" style="font:600 10.5px Manrope,sans-serif;padding:1px 6px;background:rgba(0,0,0,.07);border-radius:4px;color:#0B0B0C">4e</a>'s layout: name, description, type, day, all/none rows, kid spread, delete. Overlaps flag amber and still save — never a wall. Drag-to-move within Groups (1p's latched hold) is untouched.</span>
+  </div>
+  <div style="display:flex;gap:16px;align-items:flex-start">
+
+    <div id="5a" style="flex:none;width:392px;display:flex;flex-direction:column;gap:9px">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font:500 11.5px Manrope,sans-serif;color:rgba(0,0,0,.55)"><a href="#5a" style="font:600 10.5px Manrope,sans-serif;padding:3px 7px;background:rgba(0,0,0,.08);color:#0B0B0C;border-radius:5px">5a</a><span style="font:700 12px Manrope,sans-serif;color:#0B0B0C">Edit block — what &amp; when</span><span>Same sheet as ⋯ on any block.</span></div>
+      <div data-screen-label="Edit block — top" style="width:392px;height:848px;overflow:hidden;background:#F8F9F8;border:1px solid rgba(0,0,0,.11);border-radius:34px;color:#0B0B0C;position:relative;display:flex;flex-direction:column">
+        <div style="flex:none;background:#fff;display:flex;align-items:center;padding:14px 22px 0"><div style="font:600 14px 'Instrument Sans',sans-serif">9:41</div><div style="flex:1"></div><div style="display:flex;align-items:center;gap:5px"><i class="ph-fill ph-cell-signal-full" style="font-size:14px"></i><i class="ph-fill ph-wifi-high" style="font-size:14px"></i><i class="ph-fill ph-battery-full" style="font-size:16px"></i></div></div>
+        <div style="flex:1;position:relative">
+          <div style="position:absolute;inset:0;background:rgba(11,11,12,.36)"></div>
+          <div style="position:absolute;left:0;right:0;top:26px;bottom:0;background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -12px 40px rgba(11,11,12,.18);padding:10px 16px 0;overflow:hidden">
+            <div style="width:36px;height:5px;border-radius:99px;background:#DCDEE3;margin:0 auto 14px"></div>
+            <div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96">Tuesday · Sycamore</div>
+            <div style="font:400 26px/1.05 Newsreader,Georgia,serif;letter-spacing:-.02em;margin-top:6px">Edit block</div>
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:16px 0 7px">Block name</div>
+            <div style="border:1.5px solid #E4E5E9;border-radius:15px;padding:13px 15px;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Match play</div>
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:14px 0 7px">Description</div>
+            <div style="border:1.5px solid #E4E5E9;border-radius:15px;padding:13px 15px;font:400 14.5px/1.5 'Instrument Sans',sans-serif;color:#3F4A44;min-height:74px">Ladder matches to 11 — winners move up a court, coaches feed balls on 3.</div>
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:14px 0 7px">Type</div>
+            <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:11px;padding:12px 13px">
+                <div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">On courts</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">Kids and coaches are placed court by court.</div></div>
+                <i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i>
+              </div>
+              <div style="display:flex;align-items:center;gap:11px;padding:12px 13px;border-top:1px solid #F2F3F6">
+                <div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Whole camp</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">Everyone together, no courts — lunch, water, regroup.</div></div>
+                <div style="width:21px;height:21px;border-radius:99px;border:1.5px solid #E4E5E9"></div>
+              </div>
+            </div>
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:14px 0 7px">Day</div>
+            <div style="display:flex;gap:7px">
+              <div style="flex:1;text-align:center;padding:10px 0;border-radius:999px;border:1px solid #E6E7EB;color:#3F4A44;font:600 13.5px 'Instrument Sans',sans-serif">Mon</div>
+              <div style="flex:1;text-align:center;padding:10px 0;border-radius:999px;background:#0B0B0C;color:#fff;font:600 13.5px 'Instrument Sans',sans-serif">Tue</div>
+              <div style="flex:1;text-align:center;padding:10px 0;border-radius:999px;border:1px solid #E6E7EB;color:#3F4A44;font:600 13.5px 'Instrument Sans',sans-serif">Wed</div>
+              <div style="flex:1;text-align:center;padding:10px 0;border-radius:999px;border:1px solid #E6E7EB;color:#3F4A44;font:600 13.5px 'Instrument Sans',sans-serif">Thu</div>
+              <div style="flex:1;text-align:center;padding:10px 0;border-radius:999px;border:1px solid #E6E7EB;color:#3F4A44;font:600 13.5px 'Instrument Sans',sans-serif">Fri</div>
+            </div>
+            <div style="display:flex;gap:9px;margin-top:14px">
+              <div style="flex:1"><div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:7px">Starts</div><div style="display:flex;align-items:center;gap:9px;border:1.5px solid #E4E5E9;border-radius:15px;padding:13px 15px"><i class="ph ph-clock" style="font-size:16px;color:#B3B7BE"></i><span style="font:600 16px 'Instrument Sans',sans-serif">10:45am</span></div></div>
+              <div style="flex:1"><div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:7px">Ends</div><div style="display:flex;align-items:center;gap:9px;border:1.5px solid #E4E5E9;border-radius:15px;padding:13px 15px"><i class="ph ph-clock" style="font-size:16px;color:#B3B7BE"></i><span style="font:600 16px 'Instrument Sans',sans-serif">12:15pm</span></div></div>
+            </div>
+            <div style="font:400 12.5px/1.5 'Instrument Sans',sans-serif;color:#B67A16;margin-top:9px">Runs into Cool-down at 12:00pm. Save it anyway, or end it by 12:00pm.</div>
+            <div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px">Ends menu offers quarter-hours after the start, plus "No end time".</div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;height:44px;background:linear-gradient(rgba(255,255,255,0),#fff)"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="5b" style="flex:none;width:392px;display:flex;flex-direction:column;gap:9px">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font:500 11.5px Manrope,sans-serif;color:rgba(0,0,0,.55)"><a href="#5b" style="font:600 10.5px Manrope,sans-serif;padding:3px 7px;background:rgba(0,0,0,.08);color:#0B0B0C;border-radius:5px">5b</a><span style="font:700 12px Manrope,sans-serif;color:#0B0B0C">Edit block — courts, kids, coaches</span><span>Same sheet, scrolled.</span></div>
+      <div data-screen-label="Edit block — scrolled" style="width:392px;height:848px;overflow:hidden;background:#fff;border:1px solid rgba(0,0,0,.11);border-radius:34px;color:#0B0B0C;position:relative;display:flex;flex-direction:column">
+        <div style="flex:1;padding:18px 16px 0;overflow:hidden">
+          <div style="display:flex;align-items:baseline;margin:0 0 7px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Courts</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">3 of 6</div></div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:22px;padding:11px 13px"><div style="font:600 13px 'Instrument Sans',sans-serif;color:#1A7F55">All courts</div><div style="font:600 13px 'Instrument Sans',sans-serif;color:#1A7F55">No courts</div></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-top:1px solid #F2F3F6"><div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Court 1</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">Nass coaches here</div></div><i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-top:1px solid #F2F3F6"><div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Court 2</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#B67A16;margin-top:2px">Needs a coach</div></div><i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-top:1px solid #F2F3F6"><div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:#A2A6AE">Court 4</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:2px">Closed — net down</div></div><div style="width:21px;height:21px;border-radius:99px;border:1.5px solid #EDEEF1"></div></div>
+            <div style="display:flex;align-items:center;gap:8px;padding:11px 13px;border-top:1px solid #F2F3F6"><div style="font:600 13.5px 'Instrument Sans',sans-serif;color:#1A7F55">Courts 3, 5 and 6</div><i class="ph ph-caret-down" style="font-size:13px;color:#1A7F55"></i></div>
+          </div>
+          <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:14px 0 7px">Kids</div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:11px;padding:12px 13px">
+              <div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Leave kids where they are</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">Nothing moves when you save.</div></div>
+              <div style="width:21px;height:21px;border-radius:99px;border:1.5px solid #E4E5E9"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;padding:12px 13px;border-top:1px solid #F2F3F6">
+              <div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Spread every kid over these courts</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">Deals the ranked groups across Courts 1, 2 and 5.</div></div>
+              <i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i>
+            </div>
+          </div>
+          <div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:7px;padding:0 13px">Runs when you save, over the courts you saved.</div>
+          <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:14px 0 7px">Coaches</div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:22px;padding:11px 13px"><div style="font:600 13px 'Instrument Sans',sans-serif;color:#1A7F55">All coaches</div><div style="font:600 13px 'Instrument Sans',sans-serif;color:#1A7F55">No coaches</div></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-top:1px solid #F2F3F6"><div style="flex:none;width:30px;height:30px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 11px 'Instrument Sans',sans-serif;color:#5C6068">AL</div><div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Alina</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">Free at 10:30</div></div><i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-top:1px solid #F2F3F6"><div style="flex:none;width:30px;height:30px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 11px 'Instrument Sans',sans-serif;color:#5C6068">HU</div><div style="flex:1;min-width:0"><div style="font:600 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Hubert</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#1A7F55;margin-top:2px">Free now · roaming</div></div><div style="width:21px;height:21px;border-radius:99px;border:1.5px solid #E4E5E9"></div></div>
+            </div>
+          <div style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px">Save changes</div>
+          <div style="height:56px;border-radius:16px;border:1.5px solid #F0D9CE;color:#C0492A;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:10px">Delete block</div>
+          <div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px;text-align:center">Delete asks once, then closes the block's page behind it.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="5c" style="flex:none;width:392px;display:flex;flex-direction:column;gap:9px">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font:500 11.5px Manrope,sans-serif;color:rgba(0,0,0,.55)"><a href="#5c" style="font:600 10.5px Manrope,sans-serif;padding:3px 7px;background:rgba(0,0,0,.08);color:#0B0B0C;border-radius:5px">5c</a><span style="font:700 12px Manrope,sans-serif;color:#0B0B0C">Resize by drag</span><span>Bottom edge, snaps to 15 min; overlap flags, never blocks.</span></div>
+      <div data-screen-label="Schedule resize" style="width:392px;height:848px;overflow:hidden;background:#F8F9F8;border:1px solid rgba(0,0,0,.11);border-radius:34px;color:#0B0B0C;position:relative;display:flex;flex-direction:column">
+        <div style="flex:none;background:#fff;display:flex;align-items:center;padding:14px 22px 0"><div style="font:600 14px 'Instrument Sans',sans-serif">9:41</div><div style="flex:1"></div><div style="display:flex;align-items:center;gap:5px"><i class="ph-fill ph-cell-signal-full" style="font-size:14px"></i><i class="ph-fill ph-wifi-high" style="font-size:14px"></i><i class="ph-fill ph-battery-full" style="font-size:16px"></i></div></div>
+        <div style="flex:none;background:#fff;padding:14px 22px 16px;border-bottom:1px solid #EDEEF1">
+          <div style="font:400 32px/1.02 Newsreader,Georgia,serif;letter-spacing:-.022em">Tuesday</div>
+          <div style="font:400 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:7px">Hold an edge to resize · hold the middle to move</div>
+        </div>
+        <div style="flex:1;position:relative;margin:10px 12px 0">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:52px">
+            <div style="position:absolute;top:-6px;font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">10:30</div>
+            <div style="position:absolute;top:114px;font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">11:00</div>
+            <div style="position:absolute;top:234px;font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">11:30</div>
+            <div style="position:absolute;top:354px;font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">12:00</div>
+            <div style="position:absolute;top:474px;font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">12:30</div>
+            <div style="position:absolute;top:594px;font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">1:00</div>
+          </div>
+          <div style="position:absolute;left:52px;right:0;top:0;bottom:0">
+            <div style="position:absolute;left:0;right:0;top:0;height:1px;background:#EDEEF1"></div>
+            <div style="position:absolute;left:0;right:0;top:120px;height:1px;background:#EDEEF1"></div>
+            <div style="position:absolute;left:0;right:0;top:240px;height:1px;background:#EDEEF1"></div>
+            <div style="position:absolute;left:0;right:0;top:360px;height:1px;background:#EDEEF1"></div>
+            <div style="position:absolute;left:0;right:0;top:480px;height:1px;background:#EDEEF1"></div>
+            <div style="position:absolute;left:0;right:0;top:600px;height:1px;background:#EDEEF1"></div>
+            <div style="position:absolute;left:0;right:0;top:2px;height:56px;background:#fff;border:1px solid #EDEEF1;border-radius:13px;padding:9px 13px">
+              <div style="font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Water &amp; regroup</div>
+              <div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">10:30 – 10:45</div>
+            </div>
+            <div style="position:absolute;left:0;right:0;top:362px;height:116px;background:#fff;border:1px solid #EDEEF1;border-radius:13px;padding:9px 13px;opacity:.6">
+              <div style="font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Cool-down</div>
+              <div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">12:00 – 12:30 · courts 1–3</div>
+            </div>
+            <div style="position:absolute;left:0;right:0;top:62px;height:358px;background:#fff;border:1.5px solid #C3DFCF;border-radius:14px;box-shadow:0 14px 34px rgba(26,127,85,.16);padding:11px 13px">
+              <div style="font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Match play</div>
+              <div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:3px">Courts 1, 2 and 5 · Alina</div>
+              <div style="position:absolute;left:13px;right:13px;bottom:34px;font:400 12.5px 'Instrument Sans',sans-serif;color:#B67A16">Runs into Cool-down at 12:00pm</div>
+              <div style="position:absolute;left:0;right:0;bottom:6px;display:flex;justify-content:center"><div style="display:flex;gap:3px;padding:6px 18px"><div style="width:26px;height:4px;border-radius:99px;background:#DCDEE3"></div></div></div>
+            </div>
+            <div style="position:absolute;right:10px;top:406px;background:#0B0B0C;color:#fff;border-radius:999px;padding:8px 15px;font:600 13px 'Instrument Sans',sans-serif;box-shadow:0 10px 26px rgba(11,11,12,.28)">10:45am – 12:15pm</div>
+          </div>
+        </div>
+        <div style="flex:none;padding:12px 22px 24px;font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE;text-align:center">Snaps to the editor's own quarter-hours — never writes a time it can't read back.</div>
+      </div>
+    </div>
+
+    <div id="5d" style="flex:none;width:392px;display:flex;flex-direction:column;gap:9px">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font:500 11.5px Manrope,sans-serif;color:rgba(0,0,0,.55)"><a href="#5d" style="font:600 10.5px Manrope,sans-serif;padding:3px 7px;background:rgba(0,0,0,.08);color:#0B0B0C;border-radius:5px">5d</a><span style="font:700 12px Manrope,sans-serif;color:#0B0B0C">Block detail, rewired</span><span>⋯ opens <a href="#5a">5a</a> · staffing actions open <a href="#4d">4d</a>.</span></div>
+      <div data-screen-label="Block detail v2" style="width:392px;height:848px;overflow:hidden;background:#F8F9F8;border:1px solid rgba(0,0,0,.11);border-radius:34px;color:#0B0B0C;position:relative;display:flex;flex-direction:column">
+        <div style="flex:none;background:#fff;display:flex;align-items:center;padding:14px 22px 0"><div style="font:600 14px 'Instrument Sans',sans-serif">9:41</div><div style="flex:1"></div><div style="display:flex;align-items:center;gap:5px"><i class="ph-fill ph-cell-signal-full" style="font-size:14px"></i><i class="ph-fill ph-wifi-high" style="font-size:14px"></i><i class="ph-fill ph-battery-full" style="font-size:16px"></i></div></div>
+        <div style="flex:none;background:#fff;padding:14px 22px 18px;border-bottom:1px solid #EDEEF1">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div style="width:36px;height:36px;border-radius:99px;background:#F1F2F5;display:flex;align-items:center;justify-content:center"><i class="ph ph-arrow-left" style="font-size:18px"></i></div>
+            <div style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96">Tuesday</div>
+            <div style="flex:1"></div>
+            <div style="width:36px;height:36px;border-radius:99px;background:#F1F2F5;display:flex;align-items:center;justify-content:center"><i class="ph ph-dots-three" style="font-size:19px"></i></div>
+          </div>
+          <div style="font:400 30px/1.05 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:15px">Match play</div>
+          <div style="font:400 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:7px">10:45 – 12:15 · Sycamore · 3 courts</div>
+        </div>
+        <div style="flex:1;padding:14px 12px;display:flex;flex-direction:column;gap:9px;overflow:hidden">
+          <div style="background:#F6FAF7;border:1px solid #E4EDE7;border-radius:13px;padding:11px 13px;font:400 13px/1.5 'Instrument Sans',sans-serif;color:#3F4A44">Ladder matches to 11 — winners move up a court, coaches feed balls on 3.</div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:14px">
+            <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Court 1</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">8 kids</div></div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+              <div style="flex:none;width:26px;height:26px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 10px 'Instrument Sans',sans-serif;color:#5C6068">NA</div>
+              <div style="flex:1;font:500 13px 'Instrument Sans',sans-serif;color:#3F4A44">Nass · here 8:02am</div>
+              <div style="font:600 12.5px 'Instrument Sans',sans-serif;color:#1A7F55">Reassign</div>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:14px">
+            <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Court 2</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#B67A16">Needs a coach</div></div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+              <div style="flex:none;width:26px;height:26px;border-radius:99px;background:#F6FAF7;border:1px dashed #C3DFCF;display:flex;align-items:center;justify-content:center"><i class="ph ph-plus" style="font-size:13px;color:#1A7F55"></i></div>
+              <div style="flex:1;font:600 13px 'Instrument Sans',sans-serif;color:#1A7F55">Add a coach</div>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:14px">
+            <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Court 5</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">7 kids</div></div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+              <div style="flex:none;width:26px;height:26px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 10px 'Instrument Sans',sans-serif;color:#5C6068">AL</div>
+              <div style="flex:1;font:500 13px 'Instrument Sans',sans-serif;color:#3F4A44">Alina · from 10:30</div>
+              <div style="font:600 12.5px 'Instrument Sans',sans-serif;color:#1A7F55">Reassign</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #EDEEF1;border-radius:13px;padding:11px 13px">
+            <i class="ph ph-note" style="font-size:15px;color:#5C6068"></i>
+            <div style="flex:1;font:400 13px 'Instrument Sans',sans-serif;color:#3F4A44">Notes for the day live on the block, not in the editor.</div>
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;color:#1A7F55">Add</div>
+          </div>
+        </div>
+      </div>
+      <div style="font:500 11.5px/1.5 Manrope,sans-serif;color:rgba(0,0,0,.45);padding:0 4px">⋯ → <a href="#5a" style="font:600 10.5px Manrope,sans-serif;padding:1px 6px;background:rgba(0,0,0,.07);border-radius:4px;color:#0B0B0C">5a</a> edit sheet (delete lives there) · Reassign / Add a coach → <a href="#4d" style="font:600 10.5px Manrope,sans-serif;padding:1px 6px;background:rgba(0,0,0,.07);border-radius:4px;color:#0B0B0C">4d</a> coach picker</div>
+    </div>
+  </div>
+  <p style="margin:26px 0 0;font:500 12px/1.55 Manrope,sans-serif;color:rgba(0,0,0,.5)">Kept from the code: type, day, description, all/none rows, kid spread, "No end time", amber-not-walls, delete-in-editor. Distilled: five section headers → flat labels; per-court conflict detail stays in the coach picker. Groups drag (<a href="#1p" style="font:600 10.5px Manrope,sans-serif;background:rgba(0,0,0,.07);padding:2px 6px;border-radius:4px">1p</a>) unchanged.</p>
+</section>
+
+
+</body></html>

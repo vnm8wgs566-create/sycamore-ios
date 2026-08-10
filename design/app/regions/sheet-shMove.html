@@ -1,0 +1,11 @@
+<sc-if value="{{ shMove }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;margin-top:12px">
+          <sc-for list="{{ moveRows }}" as="m" hint-placeholder-count="3">
+            <div onClick="{{ m.pick }}" style="display:flex;align-items:center;gap:12px;padding:13px 2px;border-top:{{ m.line }};cursor:pointer;opacity:{{ m.dim }}">
+              <div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ m.title }}</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ m.sub }}</div></div>
+              <sc-if value="{{ m.current }}" hint-placeholder-val="{{ false }}"><i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i></sc-if>
+              <sc-if value="{{ m.notCurrent }}" hint-placeholder-val="{{ false }}"><div style="width:21px;height:21px;border-radius:99px;border:1.5px solid #DCDEE3"></div></sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>

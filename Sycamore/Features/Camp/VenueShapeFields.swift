@@ -1,0 +1,529 @@
+//
+//  VenueShapeFields.swift
+//  Sycamore
+//
+//  The blocks `design/app/regions/sheet-shVenue.html` draws between the name and the CTA, once,
+//  for the two sheets that draw them.
+//
+//  ── Why one file and not two copies ──────────────────────────────────────────────────────────
+//
+//  `VenueShapeSheet` shapes a venue that does not exist yet and `VenueSheet` shapes one that does.
+//  That difference is real — one commits to a form, the other to Postgres; one can count a venue's
+//  kids and the other has no camp to count in — and it is the *only* difference. Age band, courts,
+//  groups, target, the sentence under them and the coach row are the same eight controls asking
+//  the same eight questions in the same order, and the design draws them once.
+//
+//  `VenueNameFields` and `VenueLimitRow` were hoisted out of `VenueSheet` for exactly this reason
+//  a change ago (`VenueSheet.swift:146-157`); this is the rest of the sheet following them.
+//
+//  ── What is deliberately not here ────────────────────────────────────────────────────────────
+//
+//  No store, no `Camp`, no `Venue`. Everything below takes bindings and plain values, so the
+//  pre-creation sheet — which has no camp to read — can draw the identical control. The two
+//  callers each answer "what are the kid counts" and "who has joined" in their own way and hand
+//  the answers down.
+//
+
+import SwiftUI
+
+// MARK: - Chips
+
+extension ChipMetrics {
+
+    /// The venue sheet's age-band chips — `600 12.5`, `7/12`, pill, `#E4E5E9` unselected.
+    ///
+    /// A preset of its own rather than `.venue` (which is `7/13` on the rounder `strokeChip`),
+    /// because these sit inside a sheet against a white field, where `strokeAlt`'s siblings do:
+    /// `.time` and `.court` both take a `strokeAlt`-family border for the same reason. The one
+    /// pixel of horizontal padding is the design's, and copying it is cheaper than explaining
+    /// which chip it nearly is.
+    static let ageBand = ChipMetrics(
+        font: .chipMedium, horizontalPadding: 12, verticalPadding: 7,
+        radius: Radius.pill, spacing: 6, unselectedBorder: Theme.stroke, emojiSize: 12.5
+    )
+
+    /// The coach chips under it — `600 13`, `8/13`, pill. One step larger, because these carry a
+    /// person's name and the ones above carry a setting.
+    static let venueCoach = ChipMetrics(
+        font: .chip, horizontalPadding: 13, verticalPadding: 8,
+        radius: Radius.pill, spacing: 6, unselectedBorder: Theme.stroke, emojiSize: 13
+    )
+}
+
+// MARK: - Field label
+
+/// A field label with a quiet word on the right — `Subtitle … optional`.
+///
+/// `SheetFieldLabel` draws the left half at exactly the design's `600 12.5 / -.01em / #71757E`,
+/// so this composes it rather than restating the type: the note is a second `Text` on the
+/// baseline, and the label keeps its own padding.
+///
+/// Not `SheetFieldLabel` with an optional trailing string, which would mean editing a shared
+/// component in `Features/Sheets/` for one screen's benefit — see `Motion.swift:12` for when that
+/// trade is worth making, and this is the other side of it: one caller, one file.
+struct VenueFieldLabel: View {
+    let title: String
+    var note: String?
+    var topPadding: CGFloat = Spacing.gutterWide
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.small) {
+            SheetFieldLabel(title, topPadding: topPadding, bottomPadding: 0)
+            if let note {
+                Text(note)
+                    // `inkFaint` is the design's `#A2A6AE`, and this is the one place it stays:
+                    // a five-letter aside beside a label it modifies is not body copy, and it is
+                    // read by VoiceOver as part of the field it labels rather than on its own.
+                    .typeStyle(.footnote.lineHeight(nil), color: Theme.inkFaint)
+            }
+        }
+        .padding(.bottom, 7)
+        // One utterance. "Subtitle, optional" is what a person would say; two elements make the
+        // rotor stop twice and say the second one without its noun.
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Age band
+
+/// "All ages" / "11 & under" / "12 & up", from `AgeBand` itself.
+///
+/// `AgeBand.allCases` rather than a list written here: the enum owns the three and their labels
+/// (`Models.swift:520-532`), and the migration's CHECK owns the same three. A fourth added there
+/// appears here without anyone remembering to.
+struct VenueAgeBandPicker: View {
+    @Binding var ageBand: AgeBand
+
+    var body: some View {
+        FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
+            ForEach(AgeBand.allCases, id: \.self) { band in
+                let isSelected = band == ageBand
+                Chip(band.label, isSelected: isSelected, metrics: .ageBand) {
+                    ageBand = band
+                }
+                // The chip draws its selection and does not say so, which makes "which ages" an
+                // unanswerable question by ear. `CreateCampView.sportChips` adds the same trait
+                // to the same shared control for the same reason.
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+        .sensoryFeedback(.selection, trigger: ageBand)
+    }
+}
+
+// MARK: - Counts
+
+/// Courts, groups and the optional target — the three numbers the sheet exists to separate.
+///
+/// ── Stacked, where the design puts courts and groups side by side ────────────────────────────
+///
+/// The design draws two half-width stepper boxes in a row and the target in a full-width row
+/// under them. This draws all three as rows of one card, which is the shape the app already
+/// gives a venue's numbers (`VenueLimitRow`, shared by both venue sheets) and is the reason each
+/// row can carry the one-line explanation the two-up layout has no room for — "on the ground
+/// here" against "how the kids split" is the whole distinction this change is about, and a bare
+/// pair of steppers labelled Courts and Groups is precisely how they came to be confused.
+///
+/// It is also what survives the type ramp. Two steppers side by side hold at `.accessibility1`
+/// on a 375pt screen with about forty points to spare and stop holding well before the app's cap;
+/// a row that wraps its label above its control does not have a cliff.
+struct VenueCountsCard: View {
+    /// "court", "field", "lane" — the sport's own word for the ground.
+    let courtNoun: String
+    @Binding var courts: Int
+    @Binding var groups: Int
+    @Binding var targetPerGroup: Int?
+
+    var body: some View {
+        Card(radius: Radius.input, borderColor: Theme.strokeAlt) {
+            VenueLimitRow(
+                title: courtsTitle,
+                detail: "On the ground here. Moving it re-derives the limits below."
+            ) {
+                IntakeStepper(
+                    value: $courts,
+                    range: CampShape.courtRange,
+                    label: courtsTitle,
+                    valueWidth: 34
+                )
+            }
+
+            VenueLimitRow(
+                title: "Groups",
+                detail: "How the kids split. One group is one court's worth."
+            ) {
+                IntakeStepper(
+                    value: $groups,
+                    range: CampShape.groupRange,
+                    label: "Groups",
+                    valueWidth: 34
+                )
+            }
+
+            VenueLimitRow(
+                title: "Kids per group",
+                // The design's caption, word for word. It is the only thing standing between a
+                // number that guides and a number somebody believes they cannot exceed.
+                detail: "Optional target — over flags amber, never blocks"
+            ) {
+                VenueTargetStepper(target: $targetPerGroup)
+            }
+        }
+    }
+
+    private var courtsTitle: String { "\(courtNoun.capitalized)s" }
+}
+
+/// The target stepper: `1…40`, and one step below the floor is "no target at all".
+///
+/// A control of its own rather than an `IntakeStepper` over `0...40`, for the one thing an
+/// `IntakeStepper` cannot do: draw its value as something other than its number. Nought here is
+/// not a target of nobody, it is the absence of a target — the column is nullable precisely so
+/// the two are distinguishable — and the design draws that state as an em dash in the grey
+/// everything unanswered on this screen wears.
+///
+/// Everything else is `IntakeStepper`'s, deliberately: the same 28pt buttons on the same `fill`
+/// track at the same radius, the same touch growth, the same adjustable action, the same haptic.
+/// Only the middle 30 points differ.
+struct VenueTargetStepper: View {
+    @Binding var target: Int?
+
+    @ScaledMetric(relativeTo: .body) private var buttonSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 14
+    /// The design's 30pt readout — two digits or a dash.
+    @ScaledMetric(relativeTo: .body) private var valueWidth: CGFloat = 30
+
+    private var range: ClosedRange<Int> { CampShape.targetRange }
+
+    var body: some View {
+        HStack(spacing: Spacing.hairGap) {
+            button("minus", tint: Theme.inkSecondary, enabled: target != nil, action: decrease)
+
+            Text(target.map(String.init) ?? "—")
+                .typeStyle(.intakeStepperValue, color: target == nil ? Theme.inkFaint : Theme.ink)
+                .frame(minWidth: valueWidth)
+                .multilineTextAlignment(.center)
+
+            button(
+                "plus",
+                tint: Theme.accent,
+                enabled: (target ?? 0) < range.upperBound,
+                action: increase
+            )
+        }
+        .padding(3)
+        .background(Theme.fill, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Kids per group")
+        // Spoken rather than shown: an em dash is read as "dash" or as nothing at all depending on
+        // the voice, and neither is the answer to "how many kids per group".
+        .accessibilityValue(target.map { "\($0)" } ?? "No target")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: increase()
+            case .decrement: decrease()
+            @unknown default: break
+            }
+        }
+        .sensoryFeedback(.selection, trigger: target)
+    }
+
+    /// Off the floor is off the target. Stepping down from 1 clears it rather than stopping there,
+    /// which is what makes "no target" reachable with a thumb — there is no other control on the
+    /// screen that could unset it.
+    private func decrease() {
+        guard let current = target else { return }
+        target = current > range.lowerBound ? current - 1 : nil
+    }
+
+    private func increase() {
+        target = min(range.upperBound, (target ?? range.lowerBound - 1) + 1)
+    }
+
+    private var hitInset: CGFloat {
+        max(0, (HitTarget.minimum - buttonSize) / 2)
+    }
+
+    private func button(
+        _ symbol: String,
+        tint: Color,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: glyphSize, weight: .regular))
+                .foregroundStyle(enabled ? tint : Theme.glyphFaint)
+                .frame(width: buttonSize, height: buttonSize)
+                .background(
+                    Theme.surface,
+                    in: RoundedRectangle(cornerRadius: Radius.stepperButton, style: .continuous)
+                )
+                .intakeTouchTarget(inset: hitInset)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+}
+
+// MARK: - What saving does
+
+/// The live sentence under the numbers: what pressing the button below will actually do.
+///
+/// ── The design's three variants are not this app's three ─────────────────────────────────────
+///
+/// `design/app/state1.js:245` writes them as:
+///
+/// 1. *"Import deals every fitting kid into these {n} groups — kids outside the ages stay
+///    unassigned."*
+/// 2. *"Save re-deals all {k} kids into {n} groups by ladder order."* (amber)
+/// 3. *"{name} holds {k} kids — moves happen in Groups."*
+///
+/// The third is transcribed exactly. The first two describe a machine this app does not have, and
+/// a sentence that promises one is worse than no sentence at all — it is the screen telling
+/// somebody their kids have been dealt while they sit unplaced.
+///
+/// - **Import does not deal.** `Repository.importPlayers` places arrivals at the venue and
+///   *deliberately* gives them no court: "A kid with no court shows up in Groups' unassigned
+///   band, which is where somebody decides where they belong — as opposed to being dropped into
+///   court 1 by an import and quietly outranking kids already there" (`Repository.swift:611`).
+/// - **Nothing filters by age.** `AgeBand.admits(_:)` exists and, at the time of writing, has no
+///   caller anywhere in the app. The migration that added the column says as much in its own
+///   header: the band is recorded *so that* importing can one day leave the misfits out.
+/// - **Saving does not re-deal.** `updateVenue` → `Camp.upsert` → `syncGroups(for:)` adds or trims
+///   courts and nothing else; a kid standing on a court that goes has their `groupID` cleared and
+///   waits (`Models.swift:1580-1589`). The re-deal by ladder order is "Even out", which lives on
+///   Rank and is a camp-wide `store.evenOut()` — not something a venue sheet may fire on the way
+///   past, because it would relevel every *other* venue's courts too.
+///
+/// So the two remaining variants say what the app does, and the amber one splits by direction,
+/// because opening groups and closing them are not the same event for the kids standing in them.
+/// Amber for both, because both leave somebody to place by hand.
+enum VenueDealSentence {
+
+    /// Nothing exists yet — the venue is being added.
+    static func adding(groups: Int) -> String {
+        "Creates \(groups) \(groupWord(groups)) here. Kids you bring in land at the venue unplaced — Groups is where they take a court."
+    }
+
+    /// The venue exists and its group count is unchanged. The design's own sentence.
+    static func holding(name: String, kids: Int) -> String {
+        "\(name) holds \(kids) \(kids == 1 ? "kid" : "kids") — moves happen in Groups."
+    }
+
+    /// The venue exists, holds kids, and the group count has been moved.
+    static func recutting(from was: Int, to now: Int, kids: Int) -> String {
+        let kidWord = kids == 1 ? "kid" : "kids"
+        if now < was {
+            let closed = was - now
+            return "Save closes \(closed) \(groupWord(closed)) — the \(kidWord) standing on \(closed == 1 ? "it" : "them") wait unplaced until you even out on Rank."
+        }
+        let opened = now - was
+        return "Save opens \(opened) more \(groupWord(opened)) — \(opened == 1 ? "it starts" : "they start") empty, and Even out on Rank spreads the \(kids) \(kidWord) across all \(now)."
+    }
+
+    private static func groupWord(_ count: Int) -> String {
+        count == 1 ? "group" : "groups"
+    }
+}
+
+/// The sentence, in the colour that says whether somebody has to do something about it.
+struct VenueDealLine: View {
+    let sentence: String
+    /// Amber when saving will leave kids to be placed by hand.
+    var isWarning: Bool = false
+
+    var body: some View {
+        Text(sentence)
+            // `Theme.warning` is the design's `#B67A16`, drawn as plain text with no fill — which
+            // is what that token's own note says it is for. The quiet state is `inkTertiary` and
+            // not the design's `#A2A6AE`: this is body copy, and `inkFaint` is about 2.9:1 on
+            // white where `inkTertiary` is 4.6:1.
+            .typeStyle(.meta.lineHeight(1.5), color: isWarning ? Theme.warning : Theme.inkTertiary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 7)
+    }
+}
+
+// MARK: - Coaches
+
+/// Who is standing here, chosen from the people who have actually joined.
+///
+/// Takes names and a selection rather than `[StaffMember]` and the store, so the block is drawn by
+/// whoever has a camp to read and this file stays camp-free. The id is the caller's — a
+/// `StaffMember.ID` from a live camp — and this only ever hands it back.
+struct VenueCoachPicker: View {
+    let coaches: [VenueCoachOption]
+    let selected: Set<StaffMember.ID>
+    let onToggle: (StaffMember.ID) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.small) {
+            FlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
+                ForEach(coaches) { coach in
+                    let isSelected = selected.contains(coach.id)
+                    Chip(
+                        coach.name,
+                        isSelected: isSelected,
+                        // Green rather than black: a coach is a person being put somewhere, not a
+                        // filter being switched on, and the design fills these `#1A7F55`.
+                        selectedTone: .accent,
+                        metrics: .venueCoach
+                    ) {
+                        onToggle(coach.id)
+                    }
+                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                }
+            }
+
+            Text("Pick from staff who joined — puts them on a court here, and unpicking takes them off it.")
+                .typeStyle(.meta.lineHeight(1.5), color: Theme.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// One row of the picker. A name and the id to hand back — nothing else about a `StaffMember`
+/// reaches this file.
+struct VenueCoachOption: Identifiable, Hashable, Sendable {
+    let id: StaffMember.ID
+    let name: String
+}
+
+/// What stands in the picker's place before anybody has joined: the code, and what happens when
+/// somebody uses it.
+///
+/// The dashed plate is the idiom five screens in this section already draw by hand
+/// (`VenueEmptyState.swift:76-80` names the other four) — `BorderWidth.input` at `Theme.accentBorder`
+/// with a `4.5/4.5` dash, which is CSS's 1.5px dash read at three times its width.
+struct VenueInviteRow: View {
+    let inviteCode: String
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.input, style: .continuous)
+
+        return HStack(spacing: 11) {
+            Image(systemName: "lock")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(Theme.accent)
+                // Decorative: the line beside it says the same thing in words.
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: Spacing.hairGap) {
+                Text("Invite coaches · \(inviteCode)")
+                    .typeStyle(.timelineTitle.tracking(em: -0.015), color: Theme.accentDark)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Coaches join with the code, land in Staff, and get assigned here.")
+                    .typeStyle(.meta.lineHeight(1.5), color: Theme.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Spacing.gutterWide)
+        .padding(.vertical, Spacing.medium)
+        .background(Theme.surface, in: shape)
+        .overlay(
+            shape.strokeBorder(
+                Theme.accentBorder,
+                style: StrokeStyle(lineWidth: BorderWidth.input, dash: [4.5, 4.5])
+            )
+        )
+        // The code is the point of the row and it is four letters, a dash and four digits — read
+        // as one word it is gibberish. Combined so VoiceOver stops once, and spelled by the label
+        // rather than left to the voice.
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Remove
+
+/// "Remove this venue", and then the confirmation in the same button.
+///
+/// Two taps rather than a `confirmationDialog`, which is what this used to be. The design writes
+/// the confirmation *as the label* — "Tap again — removes its 6 kids too" — and that is the whole
+/// argument for it: an action sheet asks "are you sure" and this asks "sure about the six kids",
+/// which is a different and better question, in the place the thumb already is.
+///
+/// The count is the caller's, because only one of the two sheets has a camp to count in.
+struct VenueRemoveButton: View {
+    /// How many kids go with it. Nought before the camp exists, and the label says so differently.
+    let kidCount: Int
+    let onRemove: () -> Void
+
+    @State private var isConfirming = false
+
+    var body: some View {
+        PrimaryButton(
+            label,
+            tone: .danger,
+            height: 48,
+            radius: Radius.tile,
+            font: .buttonCompact
+        ) {
+            if isConfirming {
+                onRemove()
+            } else {
+                isConfirming = true
+            }
+        }
+        // The label changes under the finger, and a button whose *words* change is one VoiceOver
+        // will re-read on the next focus and not before. Saying it out loud is the only way the
+        // second tap is not a silent one.
+        .accessibilityLabel(label)
+        .accessibilityHint(isConfirming ? "" : "Asks again before removing")
+        // Arming is not a decision, so it does not survive the reader looking away — and a button
+        // left armed under a sheet that was scrolled past is a removal one stray tap away.
+        .onDisappear { isConfirming = false }
+    }
+
+    private var label: String {
+        guard isConfirming else { return "Remove this venue" }
+        guard kidCount > 0 else { return "Tap again — removes it for good" }
+        return "Tap again — removes its \(kidCount) \(kidCount == 1 ? "kid" : "kids") too"
+    }
+}
+
+// MARK: - Previews
+
+#Preview("Venue shape fields") {
+    @Previewable @State var ageBand = AgeBand.all
+    @Previewable @State var courts = 6
+    @Previewable @State var groups = 4
+    @Previewable @State var target: Int? = nil
+    @Previewable @State var picked: Set<StaffMember.ID> = []
+
+    let staff = SampleData.uclaTennisCamp.staff.prefix(3).map {
+        VenueCoachOption(id: $0.id, name: $0.name)
+    }
+
+    return ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+            VenueFieldLabel(title: "Age group", topPadding: 0)
+            VenueAgeBandPicker(ageBand: $ageBand)
+
+            VenueFieldLabel(title: "Numbers")
+            VenueCountsCard(
+                courtNoun: "court",
+                courts: $courts,
+                groups: $groups,
+                targetPerGroup: $target
+            )
+            VenueDealLine(sentence: VenueDealSentence.adding(groups: groups))
+
+            VenueFieldLabel(title: "Coaches", note: "optional")
+            VenueCoachPicker(coaches: staff, selected: picked) { id in
+                if picked.contains(id) { picked.remove(id) } else { picked.insert(id) }
+            }
+
+            VenueFieldLabel(title: "Nobody has joined")
+            VenueInviteRow(inviteCode: SampleData.uclaTennisCamp.inviteCode)
+
+            VenueRemoveButton(kidCount: 6) {}
+                .padding(.top, Spacing.large)
+        }
+        .padding(Spacing.sheet)
+    }
+    .background(Theme.surface)
+}

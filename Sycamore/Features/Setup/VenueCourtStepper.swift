@@ -2,8 +2,20 @@
 //  VenueCourtStepper.swift
 //  Sycamore
 //
-//  The −/6/+ control on the right of every venue row in `8t`. It sets how many courts the venue
-//  has, which is a write to the camp, so the value has to settle locally and then be sent.
+//  The −/6/+ control on the right of every venue row in `8t`. It sets how many **groups** the
+//  venue splits its kids into, which is a write to the camp, so the value has to settle locally
+//  and then be sent.
+//
+//  Groups, despite the name on the file. It reads and writes `Venue.groupCount`, and it always
+//  has — the model has only lately grown a `courtCount` to sit beside it, so until then "courts"
+//  and "groups" were one number and calling this a court stepper was true. It is not any more:
+//  `groupCount` is how many `Group` records `syncGroups(for:)` keeps, and moving this adds or
+//  deletes courts and rehomes whoever was standing on them. What it is *not* is a statement about
+//  how many courts exist on the ground, which is what a reader hearing "Courts at Sycamore" would
+//  reasonably take it for — so the spoken label says groups.
+//
+//  The type keeps its name because its caller does (`SetupView.setCourts`), and `Features/Setup`
+//  is not this change's to rename. The venue sheet is where both numbers can be set apart.
 //
 //  Drawn here rather than through `StepperControl` because `8t`'s stepper is not that stepper.
 //  The shared one comes from "Shape" and the venue sheet, where the buttons are 34×32 and both
@@ -75,7 +87,7 @@ struct VenueCourtStepper: View {
         // Control then drive it by swiping up and down, which is the whole point of a stepper —
         // and it means neither 28pt glyph has to be found and hit individually.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Courts at \(venue.name)")
+        .accessibilityLabel("Groups at \(venue.name)")
         .accessibilityValue("\(count)")
         .accessibilityAdjustableAction { direction in
             switch direction {

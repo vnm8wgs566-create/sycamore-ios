@@ -78,6 +78,11 @@ struct GroupsView: View {
     /// `store.activeSheet` or a `PushedScreen` case — see `enrolmentFlow`.
     @State private var isEnrolling = false
 
+    /// The venue whose even-out sheet is up, or nil. Carries the venue rather than sitting beside
+    /// a `Bool`, so "which venue is this asking about" cannot come apart from "is it showing" —
+    /// the venue chips are still live behind the sheet.
+    @State private var evenOutTarget: EvenOutTarget?
+
     var body: some View {
         @Bindable var store = store
         let venue = selectedVenue
@@ -101,6 +106,14 @@ struct GroupsView: View {
         // gives this screen its own page colour; see the PR for why it is not `Theme.grouped`.
         .background(Theme.surfaceWarm)
         .fullScreenPresentation(isPresented: $isEnrolling) { enrolmentFlow }
+        // A sheet rather than a cover: it is a question with two answers and it draws its own
+        // ✕, which is exactly what `SheetChrome` is for. `item:` and not `isPresented:` so the
+        // venue it is asking about arrives with the presentation instead of being read out of a
+        // second property that a chip tap behind the sheet could change underneath it.
+        .sheet(item: $evenOutTarget) { target in
+            EvenOutSheet(store: store, venueID: target.id) { evenOutTarget = nil }
+                .environment(store)
+        }
         .confirmationDialog(
             pendingLanding?.question ?? "",
             isPresented: $isConfirmingCourtChange,
@@ -243,6 +256,7 @@ struct GroupsView: View {
                     nothingHere
                 }
 
+                evenOutRow(venue)
                 firstSortRow
                 addGroupRow(venue)
                 addKidsRow
@@ -489,6 +503,71 @@ struct GroupsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Ranks the kids in \(venue.name) two at a time")
+    }
+
+    // MARK: Even out
+
+    /// "Uneven after moves · 9 · 7 · 8 · 6", and the button that fixes it.
+    ///
+    /// **It appears only when it has something to say.** The design's own condition is
+    /// `max(counts) - min(counts) > 1` (`design/app/state1.js:85`) — one kid of difference is
+    /// what an even split of an odd roll *looks* like, so flagging it would be flagging
+    /// arithmetic. `EvenOutPlan.isNoOp` is the same test arrived at from the other end: it counts
+    /// the kids who would actually move, and a venue already within one has none.
+    ///
+    /// **Hidden while a search is running**, which is the design's other clause and the one worth
+    /// explaining. The cards on screen during a search are a *filtered* view, so their visible
+    /// counts are not the counts this plan is about — offering "even out" beside them would be
+    /// offering to fix numbers the reader cannot see. The plan itself is computed from the camp
+    /// and is right either way; it is the juxtaposition that would lie.
+    ///
+    /// Hidden mid-move for the reason the three rows below it are: nothing new appears under a
+    /// kid in the air.
+    ///
+    /// The plan is rebuilt on each pass rather than held in `@State`. It is a walk over one
+    /// venue's roll — the same order of work as `firstSortOffer` above — and holding it would mean
+    /// keeping it in step with every drop, every rename and every court added, which is three more
+    /// places for the preview to disagree with what the button then does.
+    @ViewBuilder
+    private func evenOutRow(_ venue: Venue?) -> some View {
+        if move == nil, store.searchText.trimmingCharacters(in: .whitespaces).isEmpty,
+           let venue, let camp = store.camp,
+           let plan = EvenOutPlan(camp: camp, venueID: venue.id), !plan.isNoOp {
+            evenOutButton(venue, plan: plan)
+        }
+    }
+
+    /// Takes the plan the row above already built rather than building a second one. Two calls to
+    /// the same initialiser would agree today and are still two walks over the venue's roll on
+    /// every pass of `body`, on the screen whose whole memoisation exists to stop exactly that.
+    private func evenOutButton(_ venue: Venue, plan: EvenOutPlan) -> some View {
+        Button { evenOutTarget = EvenOutTarget(id: venue.id) } label: {
+            Card(radius: GroupsMetrics.cardRadius, isDivided: false) {
+                HStack(spacing: GroupsMetrics.addGroupGap) {
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: GroupsMetrics.addGroupGlyph, weight: .regular))
+                        .foregroundStyle(Theme.warningDark)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: Spacing.hairGap) {
+                        Text("Uneven after moves")
+                            .typeStyle(GroupsType.addGroup, color: Theme.ink)
+                        Text(plan.contextLine)
+                            .typeStyle(.rowDetail, color: Theme.inkTertiary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text("Even out")
+                        .typeStyle(.buttonSmall, color: Theme.accent)
+                }
+                .padding(GroupsMetrics.cardPadding)
+                .frame(minHeight: HitTarget.minimum)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Spreads \(venue.name)'s kids evenly across its groups by ladder order")
     }
 
     /// The dashed row under the last group. Not offered mid-move: a card appearing under a kid
@@ -1389,4 +1468,16 @@ struct GroupsView: View {
         .environment(AppStore.preview)
         .preferredColorScheme(.dark)
         .frame(width: 402, height: 874)
+}
+
+// MARK: - Which venue the even-out sheet is asking about
+
+/// A `Venue.ID` that `.sheet(item:)` will accept.
+///
+/// `UUID` is not `Identifiable` and should not be made so app-wide: `id` would then mean "itself"
+/// on every uuid in the project, which is true and useless, and would let any of them be handed to
+/// a presentation modifier by accident. One named wrapper at the one call site that needs it says
+/// what is being presented instead.
+private struct EvenOutTarget: Identifiable {
+    let id: Venue.ID
 }

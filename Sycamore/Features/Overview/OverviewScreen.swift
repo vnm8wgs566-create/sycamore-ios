@@ -204,7 +204,7 @@ struct OverviewScreen: View {
                     dateLine: dateLine,
                     initials: store.avatarInitials,
                     onVenueTap: { isPickingVenue = true },
-                    onAvatarTap: { store.pushedScreen = .profile }
+                    onAvatarTap: { store.pushedScreen = .campHome }
                 )
             }
             .background(Theme.surface)

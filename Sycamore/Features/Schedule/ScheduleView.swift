@@ -197,7 +197,7 @@ struct ScheduleView: View {
                 ScreenHeader(
                     title: "Schedule", subtitle: dragHint, initials: store.avatarInitials
                 ) {
-                    store.pushedScreen = .profile
+                    store.pushedScreen = .campHome
                 }
 
                 dayChips

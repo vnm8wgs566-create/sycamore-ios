@@ -85,7 +85,22 @@ struct CreateCampView: View {
 
     /// The venue whose editor is open. Presented from here rather than through `store.activeSheet`
     /// — see `VenueShapeSheet.swift:12-21` for why that slot is unreachable from this screen.
+    ///
+    /// It now holds rows that are **not on the list**. "Add a venue" seeds one with
+    /// `CampShape.newVenue()` and opens the sheet on it; the shape hears nothing until Add is
+    /// pressed. That is the whole of this change from the screen's side — a venue is no longer
+    /// created nameless, carrying the last one's numbers, for somebody to find and correct later.
     @State private var editingVenue: VenueShape?
+
+    /// Whether `editingVenue` is a row the shape already holds.
+    ///
+    /// Asked of the shape rather than carried alongside the row, because two pieces of state that
+    /// must agree are one piece of state and a bug: a `isAddingVenue` flag left true after a save
+    /// would draw "Add Main Courts" over a venue that is already on the list.
+    private var isEditingExistingVenue: Bool {
+        guard let editingVenue else { return false }
+        return shape.venues.contains { $0.id == editingVenue.id }
+    }
 
     /// Which row is showing its Remove, and which has a finger on it. One value shared by every
     /// row, so only one can be open (`SwipeToDelete.swift:56-64`).
@@ -246,7 +261,7 @@ struct CreateCampView: View {
                 } else {
                     // No "VENUES" overline above it: the empty frame draws none, and the plate is
                     // the whole block rather than a card under a heading.
-                    VenueEmptyState(courtNoun: courtNoun, onCreate: createFirstVenue)
+                    VenueEmptyState(courtNoun: courtNoun, onCreate: openNewVenueEditor)
                 }
             }
             .padding(.horizontal, Spacing.gutter)
@@ -272,10 +287,12 @@ struct CreateCampView: View {
             venue: venue,
             shape: shape,
             courtNoun: courtNoun,
+            isEditing: isEditingExistingVenue,
+            // `add(_:)` rather than a lookup and an assignment, because from here the two cases are
+            // the same intent — the sheet was handed a row and has handed one back. Which of them
+            // it was is the shape's business, and it is the only thing that knows for certain.
             onSave: { saved in
-                if let index = shape.venues.firstIndex(where: { $0.id == saved.id }) {
-                    shape.venues[index] = saved
-                }
+                shape.add(saved)
                 editingVenue = nil
             },
             // Never withheld now. It used to be nil for the last venue in the camp, because one
@@ -334,16 +351,23 @@ struct CreateCampView: View {
         .padding(.top, Spacing.hairGap)
     }
 
-    /// What "Create your first venue" does — exactly what "Add a venue" does, which is why it is
-    /// `addVenue()` and not a second seeding rule: the row it makes is already named, tinted and
-    /// bounded from the camp-wide rates.
+    /// What "Create your first venue" and "Add a venue" both do: open the editor on a seeded row
+    /// that is not on the list yet.
     ///
-    /// Deliberately does *not* open the editor behind it. "Create your first venue" says create,
-    /// the row it lands on is one tap from `VenueShapeSheet` and says "Tap to name it" in so many
-    /// words, and a sheet arriving unasked over a screen somebody has not finished reading is a
-    /// worse greeting than one more tap.
-    private func createFirstVenue() {
-        shape.addVenue()
+    /// It used to append the row and stop there, on the argument that "create" should create and
+    /// that a sheet arriving unasked over a screen somebody has not finished reading is a worse
+    /// greeting than one more tap. That argument is answered rather than overruled: what it
+    /// created was a venue called `Venue 1` with the previous venue's numbers, which then had to
+    /// be corrected — and the correction is the sheet, so the tap it saved was never saved, only
+    /// deferred until after the wrong venue had been written into the camp.
+    ///
+    /// The row is *seeded*, not blank. Everything the old append decided — the positional name as
+    /// a placeholder, the emoji from the rotation, the courts from the last venue, both limits
+    /// from the camp-wide rates — is already in the sheet when it opens, so this is one tap to a
+    /// filled-in form rather than one tap to an interrogation.
+    private func openNewVenueEditor() {
+        guard shape.canAddVenue else { return }
+        editingVenue = shape.newVenue()
     }
 
     private func saveTheShape() {
@@ -566,7 +590,7 @@ struct CreateCampView: View {
 
     private var addVenueRow: some View {
         Button {
-            shape.addVenue()
+            openNewVenueEditor()
         } label: {
             CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: Spacing.medium) {
                 IntakeIconTile(

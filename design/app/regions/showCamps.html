@@ -1,0 +1,31 @@
+<sc-if value="{{ showCamps }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:none;background:#fff;padding:14px 22px 18px;border-bottom:1px solid #EDEEF1">
+      <div style="font:400 30px/1.05 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:4px">Your camps</div>
+      <div style="font:400 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:7px">One login, every camp you work or run</div>
+    </div>
+    <div style="flex:1;padding:14px 12px;display:flex;flex-direction:column;gap:9px;overflow:auto">
+      <sc-for list="{{ campCards }}" as="c" hint-placeholder-count="1">
+        <div onClick="{{ c.open }}" style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:13px;display:flex;align-items:center;gap:12px;cursor:pointer">
+          <div style="flex:none;width:44px;height:44px;border-radius:14px;background:#EDF6F1;display:flex;align-items:center;justify-content:center;font:600 17px 'Instrument Sans',sans-serif;color:#14684A">{{ c.initial }}</div>
+          <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><div style="font:600 15.5px 'Instrument Sans',sans-serif;letter-spacing:-.025em">{{ c.name }}</div><div style="font:600 11px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:3px 8px;border-radius:999px">{{ c.role }}</div></div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:3px">{{ c.sub }}</div></div>
+          <div style="padding:8px 15px;border-radius:999px;border:1.5px solid #C3DFCF;color:#1A7F55;font:600 13px 'Instrument Sans',sans-serif">Open</div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ noCamps }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+          <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+          <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em">No camps yet.</div>
+          <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:270px;text-wrap:pretty">Start one and shape it — venues, courts and groups take about a minute. Or join a camp someone runs with their code.</div>
+        </div>
+      </sc-if>
+      <div onClick="{{ openNewCamp }}" style="background:#fff;border:1.5px dashed #C3DFCF;border-radius:16px;padding:15px 13px;display:flex;align-items:center;gap:12px;cursor:pointer">
+        <div style="flex:none;width:44px;height:44px;border-radius:14px;background:#F6FAF7;display:flex;align-items:center;justify-content:center"><i class="ph ph-plus" style="font-size:18px;color:#1A7F55"></i></div>
+        <div style="flex:1;min-width:0"><div style="font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:#14684A">Start a new camp</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:3px">Name it, shape it, bring in the kids.</div></div>
+      </div>
+      <div onClick="{{ openJoin }}" style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:13px;display:flex;align-items:center;gap:11px;cursor:pointer">
+        <i class="ph ph-lock-simple" style="font-size:17px;color:#5C6068"></i>
+        <div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Join with a code</div>
+        <i class="ph ph-caret-right" style="font-size:15px;color:#C7CBD2"></i>
+      </div>
+    </div>
+  </sc-if>

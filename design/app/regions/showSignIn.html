@@ -1,0 +1,22 @@
+<sc-if value="{{ showSignIn }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;background:#fff;display:flex;flex-direction:column;padding:0 26px">
+      <div style="flex:1.1"></div>
+      <img src="assets/logo.svg" style="width:46px;align-self:flex-start" alt="Sycamore">
+      <div style="font:400 40px/1.05 Newsreader,Georgia,serif;letter-spacing:-.025em;margin-top:14px">Sycamore</div>
+      <div style="font:400 14px/1.6 'Instrument Sans',sans-serif;color:#71757E;margin-top:10px;max-width:280px;text-wrap:pretty">Camp management for people standing on a court, not sitting at a desk.</div>
+      <sc-if value="{{ authEmailStep }}" hint-placeholder-val="{{ true }}">
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:26px 0 7px">Email</div>
+        <input value="{{ authEmail }}" onInput="{{ setAuthEmail }}" placeholder="you@court.side" style="width:100%;box-sizing:border-box;border:1.5px solid #0B0B0C;border-radius:15px;padding:14px 15px;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.02em;background:#fff">
+        <div onClick="{{ sendCode }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:12px;cursor:pointer;opacity:{{ emailCtaOp }}">Email me a code</div>
+        <div style="font:400 12.5px/1.55 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:12px">No passwords. Nothing to forget with wet hands.</div>
+      </sc-if>
+      <sc-if value="{{ authCodeStep }}" hint-placeholder-val="{{ false }}">
+        <div style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:26px">We emailed {{ authEmail }}</div>
+        <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin:14px 0 7px">Code</div>
+        <input value="{{ authCode }}" onInput="{{ setAuthCode }}" placeholder="000000" style="width:100%;box-sizing:border-box;border:1.5px solid #0B0B0C;border-radius:15px;padding:14px 15px;font:600 20px 'Instrument Sans',sans-serif;letter-spacing:.3em;background:#fff">
+        <div onClick="{{ doSignIn }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:12px;cursor:pointer;opacity:{{ codeCtaOp }}">Sign in</div>
+        <div onClick="{{ backToEmail }}" style="font:600 13px 'Instrument Sans',sans-serif;color:#1A7F55;margin-top:14px;cursor:pointer">Different email</div>
+      </sc-if>
+      <div style="flex:1.6"></div>
+    </div>
+  </sc-if>

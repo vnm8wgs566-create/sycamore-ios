@@ -1,0 +1,15 @@
+<sc-if value="{{ shEvenOut }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#F8F9F8;border:1px solid #EDEEF1;border-radius:13px;margin-top:14px;overflow:hidden">
+          <sc-for list="{{ evenRows }}" as="e" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-top:{{ e.line }}">
+              <div style="flex:1;font:500 14px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ e.title }}</div>
+              <div style="font:500 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;font-variant-numeric:tabular-nums">{{ e.from }}</div>
+              <i class="ph ph-arrow-right" style="font-size:13px;color:#B3B7BE"></i>
+              <div style="font:600 13.5px 'Instrument Sans',sans-serif;color:#14684A;font-variant-numeric:tabular-nums">{{ e.to }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font:400 12.5px/1.55 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:10px">Re-deals by ladder order — Group 1 takes the top band. {{ evenMoves }}</div>
+        <div onClick="{{ applyEvenOut }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer">{{ evenCta }}</div>
+        <div onClick="{{ closeSheet }}" style="height:48px;display:flex;align-items:center;justify-content:center;font:600 14px 'Instrument Sans',sans-serif;color:#71757E;margin-top:4px;cursor:pointer">Keep as is</div>
+      </sc-if>

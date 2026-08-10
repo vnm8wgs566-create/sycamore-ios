@@ -52,7 +52,7 @@ struct InboxView: View {
                     subtitle: contents.headerSubtitle,
                     initials: store.avatarInitials
                 ) {
-                    store.pushedScreen = .profile
+                    store.pushedScreen = .campHome
                 }
 
                 InboxFilterChips(selection: $filter)

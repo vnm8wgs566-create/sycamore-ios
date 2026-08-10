@@ -27,7 +27,12 @@
 
 import Foundation
 
-/// One row of `8b`'s VENUES card.
+/// One row of `8b`'s VENUES card, and everything `sheet-shVenue` asks about it.
+///
+/// Four of the fields below arrived together, because `Venue` grew somewhere to put them: a venue
+/// now knows how many courts stand on its ground *and*, separately, how many groups its kids split
+/// into, roughly how big a group should be, and which ages it takes. Until it did, the sheet asked
+/// for one number and the app spent it twice.
 struct VenueShape: Identifiable, Hashable, Sendable {
     var id = UUID()
     /// What this venue is called. Seeded positionally — `Camp.make(from:)` would name it the same
@@ -54,8 +59,29 @@ struct VenueShape: Identifiable, Hashable, Sendable {
     /// stored because screen 11 genuinely can separate them ("unless someone has said otherwise",
     /// `VenueSheet.swift:94`).
     var tint: VenueTint { .suggested(for: icon) }
-    /// Courts, fields or lanes, depending on the sport.
+    /// Courts, fields or lanes on the ground here — `sites.court_count`.
+    ///
+    /// A fact about the site, and since the model split it from `groupCount` it is no longer the
+    /// number of `Group` records this venue will get. `groups` below is that. The two are seeded
+    /// equal because that is what every venue in the database already looks like — the migration's
+    /// own backfill is `group_count = court_count` — and they part company the moment somebody
+    /// answers the sheet's second stepper.
+    ///
+    /// It is still what the two camp-wide rates multiply: "Kids per court" is a rate per court.
     var courts: Int
+    /// How many groups this venue's kids split into — `sites.group_count`, one `Group` record each.
+    ///
+    /// Seeded from `courts` rather than defaulted to a number of its own, so a camp shaped without
+    /// opening this sheet is the camp the app has always created.
+    var groups: Int
+    /// Roughly how many kids a group should hold, or nil for "nobody said".
+    ///
+    /// Nil rather than zero, because the column distinguishes them and so does the reader: the
+    /// stepper draws 0 as an em dash in `Theme.inkFaint`, and that is a different claim from a
+    /// target of nobody. **Never enforced** — the caption under the row says so out loud.
+    var targetPerGroup: Int?
+    /// Which ages this venue takes. `.all` unless somebody narrowed it.
+    var ageBand: AgeBand = .all
     /// The ceiling the auto-partition works under — `sites.player_max`.
     ///
     /// An absolute rather than a rate, because that is what the column is and what the editor
@@ -64,6 +90,40 @@ struct VenueShape: Identifiable, Hashable, Sendable {
     var maxKids: Int
     /// The floor a venue is measured against — `sites.coach_min`. Below it the venue reads short.
     var minCoaches: Int
+
+    /// Spelled out rather than left to the memberwise init, for one reason: `groups` defaults to
+    /// `courts` and no memberwise default can say that.
+    ///
+    /// It also keeps the three call sites that predate the split compiling unchanged —
+    /// `VenueShapeAdapter` builds one of these out of a created `Venue` and names six of the
+    /// arguments — which matters because the argument list below is a superset of theirs *in the
+    /// same order*, so nothing outside this file had to be edited to add four fields to a row.
+    init(
+        id: UUID = UUID(),
+        name: String,
+        subtitle: String?,
+        icon: String,
+        courts: Int,
+        groups: Int? = nil,
+        targetPerGroup: Int? = nil,
+        ageBand: AgeBand = .all,
+        maxKids: Int,
+        minCoaches: Int
+    ) {
+        self.id = id
+        self.name = name
+        self.subtitle = subtitle
+        self.icon = icon
+        self.courts = courts
+        // The migration's own backfill rule (`update public.sites set group_count = court_count`),
+        // so a row built without answering the second stepper describes the venue the app would
+        // have created before the two numbers were separable.
+        self.groups = groups ?? courts
+        self.targetPerGroup = targetPerGroup
+        self.ageBand = ageBand
+        self.maxKids = maxKids
+        self.minCoaches = minCoaches
+    }
 }
 
 extension VenueShape {
@@ -71,6 +131,19 @@ extension VenueShape {
     /// A one-line reading of the two limits, for the row that cannot show both fields.
     var limitsLine: String {
         "up to \(maxKids) kids · \(minCoaches)+ coaches"
+    }
+
+    /// What the sheet's header says the row currently is: `6 courts · 4 groups · ~12/group`.
+    ///
+    /// The sheet used to head itself with `limitsLine`, which named the two numbers furthest from
+    /// what the sheet now spends most of its height asking about. The target is dropped from the
+    /// line when there is none rather than written as a dash — a header is read once and a dash in
+    /// it is a puzzle, where in the stepper it is the answer "not decided" drawn in its own grey.
+    func shapeLine(noun: String) -> String {
+        let courtWord = courts == 1 ? noun : "\(noun)s"
+        let groupWord = groups == 1 ? "group" : "groups"
+        let parts = ["\(courts) \(courtWord)", "\(groups) \(groupWord)", targetPerGroup.map { "~\($0)/group" }]
+        return parts.compactMap { $0 }.joined(separator: " · ")
     }
 
     /// The court count and everything that follows from it.
@@ -86,8 +159,22 @@ extension VenueShape {
     /// `CampShape.setCourts(_:for:)` forwards here for `8b`'s row, and `VenueShapeSheet` calls it
     /// directly on a draft that has not been committed to the shape yet. A third consequence of
     /// changing the courts is then added once.
+    /// A third consequence has joined the two: the group count follows the courts **while the two
+    /// still agree**, and stops the moment somebody has said they differ.
+    ///
+    /// Every venue is seeded with as many groups as courts, so before the sheet's second stepper
+    /// is touched "6 courts" and "6 groups" are one answer written twice. Leaving `groups` behind
+    /// when the courts move would give a venue eight courts and six groups with nothing on screen
+    /// saying so — and `8b`'s venue row has only the *court* stepper on it, so there would be
+    /// nowhere to notice until the camp existed.
+    ///
+    /// Once they differ they are a decision, and a decision is not re-derived: a venue running
+    /// four groups on six courts because two are being resurfaced keeps its four when a seventh
+    /// court opens. Same rule as the camp-wide rates two screens up, and the same reason.
     mutating func setCourts(_ courts: Int, kidsPerCourt: Int, coachesPerCourt: Int) {
+        let followed = groups == self.courts
         self.courts = CampShape.clamp(courts, into: CampShape.courtRange)
+        if followed { groups = CampShape.clamp(self.courts, into: CampShape.groupRange) }
         maxKids = CampShape.kidsCeiling(forCourts: self.courts, at: kidsPerCourt)
         minCoaches = CampShape.coachFloor(forCourts: self.courts, at: coachesPerCourt)
     }
@@ -114,25 +201,53 @@ struct CampShape: Hashable, Sendable {
     static let defaultKidsPerCourt = 8
     static let defaultCoachesPerCourt = 1
 
-    /// Bounds. The two venue-facing ones are `CampDraft`'s, so a shape can never describe a
-    /// camp the draft cannot then create.
+    /// Bounds. The venue count is `CampDraft`'s, so a shape can never describe a camp the draft
+    /// cannot then create; the rest are the venue sheet's own steppers, mirrored from the CHECKs
+    /// on `sites`.
     ///
     /// `venueRange.lowerBound` is a rule about a **camp**, not about this form. `8b` draws a state
     /// with no venues at all, so a shape is allowed to sit below the floor while it is being
     /// filled in and `isCreatable` is where the floor is actually kept — see `removeVenue`.
     static let venueRange = CampDraft.venueRange
-    static let courtRange = CampDraft.groupRange
+    /// Courts on the ground: `1...40`, which is the venue sheet's own stepper.
+    ///
+    /// It used to be `CampDraft.groupRange` (`1...16`), on the argument that "a shape can never
+    /// describe a camp the draft cannot then create". That tie was real and is now cut, because it
+    /// was a tie to the wrong number: `applied(to:)` writes `CampDraft.groupsPerVenue`, which
+    /// seeds `groupCount`, and this is `courtCount` — a different question since the model
+    /// separated them. `groups` below carries the draft's constraint instead, and 12 sits well
+    /// inside 16.
+    ///
+    /// 40 is `sites_group_count_range`'s ceiling, which the migration chose by naming this
+    /// stepper: *"40 is the ceiling the same sheet already uses for courts"*.
+    static let courtRange = 1...40
+    /// Groups the kids split into: `1...12`, the sheet's second stepper.
+    ///
+    /// Deliberately tighter than the column, which takes `1...40`. The migration says why in as
+    /// many words — the constraint answers which values are *coherent*, and the stepper answers
+    /// how many a thumb should be asked to count past. A venue already running thirteen keeps
+    /// them; it just cannot be taken to thirteen from here.
+    static let groupRange = 1...12
+    /// A group's target head-count, when there is one: `1...40`, matching
+    /// `sites_target_per_group_range`. Nought is not in it — nought is `nil`, which the stepper
+    /// draws as an em dash and the column stores as NULL.
+    static let targetRange = 1...40
     static let kidsRange = 1...24
     /// Zero is allowed and means "never flag a venue as short" — a camp with one roaming coach
     /// for the whole site is a real way to run a week.
     static let coachRange = 0...4
 
-    /// What a venue's own ceiling may be: nothing at all, up to the biggest venue the two rate
-    /// steppers can describe. Derived rather than written down, the way `venueRange` is — `0...384`
-    /// is `16 × 24`, and typing it here is how it would come to disagree with the steppers.
+    /// What a venue's own ceiling may be: nothing at all, up to the biggest venue the court
+    /// stepper and the camp-wide rate can describe between them. Derived rather than written down,
+    /// the way `venueRange` is — `0...960` is `40 × 24`, and typing it here is how it would come to
+    /// disagree with the steppers.
+    ///
+    /// It was `0...384` while the courts stopped at 16. Nothing in Postgres moved with it:
+    /// `sites.player_max` carries no range CHECK at all (`20260805141707:86`), only the ordering
+    /// one, and that is satisfied by construction in `venue(applying:)`.
     static let venueKidsRange = 0...(courtRange.upperBound * kidsRange.upperBound)
 
-    /// The same, for the coach floor: `0...64` is `16 × 4`.
+    /// The same, for the coach floor: `0...160` is `40 × 4`.
     static let venueCoachRange = 0...(courtRange.upperBound * coachRange.upperBound)
 
     /// How far over its floor a venue may be staffed and still read as in range.
@@ -292,26 +407,56 @@ struct CampShape: Hashable, Sendable {
 
     // MARK: - Editing
 
-    /// The next row `Add a venue` appends. Keeps the naming, tinting and seeding rules going
-    /// rather than inventing a second set.
+    /// The row a new venue starts from — named, tinted, and seeded from the last venue's courts
+    /// and the camp-wide rates. **Not appended.**
+    ///
+    /// Split out of `addVenue()` because "Add a venue" no longer means "put a nameless row on the
+    /// list". The sheet opens on this and the shape hears nothing until somebody presses `Add
+    /// {name}`, which is the whole point of the change: a venue used to be created carrying the
+    /// last one's numbers and a number for a name, and every screen downstream of it — Groups,
+    /// Rank, the chip row, the schedule — drew that guess until somebody found it.
     ///
     /// `positionalName(for: venues.count)` is free without checking, and that is by construction:
     /// every row is either at its own positional number or carries a typed name, and a typed name
-    /// can never look positional.
-    mutating func addVenue() {
-        guard canAddVenue else { return }
+    /// can never look positional. It is a *placeholder* here rather than a name — the sheet's own
+    /// validation refuses to save it (`VenueShapeSheet.nameProblem`), which is what makes "Add"
+    /// dimmed until a real name is typed.
+    func newVenue() -> VenueShape {
         let index = venues.count
         let courts = venues.last?.courts ?? CampDraft().groupsPerVenue
-        venues.append(
-            VenueShape(
-                name: Self.positionalName(for: index),
-                subtitle: nil,
-                icon: Venue.iconOptions[index % Venue.iconOptions.count],
-                courts: courts,
-                maxKids: Self.kidsCeiling(forCourts: courts, at: kidsPerCourt),
-                minCoaches: Self.coachFloor(forCourts: courts, at: coachesPerCourt)
-            )
+        return VenueShape(
+            name: Self.positionalName(for: index),
+            subtitle: nil,
+            icon: Venue.iconOptions[index % Venue.iconOptions.count],
+            courts: courts,
+            // Nothing else is inherited. A second venue taking the first one's *age band* would
+            // quietly narrow who a camp can put where, which is the class of guess this whole
+            // change exists to stop; the target is left undecided for the same reason.
+            maxKids: Self.kidsCeiling(forCourts: courts, at: kidsPerCourt),
+            minCoaches: Self.coachFloor(forCourts: courts, at: coachesPerCourt)
         )
+    }
+
+    /// Appends the seeded row without asking anything. Only the tests and the preview harness
+    /// reach this now — every path a finger can take goes through the sheet and `add(_:)`.
+    mutating func addVenue() {
+        guard canAddVenue else { return }
+        venues.append(newVenue())
+    }
+
+    /// Puts a row the sheet has finished with on the list, or replaces the one it was editing.
+    ///
+    /// One method rather than an append and an update at the call site, because the sheet does not
+    /// know which it is doing — it is handed a row, it hands one back, and whether that row was
+    /// ever on the list is this type's business. The ceiling is guarded on the way in for the same
+    /// reason `addVenue` guards it: `canAddVenue` is what dims the button, and a mutator that grew
+    /// past a rule its own button draws would be the two disagreeing.
+    mutating func add(_ row: VenueShape) {
+        if let index = venues.firstIndex(where: { $0.id == row.id }) {
+            venues[index] = row
+        } else if canAddVenue {
+            venues.append(row)
+        }
     }
 
     /// Removing a row renumbers the names *nobody has typed*, because those are positional and a
@@ -391,10 +536,18 @@ struct CampShape: Hashable, Sendable {
     /// build one venue nobody drew, so a clamp would turn a bug into a plausible-looking camp.
     /// The defences are the real ones instead: `CreateCampView.saveTheShape` refuses unless
     /// `isCreatable`, and the empty state draws no button to press in the first place.
+    /// The **groups**, not the courts, and that is the whole of what moved here when the two
+    /// numbers separated. `CampDraft.groupsPerVenue` seeds `Camp.make(from:)`'s `groupCount`, and
+    /// `groupCount` is how many `Group` records `syncGroups(for:)` then creates — so sending the
+    /// court count would have had the camp build one court record per court on the ground and then
+    /// delete the surplus a round trip later, in front of somebody watching a spinner.
+    ///
+    /// It seeds `courtCount` too, from the same number. That is a guess for exactly as long as the
+    /// correction pass takes, and it is the right guess for the common case, where the two agree.
     func applied(to draft: CampDraft) -> CampDraft {
         var draft = draft
         draft.venueCount = venues.count
-        draft.groupsPerVenue = venues.first?.courts ?? draft.groupsPerVenue
+        draft.groupsPerVenue = venues.first?.groups ?? draft.groupsPerVenue
         return draft
     }
 
@@ -441,7 +594,16 @@ struct CampShape: Hashable, Sendable {
         updated.subtitle = subtitle.isEmpty ? nil : subtitle
         updated.icon = row.icon
         updated.tint = row.tint
-        updated.groupCount = row.courts
+        // Two numbers now, where this wrote one into `groupCount` and left `courtCount` on
+        // whatever `Camp.make(from:)` had seeded. Both are clamped into the ranges the steppers
+        // that set them work in, because this is the funnel every venue reaches the wire through
+        // — a row built in code rather than typed into the sheet goes through it too.
+        updated.courtCount = Self.clamp(row.courts, into: Self.courtRange)
+        updated.groupCount = Self.clamp(row.groups, into: Self.groupRange)
+        // `map` rather than `??`: nil is an answer here — "no target" — and clamping it into a
+        // range would turn "nobody said" into "aim for one".
+        updated.targetPerGroup = row.targetPerGroup.map { Self.clamp($0, into: Self.targetRange) }
+        updated.ageBand = row.ageBand
         updated.playerMin = 0
         updated.playerMax = Self.clamp(row.maxKids, into: Self.venueKidsRange)
         updated.coachMin = Self.clamp(row.minCoaches, into: Self.venueCoachRange)

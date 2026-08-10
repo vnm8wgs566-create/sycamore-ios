@@ -1,0 +1,505 @@
+<sc-if value="{{ showApp }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ tabIsSoon }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#fff;padding:14px 22px 16px;border-bottom:1px solid #EDEEF1">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font:600 13px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:#14684A">{{ campName }}</span><div style="flex:1"></div><div onClick="{{ openInbox }}" style="width:34px;height:34px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-tray" style="font-size:16px;color:#5C6068"></i></div><div onClick="{{ openProfile }}" style="width:34px;height:34px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 12px 'Instrument Sans',sans-serif;color:#5C6068;cursor:pointer">AR</div></div>
+        <div style="font:400 32px/1.02 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:14px">{{ soonTitle }}</div>
+      </div>
+      <div style="flex:1;padding:14px 12px;overflow:auto">
+        <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+          <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+          <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Coming soon</div>
+          <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em;margin-top:7px">{{ soonHead }}</div>
+          <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:280px;text-wrap:pretty">{{ soonBody }}</div>
+          <div onClick="{{ goGroups }}" style="position:relative;z-index:1;height:48px;border-radius:13px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer">Go to Groups</div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ tabIsGroups }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#fff;padding:14px 22px 16px;border-bottom:1px solid #EDEEF1">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font:600 13px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:#14684A">{{ campName }}</span><div style="flex:1"></div><div onClick="{{ openInbox }}" style="width:34px;height:34px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-tray" style="font-size:16px;color:#5C6068"></i></div><div onClick="{{ openProfile }}" style="width:34px;height:34px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 12px 'Instrument Sans',sans-serif;color:#5C6068;cursor:pointer">AR</div></div>
+        <div style="font:400 32px/1.02 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:14px">Groups</div>
+        <sc-if value="{{ hasVenues }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+            <div onClick="{{ venueNext }}" style="display:flex;align-items:center;gap:6px;border:1px solid #E6E7EB;border-radius:999px;padding:7px 13px;cursor:pointer"><i class="ph ph-map-pin" style="font-size:13px;color:#1A7F55"></i><span style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#3F4A44">{{ venueName }}</span><sc-if value="{{ manyVenues }}" hint-placeholder-val="{{ false }}"><i class="ph ph-caret-down" style="font-size:11px;color:#8A8E96"></i></sc-if></div>
+            <span style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96">{{ groupsMeta }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;margin-top:11px;background:#F1F2F5;border-radius:13px;padding:0 13px;height:40px">
+            <i class="ph ph-magnifying-glass" style="font-size:15px;color:#8A8E96"></i>
+            <input value="{{ gq }}" onInput="{{ setGq }}" placeholder="Find a kid" style="flex:1;min-width:0;border:0;background:transparent;font:500 14px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#0B0B0C;padding:0">
+            <sc-if value="{{ gqOn }}" hint-placeholder-val="{{ false }}"><i onClick="{{ clearGq }}" class="ph ph-x" style="font-size:14px;color:#8A8E96;cursor:pointer;padding:4px"></i></sc-if>
+          </div>
+
+        </sc-if>
+      </div>
+      <div data-groups-scroll="1" style="flex:1;padding:14px 12px 120px;display:flex;flex-direction:column;gap:9px;overflow:auto">
+        <sc-if value="{{ noVenueYet }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+            <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+            <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em">{{ campName }} has nowhere to put anyone yet.</div>
+            <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:280px;text-wrap:pretty">Start with the place you run — courts and groups come with it.</div>
+            <div onClick="{{ goShape }}" style="position:relative;z-index:1;height:48px;border-radius:13px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer">Add a venue</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noKidsYet }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+            <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+            <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em">{{ venueName }} is shaped. No kids yet.</div>
+            <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:280px;text-wrap:pretty">Import deals every kid into your {{ groupCountWord }}, evenly.</div>
+            <div onClick="{{ openImport }}" style="position:relative;z-index:1;height:48px;border-radius:13px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer">Bring in the kids</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ uneven }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:9px;background:#F6FAF7;border:1px solid #E4EDE7;border-radius:13px;padding:10px 12px">
+            <i class="ph ph-scales" style="font-size:15px;color:#1A7F55"></i>
+            <div style="flex:1;min-width:0;font:500 12.5px 'Instrument Sans',sans-serif;color:#3F4A44">Uneven after moves · {{ countsLine }}</div>
+            <div onClick="{{ openEvenOut }}" style="padding:8px 15px;border-radius:999px;background:#1A7F55;color:#fff;font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">Even out</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ hasUnassignedHits }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:14px">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Unassigned</div>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:10px">
+              <sc-for list="{{ unassignedHits }}" as="uh" hint-placeholder-count="1">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="flex:1;min-width:0"><div style="font:500 14px 'Instrument Sans',sans-serif;letter-spacing:-.015em">{{ uh.name }}</div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:1px">{{ uh.meta }}</div></div>
+                  <div onClick="{{ uh.add }}" style="padding:7px 14px;border-radius:999px;border:1.5px solid #C3DFCF;color:#1A7F55;font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">Add</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ gqEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="font:400 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;padding:8px 4px">Nobody matches that search.</div>
+        </sc-if>
+        <sc-if value="{{ unassignedNote }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #EDEEF1;border-radius:13px;padding:11px 13px">
+            <i class="ph ph-magnifying-glass" style="font-size:14px;color:#B3B7BE"></i>
+            <div style="flex:1;font:400 12.5px/1.5 'Instrument Sans',sans-serif;color:#71757E">{{ unassignedNote }}</div>
+          </div>
+        </sc-if>
+        <sc-for list="{{ groupCards }}" as="g" hint-placeholder-count="2">
+          <div data-group="{{ g.idx }}" style="background:{{ g.bg }};border:{{ g.border }};border-radius:16px;padding:14px;transition:border-color .12s ease">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">{{ g.title }}</div>
+              <sc-if value="{{ g.over }}" hint-placeholder-val="{{ false }}"><div style="font:600 11px 'Instrument Sans',sans-serif;background:#FBF2E2;color:#8A5E0F;padding:3px 8px;border-radius:999px">{{ g.over }}</div></sc-if>
+              <div style="flex:1"></div>
+              <div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">{{ g.count }}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;margin-top:6px">
+              <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+                <div data-kid="{{ r.id }}" data-group="{{ g.idx }}" onClick="{{ r.open }}" style="display:flex;align-items:center;gap:12px;padding:6px 0;border-top:{{ r.line }};opacity:{{ r.dim }};cursor:pointer">
+                  <div style="flex:none;width:16px;font:400 12.5px 'Instrument Sans',sans-serif;color:#C7CBD2;text-align:right;font-variant-numeric:tabular-nums">{{ r.rank }}</div>
+                  <div style="flex:1;min-width:0;font:500 14px 'Instrument Sans',sans-serif;letter-spacing:-.015em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div>
+                  <sc-if value="{{ r.leaves }}" hint-placeholder-val="{{ false }}"><i class="ph-fill ph-clock-countdown" style="font-size:13px;color:#B67A16"></i></sc-if>
+                  <sc-if value="{{ r.away }}" hint-placeholder-val="{{ false }}"><i class="ph-fill ph-x-circle" style="font-size:14px;color:#A2A6AE"></i></sc-if>
+                  <i class="{{ r.genderIcon }}" style="font-size:13px;color:#B3B7BE"></i>
+                  <i class="ph ph-dots-six-vertical" onPointerDown="{{ r.down }}" style="font-size:17px;color:#C7CBD2;cursor:grab;touch-action:none;padding:4px"></i>
+                </div>
+              </sc-for>
+              <div data-tail="{{ g.idx }}" style="height:8px;border-top:{{ g.tailLine }}"></div>
+              <sc-if value="{{ g.moreLabel }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ g.toggleMore }}" style="display:flex;align-items:center;gap:12px;padding:4px 0;cursor:pointer"><div style="flex:none;width:16px"></div><div style="flex:1;font:500 13.5px 'Instrument Sans',sans-serif;color:#1A7F55">{{ g.moreLabel }}</div><i class="{{ g.moreIcon }}" style="font-size:13px;color:#1A7F55"></i></div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ dragGhost }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:12px;right:12px;top:0;transform:{{ ghostXY }};z-index:8;pointer-events:none">
+        <div style="display:flex;align-items:center;gap:12px;background:#F6FAF7;border:1.5px solid #C3DFCF;border-radius:11px;padding:9px 12px;box-shadow:0 14px 32px rgba(26,127,85,.2);width:70%">
+          <div style="flex:1;min-width:0;font:600 14px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:#14684A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ dragName }}</div>
+          <i class="ph-fill ph-hand-grabbing" style="font-size:16px;color:#1A7F55"></i>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ pageCamp }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:0;right:0;top:44px;bottom:0;background:#F8F9F8;z-index:6;display:flex;flex-direction:column;animation:fadeIn .16s ease">
+      <div style="flex:none;background:#fff;padding:14px 22px 16px;border-bottom:1px solid #EDEEF1">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div onClick="{{ closePage }}" style="width:36px;height:36px;border-radius:99px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-arrow-left" style="font-size:18px"></i></div>
+          <div style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96">{{ profileBack }}</div>
+          <div style="flex:1"></div>
+          <div onClick="{{ openProfile }}" style="width:34px;height:34px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 12px 'Instrument Sans',sans-serif;color:#5C6068;cursor:pointer">AR</div>
+        </div>
+        <div style="font:400 30px/1.05 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:15px">{{ campName }}</div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+          <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">{{ seasonLabel }}</div>
+          <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">{{ kidChip }}</div>
+          <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">Admin</div>
+        </div>
+      </div>
+      <div style="flex:1;padding:14px 12px 120px;display:flex;flex-direction:column;gap:9px;overflow:auto">
+        <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+          <div onClick="{{ goShape }}" style="display:flex;align-items:center;gap:11px;padding:13px;cursor:pointer"><i class="ph ph-map-pin" style="font-size:17px;color:#5C6068"></i><div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Venues &amp; courts</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ venueSummary }}</div></div><i class="ph ph-caret-right" style="font-size:15px;color:#C7CBD2"></i></div>
+          <div onClick="{{ goKidsRow }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:1px solid #F2F3F6;cursor:pointer"><i class="ph ph-list-numbers" style="font-size:17px;color:#5C6068"></i><div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Kids</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ kidsSummary }}</div></div><i class="ph ph-caret-right" style="font-size:15px;color:#C7CBD2"></i></div>
+          <sc-if value="{{ canImport }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ openImport }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:1px solid #F2F3F6;cursor:pointer"><i class="ph ph-file-arrow-up" style="font-size:17px;color:#1A7F55"></i><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#14684A">Import the roster</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">file · paste</div></div>
+          </sc-if>
+        </div>
+        <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:11px;padding:13px"><i class="ph ph-users-three" style="font-size:17px;color:#5C6068"></i><div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Staff</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ staffSummary }}</div></div></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:13px;border-top:1px solid #F2F3F6"><i class="ph ph-lock-simple" style="font-size:17px;color:#5C6068"></i><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Invite code</div><div style="font:600 13px 'Instrument Sans',sans-serif;letter-spacing:.14em;color:#14684A">{{ inviteCode }}</div></div>
+        </div>
+        <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+          <div onClick="{{ goSeason }}" style="display:flex;align-items:center;gap:11px;padding:13px;cursor:pointer"><i class="ph ph-pencil-simple" style="font-size:17px;color:#5C6068"></i><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Name &amp; season</div><i class="ph ph-caret-right" style="font-size:15px;color:#C7CBD2"></i></div>
+          <div onClick="{{ goCamps }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:1px solid #F2F3F6;cursor:pointer"><i class="ph ph-swap" style="font-size:17px;color:#5C6068"></i><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Switch camp</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">{{ campCount }}</div></div>
+      <div onClick="{{ signOut }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:1px solid #F2F3F6;cursor:pointer"><i class="ph ph-arrow-left" style="font-size:17px;color:#5C6068"></i><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Sign out</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">{{ signedEmail }}</div></div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+<sc-if value="{{ tabIsTourn }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#fff;padding:14px 22px 16px;border-bottom:1px solid #EDEEF1">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font:600 13px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:#14684A">{{ campName }}</span><div style="flex:1"></div><div onClick="{{ openInbox }}" style="width:34px;height:34px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-tray" style="font-size:16px;color:#5C6068"></i></div><div onClick="{{ openProfile }}" style="width:34px;height:34px;border-radius:99px;background:#EFF0F3;display:flex;align-items:center;justify-content:center;font:600 12px 'Instrument Sans',sans-serif;color:#5C6068;cursor:pointer">AR</div></div>
+        <div style="font:400 32px/1.02 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:14px">Tournament</div>
+        <sc-if value="{{ hasVenues }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+            <div onClick="{{ venueNext }}" style="display:flex;align-items:center;gap:6px;border:1px solid #E6E7EB;border-radius:999px;padding:7px 13px;cursor:pointer"><i class="ph ph-map-pin" style="font-size:13px;color:#1A7F55"></i><span style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#3F4A44">{{ venueName }}</span><sc-if value="{{ manyVenues }}" hint-placeholder-val="{{ false }}"><i class="ph ph-caret-down" style="font-size:11px;color:#8A8E96"></i></sc-if></div>
+            <span style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96">{{ tMeta }}</span>
+          </div>
+        </sc-if>
+      </div>
+      <div style="flex:1;padding:14px 12px 120px;display:flex;flex-direction:column;gap:9px;overflow:auto">
+        <sc-if value="{{ tNoVenue }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+            <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+            <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em">Nowhere to seed a draw yet.</div>
+            <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:280px;text-wrap:pretty">Tournaments draw from a venue's ladder — start with the place you run.</div>
+            <div onClick="{{ goShape }}" style="position:relative;z-index:1;height:48px;border-radius:13px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer">Add a venue</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ tNoKids }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+            <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+            <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em">No one to seed yet.</div>
+            <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:280px;text-wrap:pretty">Tournaments draw from {{ venueName }}'s ladder. Bring in the kids first.</div>
+            <div onClick="{{ openImport }}" style="position:relative;z-index:1;height:48px;border-radius:13px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer">Bring in the kids</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ tEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+            <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+            <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em">No draws yet.</div>
+            <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:280px;text-wrap:pretty">Pick the groups, a format and the days — the order of play draws itself and plans around who's away.</div>
+            <div onClick="{{ openNewTourney }}" style="position:relative;z-index:1;height:48px;border-radius:13px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer">New tournament</div>
+          </div>
+        </sc-if>
+        <sc-for list="{{ tCards2 }}" as="tc" hint-placeholder-count="1">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:14px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="flex:1;font:600 15.5px 'Instrument Sans',sans-serif;letter-spacing:-.025em">{{ tc.title }}</div>
+              <div onClick="{{ tc.remove }}" style="font:600 12.5px 'Instrument Sans',sans-serif;color:#C0492A;cursor:pointer;padding:4px">{{ tc.removeLabel }}</div>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+              <sc-for list="{{ tc.chips }}" as="ch" hint-placeholder-count="3">
+                <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">{{ ch.c }}</div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ tc.isTeam }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;margin-top:11px;padding-top:6px;border-top:1px solid #F2F3F6">
+                <sc-for list="{{ tc.teamCards }}" as="tm" hint-placeholder-count="2">
+                  <div style="padding:9px 0;border-top:{{ tm.line }}">
+                    <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">{{ tm.name }}</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">{{ tm.count }}</div></div>
+                    <sc-if value="{{ tm.showCoaches }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">
+                        <sc-for list="{{ tm.coachPicks }}" as="cp" hint-placeholder-count="2">
+                          <div onClick="{{ cp.pick }}" style="padding:6px 12px;border-radius:999px;background:{{ cp.bg }};color:{{ cp.color }};border:{{ cp.border }};font:600 12px 'Instrument Sans',sans-serif;cursor:pointer">{{ cp.name }}</div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <div style="font:400 13px/1.6 'Instrument Sans',sans-serif;color:#3F4A44;margin-top:7px;text-wrap:pretty">{{ tm.names }}</div>
+                  </div>
+                </sc-for>
+                <div style="font:400 11.5px 'Instrument Sans',sans-serif;color:#A2A6AE;padding:4px 0 2px">{{ tc.teamNote }}</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ tc.notTeam }}" hint-placeholder-val="{{ false }}">
+              <sc-if value="{{ tc.isDraw }}" hint-placeholder-val="{{ false }}">
+                <div style="overflow-x:auto;margin:11px -14px 0;padding:2px 14px 4px">
+                  <div style="display:flex;gap:10px;align-items:stretch">
+                    <sc-for list="{{ tc.bracketCols }}" as="bc" hint-placeholder-count="2">
+                      <div style="flex:none;width:150px;display:flex;flex-direction:column">
+                        <div style="font:600 11.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#A2A6AE;padding:0 2px 6px">{{ bc.name }}</div>
+                        <div style="flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:8px">
+                          <sc-for list="{{ bc.boxes }}" as="b" hint-placeholder-count="2">
+                            <div onClick="{{ b.tap }}" style="background:#fff;border:1px solid #EDEEF1;border-radius:11px;overflow:hidden;cursor:pointer">
+                              <div style="display:flex;align-items:center;gap:7px;padding:7px 10px"><div style="flex:1;min-width:0;font:{{ b.aStyle }} 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:{{ b.aColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.aName }}</div><div style="font:600 11.5px 'Instrument Sans',sans-serif;color:#14684A;font-variant-numeric:tabular-nums">{{ b.aScore }}</div></div>
+                              <div style="display:flex;align-items:center;gap:7px;padding:7px 10px;border-top:1px solid #F2F3F6"><div style="flex:1;min-width:0;font:{{ b.bStyle }} 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:{{ b.bColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.bName }}</div><div style="font:600 11.5px 'Instrument Sans',sans-serif;color:#14684A;font-variant-numeric:tabular-nums">{{ b.bScore }}</div></div>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <div style="display:flex;align-items:baseline;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid #F2F3F6">
+                <div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Order of play</div>
+                <div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE">{{ tc.playedLine }}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:9px">
+                <sc-for list="{{ tc.dayPills }}" as="dp2" hint-placeholder-count="2">
+                  <div onClick="{{ dp2.pick }}" style="padding:6px 13px;border-radius:999px;background:{{ dp2.bg }};color:{{ dp2.color }};font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ dp2.label }}</div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;margin-top:7px">
+                <sc-for list="{{ tc.matches }}" as="mm" hint-placeholder-count="4">
+                  <div onClick="{{ mm.open }}" style="padding:{{ mm.pad }};margin:{{ mm.mar }};border:{{ mm.ring }};border-top:{{ mm.bt }};border-radius:{{ mm.rad }};background:{{ mm.bg }};cursor:pointer">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <div style="flex:none;width:26px;font:400 12px 'Instrument Sans',sans-serif;color:#C7CBD2;text-align:right;font-variant-numeric:tabular-nums">{{ mm.num }}</div>
+                      <div style="flex:1;min-width:0;font:500 13.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em;color:{{ mm.labelColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ mm.label }}</div>
+                      <sc-if value="{{ mm.score }}" hint-placeholder-val="{{ false }}"><span style="font:600 13px 'Instrument Sans',sans-serif;color:#14684A;font-variant-numeric:tabular-nums">{{ mm.score }}</span></sc-if>
+                      <sc-if value="{{ mm.scoreBtn }}" hint-placeholder-val="{{ false }}"><span style="font:600 12.5px 'Instrument Sans',sans-serif;color:#1A7F55">Score</span></sc-if>
+                      <i class="ph ph-caret-right" style="font-size:12px;color:#C7CBD2"></i>
+                    </div>
+                    <sc-if value="{{ mm.flag }}" hint-placeholder-val="{{ false }}"><div style="font:500 11.5px/1.4 'Instrument Sans',sans-serif;color:#B67A16;margin:3px 0 0 36px">{{ mm.flag }}</div></sc-if>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ tc.moreLabel }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ tc.toggleMore }}" style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #F2F3F6;cursor:pointer"><div style="flex:none;width:26px"></div><div style="flex:1;font:500 13.5px 'Instrument Sans',sans-serif;color:#1A7F55">{{ tc.moreLabel }}</div><i class="{{ tc.moreIcon }}" style="font-size:13px;color:#1A7F55"></i></div>
+                </sc-if>
+              </div>
+              <sc-if value="{{ tc.isRR }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:baseline;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid #F2F3F6">
+                  <div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">{{ tc.standingsTitle }}</div>
+                  <sc-if value="{{ tc.standingsMore }}" hint-placeholder-val="{{ false }}"><div onClick="{{ tc.toggleStandings }}" style="font:600 12.5px 'Instrument Sans',sans-serif;color:#1A7F55;cursor:pointer">{{ tc.standingsMore }}</div></sc-if>
+                </div>
+                <div style="display:flex;flex-direction:column;margin-top:6px">
+                  <sc-for list="{{ tc.standings }}" as="sr" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+                      <div style="flex:none;width:26px;font:400 12px 'Instrument Sans',sans-serif;color:#C7CBD2;text-align:right;font-variant-numeric:tabular-nums">{{ sr.num }}</div>
+                      <div style="flex:1;min-width:0;font:{{ sr.w }} 13.5px 'Instrument Sans',sans-serif;letter-spacing:-.015em">{{ sr.label }}</div>
+                      <sc-if value="{{ sr.win }}" hint-placeholder-val="{{ false }}"><i class="ph-fill ph-check-circle" style="font-size:15px;color:#1A7F55"></i></sc-if>
+                      <div style="font:600 12.5px 'Instrument Sans',sans-serif;color:#3F4A44;font-variant-numeric:tabular-nums">{{ sr.wl }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{ tHasList }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ openNewTourney }}" style="background:#fff;border:1.5px dashed #C3DFCF;border-radius:16px;padding:15px 13px;display:flex;align-items:center;gap:12px;cursor:pointer">
+            <div style="flex:none;width:44px;height:44px;border-radius:14px;background:#F6FAF7;display:flex;align-items:center;justify-content:center"><i class="ph ph-plus" style="font-size:18px;color:#1A7F55"></i></div>
+            <div style="flex:1;min-width:0"><div style="font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:#14684A">Add a tournament</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:3px">Groups, format and days — one sheet.</div></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ tSetup }}" hint-placeholder-val="{{ false }}">
+          <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;padding:2px 4px 0">Format</div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+            <sc-for list="{{ formatRows }}" as="f" hint-placeholder-count="3">
+              <div onClick="{{ f.pick }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:{{ f.line }};cursor:pointer">
+                <div style="flex:none;width:34px;height:34px;border-radius:11px;background:{{ f.tileBg }};display:flex;align-items:center;justify-content:center"><i class="{{ f.icon }}" style="font-size:17px;color:{{ f.tileColor }}"></i></div>
+                <div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ f.title }}</div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ f.sub }}</div></div>
+                <sc-if value="{{ f.on }}" hint-placeholder-val="{{ false }}"><i class="ph-fill ph-check-circle" style="font-size:21px;color:#1A7F55"></i></sc-if>
+                <sc-if value="{{ f.off }}" hint-placeholder-val="{{ false }}"><div style="width:21px;height:21px;border-radius:99px;border:1.5px solid #DCDEE3"></div></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:13px">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">{{ tCountLabel }}</div>
+            <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px;margin-top:7px">
+              <div onClick="{{ tDec }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div>
+              <div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif">{{ tCount }}</div>
+              <div onClick="{{ tInc }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div>
+            </div>
+            <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:7px">{{ tPartitionHint }}</div>
+            <sc-if value="{{ tIsDoubles }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:baseline;margin-top:13px"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Requested pairings</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">optional</div></div>
+              <sc-if value="{{ hasReqPairs }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">
+                  <sc-for list="{{ reqPairChips }}" as="rp" hint-placeholder-count="0">
+                    <div onClick="{{ rp.remove }}" style="display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;background:#0B0B0C;color:#fff;font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ rp.label }}<i class="ph ph-x" style="font-size:11px;color:rgba(255,255,255,.6)"></i></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <div style="font:400 12px/1.5 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px">{{ pairHint }}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                <sc-for list="{{ unpairedChips }}" as="uc" hint-placeholder-count="6">
+                  <div onClick="{{ uc.pick }}" style="padding:6px 11px;border-radius:999px;background:{{ uc.bg }};color:{{ uc.color }};border:{{ uc.border }};font:600 12px 'Instrument Sans',sans-serif;cursor:pointer">{{ uc.label }}</div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <div onClick="{{ tCreate }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:14px;cursor:pointer">{{ tCreateCta }}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ tLive }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:baseline;padding:2px 4px 0"><div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">{{ tSummary }}</div><div onClick="{{ tStartOver }}" style="font:600 12.5px 'Instrument Sans',sans-serif;color:#1A7F55;cursor:pointer">{{ tStartOverLabel }}</div></div>
+          <sc-for list="{{ tCards }}" as="tc" hint-placeholder-count="2">
+            <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:14px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">{{ tc.title }}</div>
+                <div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#A2A6AE">{{ tc.count }}</div>
+              </div>
+              <sc-if value="{{ tc.showCoaches }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:10px">
+                  <sc-for list="{{ tc.coachPicks }}" as="cp" hint-placeholder-count="2">
+                    <div onClick="{{ cp.pick }}" style="padding:6px 12px;border-radius:999px;background:{{ cp.bg }};color:{{ cp.color }};border:{{ cp.border }};font:600 12px 'Instrument Sans',sans-serif;cursor:pointer">{{ cp.name }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ tc.noCoachYet }}" hint-placeholder-val="{{ false }}"><div style="display:inline-flex;margin-top:10px;font:600 11.5px 'Instrument Sans',sans-serif;background:#FBF2E2;color:#8A5E0F;padding:4px 10px;border-radius:999px">No coach yet</div></sc-if>
+              <div style="display:flex;flex-direction:column;margin-top:8px">
+                <sc-for list="{{ tc.rows }}" as="r" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:12px;padding:6px 0">
+                    <div style="flex:none;width:16px;font:400 12.5px 'Instrument Sans',sans-serif;color:#C7CBD2;text-align:right;font-variant-numeric:tabular-nums">{{ r.num }}</div>
+                    <div style="flex:1;min-width:0;font:500 14px 'Instrument Sans',sans-serif;letter-spacing:-.015em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</div>
+                    <sc-if value="{{ r.pin }}" hint-placeholder-val="{{ false }}"><i class="ph-fill ph-push-pin" style="font-size:13px;color:#B3B7BE"></i></sc-if>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ tc.moreLabel }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ tc.toggleMore }}" style="display:flex;align-items:center;gap:12px;padding:4px 0;cursor:pointer"><div style="flex:none;width:16px"></div><div style="flex:1;font:500 13.5px 'Instrument Sans',sans-serif;color:#1A7F55">{{ tc.moreLabel }}</div><i class="{{ tc.moreIcon }}" style="font-size:13px;color:#1A7F55"></i></div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </sc-if>
+      </div>
+    </sc-if>
+    <sc-if value="{{ pageInbox }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:0;right:0;top:44px;bottom:0;background:#F8F9F8;z-index:6;display:flex;flex-direction:column;animation:fadeIn .16s ease">
+        <div style="flex:none;background:#fff;padding:14px 22px 18px;border-bottom:1px solid #EDEEF1">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div onClick="{{ closePage }}" style="width:36px;height:36px;border-radius:99px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-arrow-left" style="font-size:18px"></i></div>
+            <div style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96">{{ profileBack }}</div>
+          </div>
+          <div style="font:400 30px/1.05 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:15px">Inbox</div>
+        </div>
+        <div style="flex:1;padding:14px 12px;overflow:auto">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:22px 18px;position:relative;overflow:hidden">
+            <img src="assets/logo.svg" style="position:absolute;right:-8px;bottom:-14px;width:96px;opacity:.18" alt="">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Coming soon</div>
+            <div style="font:400 24px/1.15 Newsreader,Georgia,serif;letter-spacing:-.02em;margin-top:7px">What happened while you were on court</div>
+            <div style="font:400 13.5px/1.55 'Instrument Sans',sans-serif;color:#71757E;margin-top:8px;max-width:280px;text-wrap:pretty">Notes, moves and flags from the whole staff, in one feed.</div>
+            <div onClick="{{ goGroups }}" style="position:relative;z-index:1;height:48px;border-radius:13px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.015em;margin-top:16px;cursor:pointer">Go to Groups</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ pageShape }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:0;right:0;top:44px;bottom:0;background:#F8F9F8;z-index:6;display:flex;flex-direction:column;animation:fadeIn .16s ease">
+        <div style="flex:none;background:#fff;padding:14px 22px 18px;border-bottom:1px solid #EDEEF1">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div onClick="{{ closePage }}" style="width:36px;height:36px;border-radius:99px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-arrow-left" style="font-size:18px"></i></div>
+            <div style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96">{{ campName }}</div>
+          </div>
+          <div style="font:400 30px/1.05 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:15px">Shape the camp</div>
+          <div style="font:400 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:7px">Venues, courts and groups — change any of it later</div>
+        </div>
+        <div style="flex:1;padding:14px 12px;display:flex;flex-direction:column;gap:9px;overflow:auto">
+          <sc-for list="{{ shapeVenues }}" as="v" hint-placeholder-count="1">
+            <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:13px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="flex:none;width:44px;height:44px;border-radius:14px;background:#EDF6F1;display:flex;align-items:center;justify-content:center;font:600 17px 'Instrument Sans',sans-serif;color:#14684A">{{ v.initial }}</div>
+                <div style="flex:1;min-width:0"><div style="font:600 15.5px 'Instrument Sans',sans-serif;letter-spacing:-.025em">{{ v.name }}</div><sc-if value="{{ v.subtitle }}" hint-placeholder-val="{{ false }}"><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ v.subtitle }}</div></sc-if></div>
+                <div onClick="{{ v.edit }}" style="font:600 12.5px 'Instrument Sans',sans-serif;color:#1A7F55;cursor:pointer;padding:6px">Edit</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:11px;padding-top:11px;border-top:1px solid #F2F3F6;flex-wrap:wrap">
+                <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">{{ v.courtsChip }}</div>
+                <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">{{ v.groupsChip }}</div>
+                <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">{{ v.ageChip }}</div>
+                <sc-if value="{{ v.targetChip }}" hint-placeholder-val="{{ false }}"><div style="font:600 11.5px 'Instrument Sans',sans-serif;background:#F1F2F5;color:#5C6068;padding:4px 10px;border-radius:999px">{{ v.targetChip }}</div></sc-if>
+                <div style="font:600 11.5px 'Instrument Sans',sans-serif;background:{{ v.coachBg }};color:{{ v.coachColor }};padding:4px 10px;border-radius:999px">{{ v.coachChip }}</div>
+              </div>
+            </div>
+          </sc-for>
+          <div onClick="{{ openNewVenue }}" style="background:#fff;border:1.5px dashed #C3DFCF;border-radius:16px;padding:15px 13px;display:flex;align-items:center;gap:12px;cursor:pointer">
+            <div style="flex:none;width:44px;height:44px;border-radius:14px;background:#F6FAF7;display:flex;align-items:center;justify-content:center"><i class="ph ph-plus" style="font-size:18px;color:#1A7F55"></i></div>
+            <div style="flex:1;min-width:0"><div style="font:600 15px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:#14684A">Add a venue</div><div style="font:400 12.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:3px">Name, courts, groups and coaches — one sheet.</div></div>
+          </div>
+        </div>
+        <sc-if value="{{ shapeCta }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:none;padding:0 12px 24px">
+            <div onClick="{{ openImport }}" style="height:56px;border-radius:16px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Instrument Sans',sans-serif;letter-spacing:-.015em;cursor:pointer;box-shadow:0 10px 26px rgba(26,127,85,.24)">Bring in the kids</div>
+            <div style="font:400 12px 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:8px;text-align:center">Import deals every kid into your groups.</div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+    <sc-if value="{{ pageKid }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:0;right:0;top:44px;bottom:0;background:#F8F9F8;z-index:6;display:flex;flex-direction:column;animation:fadeIn .16s ease">
+        <div style="flex:none;background:#fff;padding:14px 22px 18px;border-bottom:1px solid #EDEEF1">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div onClick="{{ closePage }}" style="width:36px;height:36px;border-radius:99px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-arrow-left" style="font-size:18px"></i></div>
+            <div style="font:400 13px 'Instrument Sans',sans-serif;color:#8A8E96">Groups</div>
+          </div>
+          <div style="font:400 30px/1.05 Newsreader,Georgia,serif;letter-spacing:-.022em;margin-top:15px">{{ kidName }}</div>
+          <div style="font:400 13.5px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:7px">{{ kidMeta }}</div>
+        </div>
+        <div style="flex:1;padding:14px 12px;display:flex;flex-direction:column;gap:9px;overflow:auto">
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:11px;padding:13px"><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Group</div><div style="font:500 14px 'Instrument Sans',sans-serif;color:#3F4A44">{{ kidGroup }}</div></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:13px;border-top:1px solid #F2F3F6"><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Rank in group</div><div style="font:500 14px 'Instrument Sans',sans-serif;color:#3F4A44">{{ kidRank }}</div></div>
+            <div onClick="{{ openMove }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:1px solid #F2F3F6;cursor:pointer"><div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#14684A">Move to another group</div><i class="ph ph-caret-right" style="font-size:15px;color:#C7CBD2"></i></div>
+          </div>
+          <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;padding:6px 4px 0">Attendance</div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;overflow:hidden">
+            <sc-for list="{{ leaveRows }}" as="lv" hint-placeholder-count="0">
+              <div onClick="{{ lv.edit }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:{{ lv.line }};cursor:pointer">
+                <div style="flex:none;width:34px;height:34px;border-radius:11px;background:#FBF2E2;display:flex;align-items:center;justify-content:center"><i class="ph-fill ph-clock-countdown" style="font-size:17px;color:#B67A16"></i></div>
+                <div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Leaves at {{ lv.time }}</div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ lv.day }}</div></div>
+                <div onClick="{{ lv.remove }}" style="flex:none;width:28px;height:28px;border-radius:99px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-x" style="font-size:13px;color:#5C6068"></i></div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ addingLeave }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:13px;border-top:{{ addLeaveLine }}">
+                <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E">Day</div>
+                <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:7px">
+                  <sc-for list="{{ dayPills }}" as="dp" hint-placeholder-count="6">
+                    <div onClick="{{ dp.pick }}" style="padding:6px 13px;border-radius:999px;background:{{ dp.bg }};color:{{ dp.color }};font:600 12.5px 'Instrument Sans',sans-serif;cursor:pointer">{{ dp.label }}</div>
+                  </sc-for>
+                </div>
+                <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-top:12px">Leaves at</div>
+                <div style="display:flex;align-items:center;border:1.5px solid #E4E5E9;border-radius:15px;padding:6px;margin-top:7px">
+                  <div onClick="{{ timeDown }}" style="width:38px;height:38px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-minus" style="font-size:15px;color:#5C6068"></i></div>
+                  <div style="flex:1;text-align:center;font:600 17px 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums">{{ pendTimeLabel }}</div>
+                  <div onClick="{{ timeUp }}" style="width:38px;height:38px;border-radius:11px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="ph ph-plus" style="font-size:15px;color:#fff"></i></div>
+                </div>
+                <div style="font:400 11.5px 'Instrument Sans',sans-serif;color:#A2A6AE;margin-top:6px">Quarter hours, noon to 6:00.</div>
+                <div style="display:flex;gap:9px;margin-top:13px">
+                  <div onClick="{{ confirmLeave }}" style="flex:1;height:40px;border-radius:999px;background:#1A7F55;color:#fff;display:flex;align-items:center;justify-content:center;font:600 13px 'Instrument Sans',sans-serif;cursor:pointer">Add · {{ pendingLabel }}</div>
+                  <div onClick="{{ cancelLeave }}" style="height:40px;padding:0 16px;border-radius:999px;border:1.5px solid #E4E5E9;color:#71757E;display:flex;align-items:center;justify-content:center;font:600 13px 'Instrument Sans',sans-serif;cursor:pointer">Cancel</div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ notAddingLeave }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ startAddLeave }}" style="display:flex;align-items:center;gap:11px;padding:13px;border-top:{{ addLeaveLine }};cursor:pointer">
+                <div style="flex:none;width:34px;height:34px;border-radius:11px;background:#F6FAF7;display:flex;align-items:center;justify-content:center"><i class="ph ph-plus" style="font-size:16px;color:#1A7F55"></i></div>
+                <div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#14684A">Add an early leave</div>
+              </div>
+            </sc-if>
+            <div style="padding:13px;border-top:1px solid #F2F3F6">
+              <div style="display:flex;align-items:center;gap:11px">
+                <div style="flex:none;width:34px;height:34px;border-radius:11px;background:#F1F2F5;display:flex;align-items:center;justify-content:center"><i class="ph-fill ph-x-circle" style="font-size:17px;color:#8A8E96"></i></div>
+                <div style="flex:1;min-width:0"><div style="font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Away</div><div style="font:400 12px 'Instrument Sans',sans-serif;color:#8A8E96;margin-top:2px">{{ awaySub }}</div></div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;padding-left:45px">
+                <sc-for list="{{ awayChips }}" as="ac" hint-placeholder-count="5">
+                  <div onClick="{{ ac.pick }}" style="padding:6px 12px;border-radius:999px;background:{{ ac.bg }};color:{{ ac.color }};border:{{ ac.border }};font:600 12px 'Instrument Sans',sans-serif;cursor:pointer">{{ ac.label }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:13px">
+            <div style="font:600 12.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#71757E;margin-bottom:7px">Notes</div>
+            <input value="{{ kidNotes }}" onInput="{{ setKidNotes }}" placeholder="Lefty · strong serve · pick up at 3" style="width:100%;box-sizing:border-box;border:1.5px solid #E4E5E9;border-radius:13px;padding:11px 13px;font:500 14px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#0B0B0C;background:#fff">
+          </div>
+          <div onClick="{{ removeKid }}" style="background:#fff;border:1px solid #EDEEF1;border-radius:16px;padding:13px;display:flex;align-items:center;gap:11px;cursor:pointer">
+            <div style="flex:1;font:500 14.5px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#C0492A">{{ removeLabel }}</div>
+            <i class="ph ph-caret-right" style="font-size:15px;color:#E7C6B9"></i>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+    <div style="position:absolute;left:0;right:0;bottom:20px;display:flex;justify-content:center;z-index:5">
+      <div style="display:flex;gap:2px;padding:6px;background:rgba(255,255,255,.9);backdrop-filter:blur(30px) saturate(180%);border-radius:999px;box-shadow:0 12px 36px rgba(11,11,12,.14),0 0 0 .5px rgba(11,11,12,.07)">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+          <div onClick="{{ t.go }}" style="display:flex;align-items:center;gap:7px;border-radius:999px;cursor:pointer;background:{{ t.bg }};padding:{{ t.pad }}">
+            <i class="{{ t.icon }}" style="font-size:19px;color:{{ t.color }}"></i>
+            <sc-if value="{{ t.active }}" hint-placeholder-val="{{ false }}"><span style="font:600 13px 'Instrument Sans',sans-serif;color:#1A7F55">{{ t.label }}</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>

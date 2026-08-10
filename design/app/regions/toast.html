@@ -1,0 +1,8 @@
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:0;right:0;bottom:96px;display:flex;justify-content:center;z-index:9;animation:fadeIn .18s ease">
+      <div style="display:flex;align-items:center;gap:12px;background:#0B0B0C;color:#fff;border-radius:999px;padding:11px 18px;box-shadow:0 12px 36px rgba(11,11,12,.3)">
+        <span style="font:500 13px 'Instrument Sans',sans-serif">{{ toast }}</span>
+        <sc-if value="{{ toastUndo }}" hint-placeholder-val="{{ false }}"><span onClick="{{ undo }}" style="font:600 13px 'Instrument Sans',sans-serif;color:#7BC5A1;cursor:pointer">Undo</span></sc-if>
+      </div>
+    </div>
+  </sc-if>

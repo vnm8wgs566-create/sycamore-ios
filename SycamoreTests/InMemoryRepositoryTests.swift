@@ -756,13 +756,18 @@ struct RepositoryAttendanceTests {
         let court = camp.groups[0].id
         let kid = camp.orderedPlayers[0].id
 
+        // Resolved against the clock rather than pinned to `.mon` — see the note in
+        // `CampReindexTests.anotherDaysAbsenceDoesNotMoveTodaysCount`. On a Monday the old
+        // spelling made "another day" mean today and the test contradicted its own name.
+        let other = Weekday.notToday
+
         let after = try await repo.setAttendance(
-            playerID: kid, day: .mon, present: false, campID: camp.id
+            playerID: kid, day: other, present: false, campID: camp.id
         )
 
         #expect(after.group(court)?.presentCount == 5)
         #expect(!after.isAway(kid))
-        #expect(after.isAway(kid, on: .mon))
+        #expect(after.isAway(kid, on: other))
     }
 
     @Test("Marking a kid who is not in the camp fails")

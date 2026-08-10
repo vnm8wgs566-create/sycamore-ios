@@ -24,9 +24,37 @@ enum AuthState: Hashable, Sendable {
 }
 
 enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case overview, schedule, groups, inbox
+    case overview, schedule, groups, tournament, inbox
 
     var id: String { rawValue }
+
+    /// The four the tab bar draws, in the design's own order.
+    ///
+    /// **`allCases` has five and the bar has four, and the odd one out is Inbox.** The design
+    /// spends its fourth slot on Tournament and reaches the inbox from a control instead — see
+    /// `navVals.tabs` in `design/app/state1.js:44`, which names exactly these four.
+    ///
+    /// `.inbox` stays a case rather than being deleted because it is still a place the app can
+    /// be: `InboxView` is written, `OverviewScreen` has two controls that go there, and none of
+    /// that is wrong — it is early. Deleting the case would mean deleting those call sites and
+    /// writing them again later from memory. Leaving it out of *this* list is the whole of the
+    /// change, and putting it back is one element.
+    ///
+    /// Written out rather than `allCases.filter { $0 != .inbox }` so that adding a case later
+    /// does not silently put a half-built screen in front of somebody.
+    static let bar: [AppTab] = [.overview, .schedule, .groups, .tournament]
+
+    /// Whether this tab draws its own screen yet, or the "coming soon" plate.
+    ///
+    /// The list is stated positively — what *is* ready — because the failure that matters is a
+    /// tab going live before its screen does, and that failure needs someone to have typed the
+    /// tab's name here.
+    var isReady: Bool {
+        switch self {
+        case .groups, .tournament: true
+        case .overview, .schedule, .inbox: false
+        }
+    }
 
     /// The label inside the selected capsule.
     var title: String {
@@ -34,6 +62,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .overview: "Overview"
         case .schedule: "Schedule"
         case .groups: "Groups"
+        case .tournament: "Tournament"
         case .inbox: "Inbox"
         }
     }
@@ -44,6 +73,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .overview: "rectangle.grid.2x2"
         case .schedule: "calendar"
         case .groups: "person.3"
+        // `ph-trophy`. The one tab whose glyph is the same word in both sets.
+        case .tournament: "trophy"
         case .inbox: "tray"
         }
     }
@@ -53,6 +84,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .overview: "rectangle.grid.2x2.fill"
         case .schedule: "calendar"
         case .groups: "person.3.fill"
+        case .tournament: "trophy.fill"
         case .inbox: "tray.fill"
         }
     }
@@ -79,6 +111,19 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 enum PushedScreen: Identifiable, Hashable, Sendable {
     /// `8s` — the avatar's destination.
     case profile
+    /// The camp page: what this camp holds, who staffs it, the code, and the way into its shape.
+    ///
+    /// **This is what a tab header's avatar opens now, and Profile is one step further in.** The
+    /// design inverts the old order — `openProfile` in `design/app/state1.js:41` sets
+    /// `page: 'camp'`, not a profile — because the thing somebody taps that disc looking for is
+    /// almost always the camp: which venues it has, how many kids, the invite code to read out.
+    /// Their own name and phone number are the rarer errand, so they moved behind the commoner
+    /// one rather than in front of it.
+    ///
+    /// It is a separate case from `.profile` rather than a redirect, because `CampHomeView`'s own
+    /// header avatar pushes `.profile`. Pointing `.profile` at the camp page would make that
+    /// control open the screen it was tapped on.
+    case campHome
     /// `8t` — admin only, reached from Profile.
     case campSettings
     /// The drag-to-reorder ladder, one row per kid, every kid at once.
@@ -125,6 +170,7 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
         switch self {
         case .profile: return "profile"
         case .campSettings: return "camp-settings"
+        case .campHome: return "camp-home"
         case .rank: return "rank"
         case .firstSort(let id): return "first-sort-\(id.uuidString)"
         case .attendance(let groupIDs, let block):
@@ -153,7 +199,11 @@ enum PushedScreen: Identifiable, Hashable, Sendable {
     var isFullScreen: Bool {
         switch self {
         case .attendance, .player, .court, .firstSort: true
-        case .profile, .campSettings, .rank: false
+        // The camp page draws its own back control and owns a `NavigationStack` it pushes the
+        // shape page into, so it could take the frame. It stays a sheet because it is reached
+        // from a tab and returned from constantly — the same errand Profile and Camp settings
+        // are, and they are sheets for that reason.
+        case .profile, .campHome, .campSettings, .rank: false
         }
     }
 }
@@ -476,6 +526,23 @@ final class AppStore {
     /// (`Models/FirstSort.swift`) and the ladder it builds is committed once, at the end, through
     /// `commitRankOrder(_:)` — so a relaunch mid-sort loses the sort and not the camp.
     var firstSort: FirstSort?
+
+    /// The draws at `readVenueID`, oldest first. Empty until something loads them.
+    ///
+    /// Venue-scoped like `courts` and `scheduleBlocks` above, and for the same reason: a
+    /// tournament is struck from one venue's ladder, so "every tournament in the camp" is a list
+    /// nothing on the Tournament tab ever wants. `loadedTournamentVenueID` is what says whether
+    /// this list is about the venue currently being read or the one before it — the same guard
+    /// `ScheduleView` learned to make after its canvas drew the wrong day.
+    var tournaments: [Tournament] = []
+
+    /// Which venue `tournaments` was last filled for, or nil if never.
+    ///
+    /// Read it before trusting `tournaments`. An empty list means two different things —
+    /// "this venue has no draws" and "nobody has asked yet" — and only this can tell them apart.
+    /// Drawing "No draws yet" over a venue whose draws are still in flight is how a screen invites
+    /// somebody to build one that already exists.
+    var loadedTournamentVenueID: Venue.ID?
 
     /// What `8r`'s "Needs you · 2" counts, and the badge Inbox shows on the tab bar.
     ///
@@ -1618,6 +1685,41 @@ extension AppStore {
     func addVenue() async {
         guard let campID = camp?.id else { return }
         await perform { self.camp = try await self.repository.addVenue(campID: campID) }
+    }
+
+    /// Adds a venue and immediately gives it the shape somebody just typed.
+    ///
+    /// **Two writes, and they are two writes on purpose rather than by neglect.**
+    /// `Repository.addVenue(campID:)` takes no arguments — it appends a positionally-named venue
+    /// copying the last one's numbers — so every caller that wanted a *named* venue has been
+    /// following it with `updateVenue` by hand. `OnboardingFlowView.applyShape()` does exactly
+    /// this in a loop, and Camp settings' "Add" does not, which is why a venue created there is
+    /// always "Venue 4" until somebody opens it again.
+    ///
+    /// Widening the repository call to take a whole `Venue` would be the better shape and is not
+    /// this change: `addVenue` is on both the protocol and its two implementations, and the
+    /// Postgres one inserts a row whose defaults the CHECK constraints are written against.
+    /// Putting the two-step behind one intent means the *callers* stop having to know, and the
+    /// widening — when it happens — happens here and nowhere else.
+    ///
+    /// The shape is applied by `transform`, which receives the venue the repository actually
+    /// created. That is what carries its `id` and `sortIndex`, neither of which the caller can
+    /// know in advance, so a caller that built a whole `Venue` value would have to have them
+    /// overwritten anyway.
+    ///
+    /// A failed first write leaves nothing behind; a failed second leaves a default venue named
+    /// "Venue N", which is visible, editable, and the same thing "Add" has always produced.
+    func addVenue(shapedBy transform: (Venue) -> Venue) async {
+        guard let campID = camp?.id else { return }
+        let before = Set((camp?.venues ?? []).map(\.id))
+
+        await perform { self.camp = try await self.repository.addVenue(campID: campID) }
+
+        guard errorMessage == nil,
+              let created = camp?.venues.first(where: { !before.contains($0.id) })
+        else { return }
+
+        await updateVenue(transform(created))
     }
 
     func setRole(_ role: Role, forStaff staffID: StaffMember.ID) async {
