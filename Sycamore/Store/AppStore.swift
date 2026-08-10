@@ -425,7 +425,8 @@ final class AppStore {
     var auth: AuthState = .signedOut
     /// Screen 1's email field.
     var emailInput: String = ""
-    /// Screen 2's six cells, held as one string of digits.
+    /// Screen 2's cells, held as one string of digits. How many there are is
+    /// `SupabaseConfig.codeLength`.
     var codeInput: String = ""
     /// Seconds left on `Resend in 0:42`.
     var resendSeconds: Int = 0

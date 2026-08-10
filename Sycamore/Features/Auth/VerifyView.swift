@@ -2,7 +2,7 @@
 //  VerifyView.swift
 //  Sycamore
 //
-//  Screen 2 — Verify. Six OTP cells backed by one hidden text field, so the system keyboard,
+//  Screen 2 — Verify. `SupabaseConfig.codeLength` OTP cells backed by one hidden text field, so the system keyboard,
 //  the one-time-code autofill strip and hardware paste all work while the cells stay drawn
 //  exactly as the design has them.
 //

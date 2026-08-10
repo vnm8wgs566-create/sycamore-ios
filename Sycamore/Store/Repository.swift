@@ -21,9 +21,15 @@ import Foundation
 // MARK: - Sign-in
 
 /// What the server tells us after it posts a code. `resendAfter` is the 0:42 countdown.
+///
+/// No `codeLength` here, and its absence is the point. It sat at 6 while `SupabaseConfig` said 8,
+/// which is the shape of every bug in this corner: a second number that has to agree with the
+/// first and has nothing keeping it honest. It could not even be right by accident — GoTrue
+/// answers `/otp` with an empty body, so nothing on the wire ever told us a length — and nothing
+/// but a test ever read it. The length is `SupabaseConfig.codeLength`, once, where the project's
+/// URL and key already live.
 struct SignInChallenge: Hashable, Sendable {
     var email: String
-    var codeLength: Int = 6
     var resendAfter: Int = 42
     var sentAt: Date = .now
 }
@@ -76,7 +82,7 @@ protocol SycamoreRepository: SectionEightData {
 
     /// Screen 1. Posts a one-time code and returns the resend window.
     func requestSignInCode(email: String) async throws -> SignInChallenge
-    /// Screen 2. Trades the six digits for an account.
+    /// Screen 2. Trades `SupabaseConfig.codeLength` digits for an account.
     func verifySignInCode(_ code: String, email: String) async throws -> Account
     /// Screen 1's "Continue with Apple". The token is whatever `ASAuthorization` hands
     /// back; the in-memory build ignores it.
@@ -323,7 +329,8 @@ actor InMemoryRepository: SycamoreRepository {
     private var accounts: [Account.ID: Account]
     private var membershipRecords: [Membership]
     private var camps: [Camp.ID: Camp]
-    /// The last code we "sent", per email. The offline build accepts any six digits.
+    /// The last code we "sent", per email. The offline build accepts any code of the right
+    /// length — see `verifySignInCode` — without caring what the digits are.
     private var pendingChallenges: [String: SignInChallenge] = [:]
 
     // Section 8's three new shapes. They sit beside the camp graph rather than inside it
@@ -367,7 +374,10 @@ actor InMemoryRepository: SycamoreRepository {
 
     func verifySignInCode(_ code: String, email: String) async throws -> Account {
         let digits = code.filter(\.isNumber)
-        guard digits.count == 6 else { throw SycamoreError.invalidCode }
+        // The same length the shipped app is held to, for the reason `deleteGroup` below is: this
+        // repository stands in for Postgres, and a length it accepts that GoTrue would not is a
+        // sign-in that works in the previews and the simulator and nowhere else.
+        guard digits.count == SupabaseConfig.codeLength else { throw SycamoreError.invalidCode }
         return try signIn(email: email)
     }
 

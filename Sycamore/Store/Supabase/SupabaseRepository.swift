@@ -111,7 +111,11 @@ actor SupabaseRepository: SycamoreRepository {
 
     func verifySignInCode(_ code: String, email: String) async throws -> Account {
         let digits = code.filter(\.isNumber)
-        guard digits.count == 6 else { throw SycamoreError.invalidCode }
+        // `SupabaseConfig.codeLength`, not a literal. This guard said 6 while the project issued
+        // 8, which is the one arrangement where every part looks right and nothing works: the mail
+        // carries eight digits, `VerifyView` draws eight cells and fills them, and then the code
+        // is refused here — before the network, so the auth log has nothing in it either.
+        guard digits.count == SupabaseConfig.codeLength else { throw SycamoreError.invalidCode }
         let address = EmailAddress.normalised(email)
         // Only the exchange itself is read as a bad code. `adoptProfile` talks to PostgREST, and
         // a policy refusing the profile write is not the coach mistyping a digit.

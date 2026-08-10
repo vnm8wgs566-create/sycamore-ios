@@ -17,6 +17,15 @@ import Foundation
 import Testing
 @testable import Sycamore
 
+/// A code of whatever length the project currently issues, for the tests that only need to be
+/// signed in before they can ask about something else.
+///
+/// The digits are arbitrary — `InMemoryRepository` counts them and does not read them — but the
+/// count is not, and it used to be typed out as `"123456"` at a dozen call sites. That is the
+/// same number written down thirteen times, and it is how this suite kept passing at six while
+/// the project had moved to eight.
+private let signInCode = String(repeating: "1", count: SupabaseConfig.codeLength)
+
 @Suite("InMemoryRepository — sign-in")
 struct RepositorySignInTests {
 
@@ -36,30 +45,42 @@ struct RepositorySignInTests {
         let challenge = try await repo.requestSignInCode(email: "  Alex@UCLACamp.org  ")
 
         #expect(challenge.email == "alex@uclacamp.org")
-        #expect(challenge.codeLength == 6)
         #expect(challenge.resendAfter == 42)
     }
 
-    @Test("A code has to be six digits")
+    /// One short, one long and one empty, each *derived* from `SupabaseConfig.codeLength` rather
+    /// than typed out.
+    ///
+    /// Spelling the digits would make this test pass for the wrong reason the next time the
+    /// project's Email OTP Length moves: `"12345"` is a short code at six and a short code at
+    /// eight, so a literal keeps agreeing with a repository that has stopped agreeing with GoTrue.
+    /// The whole family of bugs here is a number written down twice.
+    @Test("A code has to be exactly as long as the project's codes are")
     func codeLength() async throws {
         let repo = InMemoryRepository()
+        let length = SupabaseConfig.codeLength
+        let short = String(repeating: "1", count: length - 1)
+        let long = String(repeating: "1", count: length + 1)
 
         await #expect(throws: SycamoreError.invalidCode) {
-            try await repo.verifySignInCode("12345", email: "alex@uclacamp.org")
+            try await repo.verifySignInCode(short, email: "alex@uclacamp.org")
         }
         await #expect(throws: SycamoreError.invalidCode) {
-            try await repo.verifySignInCode("1234567", email: "alex@uclacamp.org")
+            try await repo.verifySignInCode(long, email: "alex@uclacamp.org")
         }
         await #expect(throws: SycamoreError.invalidCode) {
             try await repo.verifySignInCode("", email: "alex@uclacamp.org")
         }
     }
 
+    /// A full-length code with punctuation hanging off it, which is what one arrives as when it is
+    /// copied out of the mail rather than typed.
     @Test("Counts digits, not characters — a pasted code brings its punctuation")
     func codeIgnoresPunctuation() async throws {
         let repo = InMemoryRepository()
+        let pasted = signInCode + " -"
 
-        let account = try await repo.verifySignInCode("12-34 56", email: "alex@uclacamp.org")
+        let account = try await repo.verifySignInCode(pasted, email: "alex@uclacamp.org")
 
         #expect(account.email == "alex@uclacamp.org")
     }
@@ -68,8 +89,8 @@ struct RepositorySignInTests {
     func signingInTwiceIsTheSamePerson() async throws {
         let repo = InMemoryRepository()
 
-        let first = try await repo.verifySignInCode("123456", email: "alex@uclacamp.org")
-        let second = try await repo.verifySignInCode("654321", email: "  ALEX@UCLACamp.org ")
+        let first = try await repo.verifySignInCode(signInCode, email: "alex@uclacamp.org")
+        let second = try await repo.verifySignInCode(signInCode, email: "  ALEX@UCLACamp.org ")
 
         #expect(first.id == second.id)
     }
@@ -103,7 +124,7 @@ struct RepositoryCampTests {
     @Test("A camp needs a name")
     func campNameIsRequired() async throws {
         let repo = InMemoryRepository()
-        let account = try await repo.verifySignInCode("123456", email: "alex@uclacamp.org")
+        let account = try await repo.verifySignInCode(signInCode, email: "alex@uclacamp.org")
 
         await #expect(throws: SycamoreError.campNameRequired) {
             try await repo.createCamp(CampDraft(name: "   "), accountID: account.id)
@@ -113,7 +134,7 @@ struct RepositoryCampTests {
     @Test("The creator becomes the camp's first admin, and the shape matches the draft")
     func createCamp() async throws {
         let repo = InMemoryRepository()
-        let account = try await repo.verifySignInCode("123456", email: "alex@uclacamp.org")
+        let account = try await repo.verifySignInCode(signInCode, email: "alex@uclacamp.org")
 
         let membership = try await repo.createCamp(
             CampDraft(name: "UCLA Tennis", sport: .tennis, venueCount: 3, groupsPerVenue: 4),
@@ -134,7 +155,7 @@ struct RepositoryCampTests {
     @Test("An unknown invite code is an error")
     func unknownInviteCode() async throws {
         let repo = InMemoryRepository()
-        let account = try await repo.verifySignInCode("123456", email: "alex@uclacamp.org")
+        let account = try await repo.verifySignInCode(signInCode, email: "alex@uclacamp.org")
 
         await #expect(throws: SycamoreError.unknownInviteCode) {
             try await repo.joinCamp(inviteCode: "NOPE-0000", accountID: account.id)
@@ -148,7 +169,7 @@ struct RepositoryCampTests {
         var camp = Fixture.camp([.init("Sycamore", courts: 2)], players: 4)
         camp.inviteCode = "SYC-4821"
         let repo = InMemoryRepository(camps: [camp])
-        let account = try await repo.verifySignInCode("123456", email: "alex@uclacamp.org")
+        let account = try await repo.verifySignInCode(signInCode, email: "alex@uclacamp.org")
 
         let membership = try await repo.joinCamp(inviteCode: code, accountID: account.id)
 
@@ -164,7 +185,7 @@ struct RepositoryCampTests {
         var camp = Fixture.camp([.init("Sycamore", courts: 2)], players: 4)
         camp.inviteCode = "SYC-4821"
         let repo = InMemoryRepository(camps: [camp])
-        let account = try await repo.verifySignInCode("123456", email: "alex@uclacamp.org")
+        let account = try await repo.verifySignInCode(signInCode, email: "alex@uclacamp.org")
 
         let first = try await repo.joinCamp(inviteCode: "SYC-4821", accountID: account.id)
         let second = try await repo.joinCamp(inviteCode: "SYC-4821", accountID: account.id)

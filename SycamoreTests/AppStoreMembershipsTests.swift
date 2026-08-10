@@ -26,7 +26,7 @@ struct AppStoreMembershipsTests {
 
     /// Alex, signed in, with both sample camps sitting in the repository waiting to be asked for.
     /// `auth` is set directly rather than driven through the code screen: this is about what a
-    /// fetch does to the flag, and the six digits in front of it are `InMemoryRepositoryTests`'.
+    /// fetch does to the flag, and the code screen in front of it is `InMemoryRepositoryTests`'.
     private static func signedIn(owning memberships: [Membership]) -> AppStore {
         let store = AppStore(
             repository: InMemoryRepository(

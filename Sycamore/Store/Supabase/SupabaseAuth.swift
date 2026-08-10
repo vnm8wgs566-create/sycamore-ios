@@ -2,8 +2,10 @@
 //  SupabaseAuth.swift
 //  Sycamore
 //
-//  Screens 1 and 2 against GoTrue: post a six-digit code to an address, trade the code for a
-//  session, hold the session while the app runs.
+//  Screens 1 and 2 against GoTrue: post a one-time code to an address, trade the code for a
+//  session, hold the session while the app runs. How many digits the code has is the project's
+//  Email OTP Length, mirrored in `SupabaseConfig.codeLength` — GoTrue mints the token, so this
+//  end of it only ever follows.
 //
 //  Held in memory only. There is no keychain write here, so closing the app signs you out —
 //  which is exactly what `AppStore` already assumes, since it starts every launch at
@@ -54,7 +56,7 @@ actor SupabaseAuth {
 
     /// Screen 1. GoTrue answers 200 with an empty body once the mail is away.
     ///
-    /// Whether the message contains six digits or a magic link is a property of the project's
+    /// Whether the message contains digits or a magic link is a property of the project's
     /// email template, not of this call — the template has to interpolate `{{ .Token }}` for
     /// screen 2 to have anything to type.
     func requestCode(email: String) async throws {
