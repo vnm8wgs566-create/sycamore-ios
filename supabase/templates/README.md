@@ -35,9 +35,18 @@ otherwise square it off). Until it is uploaded to that path, every inbox shows a
 the logo belongs.
 
 **The cell count has to equal the project's OTP length, which is 8.** The cells are
-`{{ slice .Token 0 1 }}` … `{{ slice .Token 7 8 }}`, and the same 8 is spelled in
-`SupabaseConfig.codeLength`, which is what `VerifyView` draws and what its hidden field truncates
-to. All three have to agree.
+`{{ slice .Token 0 1 }}` … `{{ slice .Token 7 8 }}`, and the same 8 is spelled once in
+`SupabaseConfig.codeLength` — which is what `VerifyView` draws, what its hidden field truncates
+to, and what **both** repositories check a submitted code against before they do anything with it.
+Everything in the app reads that constant, so the count that has to be kept in agreement by hand
+is only the one in this file.
+
+That was not true until 2026-08-10. `SupabaseRepository.verifySignInCode` and
+`InMemoryRepository.verifySignInCode` each carried their own `guard digits.count == 6`, written
+after the constant landed and never pointed at it — so an eight-digit code was refused *before the
+network*, with the mail correct, eight cells drawn and filled, and nothing in the auth log to look
+at. `SignInChallenge` carried a third copy, a `codeLength` defaulting to 6 that nothing read; it is
+gone rather than corrected, because a number kept in two places is what this whole section is about.
 
 This is the bug that cost the most time here, so it is worth stating plainly. Go's `slice` panics
 past the end of a string, so setting the OTP length *below* the cell count breaks the template
@@ -92,8 +101,14 @@ Two things that test could not reach:
 2026-08-09: this 8-cell HTML is now live in **both** *Confirm signup* and *Magic Link*, and both
 subjects are set to *Your Sycamore sign-in code*. Verified by reading the project's auth config back
 (`GET /v1/projects/{ref}/config/auth`): `mailer_otp_length` is `8`, both template bodies match this
-file byte-for-byte, and both subjects match. So the length agrees across all three places at last —
-config `8`, cells `8`, `SupabaseConfig.codeLength` `8`.
+file byte-for-byte, and both subjects match.
+
+2026-08-10, re-read after this branch merged to `main`, and it still holds: `mailer_otp_length` `8`,
+both bodies byte-identical to this file, both subjects *Your Sycamore sign-in code*. **There is
+nothing to paste** — the dashboard is already carrying exactly these bytes, and it only needs
+touching again if this file changes. The length now agrees everywhere: config `8`, cells `8`,
+`SupabaseConfig.codeLength` `8`, and both repositories' verify guards reading that constant instead
+of a literal 6.
 
 Written through the Management API, not pasted. One gotcha worth recording: the API sits behind
 Cloudflare, and a `Python-urllib` User-Agent is refused with **403 `error code: 1010`** (a banned
@@ -104,3 +119,10 @@ like a content/permission rejection and is neither — send template writes from
 `https://sycamorecamps.com/email/sycamore-mark-240.png` returns **404**, so every inbox shows a
 broken image until [`assets/sycamore-mark-240.png`](assets/sycamore-mark-240.png) is uploaded to
 that path. Nothing in the app or the auth config can fix this — it is a file on the web host.
+Re-checked 2026-08-10: the site itself answers 200, the image is still 404.
+
+A data URI is not the way out of this, tempting as it looks. Gmail and Outlook.com both refuse to
+render `src="data:image/png;base64,…"` in a `<img>`, so it trades a broken image in every inbox for
+a broken image in most of them, and inlines 8 KB into a template that GoTrue stores as a string.
+Either host the file, or delete the `<td>` holding the `<img>` and let the wordmark stand alone —
+the masthead is a two-cell table and reads correctly with one of them gone.
