@@ -166,16 +166,19 @@ struct BlockNotesCard: View {
     /// The way out of the keyboard, and it has to be a word in the card rather than a bar over the
     /// keyboard.
     ///
-    /// `FormTextArea.keyboardDoneBar` is the app's answer to this everywhere else, and it cannot be
-    /// relied on here: a `.toolbar(placement: .keyboard)` was measured *not* installing inside a
-    /// `fullScreenCover`, and `8l` is one (`FullScreenPresentation.swift:43-45`). The same bar
-    /// declared at the same depth inside a `.sheet` appears, so it is the cover rather than the
-    /// depth. `keyboardDoneBar`'s own doc carries the finding, and with it the one shipped
-    /// counterexample nobody has settled — `AddPlayerView`'s bar lives in a cover too.
+    /// `FormTextArea.keyboardDoneBar` is the app's answer to this everywhere else. It was written
+    /// off here on a measurement that a `.toolbar(placement: .keyboard)` does not install inside a
+    /// `fullScreenCover`, and `8l` is one (`FullScreenPresentation.swift:43-45`) — but that has
+    /// since been contradicted where it could be checked: the same bar was measured working inside
+    /// the enrolment cover, `NavigationStack` and all. `keyboardDoneBar`'s doc carries both runs.
+    /// Nobody has re-run `8l`'s, so whether the bar would appear on *this* screen is open.
     ///
-    /// This is drawn rather than declared because it is right under both readings: if the placement
-    /// does work in a cover this is a plain button doing what the bar would have done, and if it
-    /// does not, it is the only way out of the keyboard on this screen.
+    /// It stays drawn rather than declared, on the half of the original argument that still holds:
+    /// a word in the card is right under either answer, and `8l` is the screen where being wrong
+    /// costs the most — no tap-outside, and the notes the reader wanted are under the keyboard.
+    /// It also lands where they are already looking, inline beside "Add note" rather than floating
+    /// over the keyboard. Both appear only while the composer has focus; that is not the
+    /// difference between them.
     ///
     /// `add()` clears `isComposing` and always did, which is why this looked covered and was not:
     /// that is the *commit* path. Somebody who opens the composer, reads the three notes above it

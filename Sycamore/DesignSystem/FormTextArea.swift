@@ -40,12 +40,14 @@
 //  and out of reach. **A screen that draws one of these owes it a way out**, and there is no way
 //  for this file to enforce that — so it is written down here instead.
 //
-//  Which way out depends on how the screen is presented, and that is not a detail:
+//  `keyboardDoneBar` below is that way out, one per screen. It is measured working in a sheet and,
+//  since this was written, measured working inside a `fullScreenCover` too — so how the screen is
+//  presented is no longer the fork it used to be described as. Its own doc says what was run where.
 //
-//  * **In a sheet** — `keyboardDoneBar` below. One per screen. Measured working.
-//  * **Inside a `fullScreenCover`** — do not rely on `keyboardDoneBar`; draw the control in the
-//    view. `BlockNotesCard.doneButton` is the worked example and carries the evidence, including
-//    the one case that argues the other way.
+//  The caveat that survives is about *checking*, not about covers: the bar installs silently or not
+//  at all, and a dead one is indistinguishable from a live one in the source. A screen whose only
+//  way out this is should be walked once by hand. Where that is awkward, drawing the control in the
+//  view is still right — `BlockNotesCard.doneButton` is the worked example.
 //
 
 import SwiftUI
@@ -126,13 +128,14 @@ struct FormTextArea: View {
 
 extension View {
 
-    /// The "Done" bar over the keyboard, and the app's second spelling of it.
+    /// The "Done" bar over the keyboard, and the app's only spelling of it.
     ///
-    /// The first is `AddPlayerView.swift:83-96`, whose comment gives the reason a screen needs one
-    /// at all: "the number pad has no return key, and the pinned Add sits under the keyboard while
-    /// it is up. This is the way out that does not need a free hand for a drag." A `FormTextArea`
-    /// is the same shape of problem arrived at from the other side — its Return key exists and
-    /// types a newline — so it wears the same control rather than inventing a second one.
+    /// It was the second for a while. `AddPlayerView` hand-rolled the same `ToolbarItemGroup`, and
+    /// its comment gives the reason a screen needs one at all: the number pad has no return key,
+    /// and the pinned "Add" sits under the keyboard while it is up, so this is the way out that
+    /// does not need a free hand for a drag. A `FormTextArea` is the same problem arrived at from
+    /// the other side — its Return key exists and types a newline — which is why one control
+    /// covers both. That screen now calls this, so the two copies are one.
     ///
     /// ── Applied by the screen, not by the field ───────────────────────────────────────────────
     ///
@@ -156,23 +159,28 @@ extension View {
     /// So the closure is the caller's, and it clears every focus that screen owns. The cost is that
     /// a new caller can forget; the header above says so in as many words, which is the trade.
     ///
-    /// ── In a `fullScreenCover` it may never appear, and it fails silently ─────────────────────
+    /// ── It does install inside a `fullScreenCover`, and this used to say it did not ───────────
     ///
-    /// Measured on a simulator: declared inside a cover the bar did not appear — at the cover's
-    /// root, deep inside it, and with a `NavigationStack` in between — where the same declaration
-    /// on a `.sheet` rendered every time. Nothing warns either way: this compiles, reads as a fix
-    /// and does nothing, which is how `BlockNotesCard` was written and then rewritten.
+    /// That unresolved case has been run. `AddPlayerView` was walked to by hand on a simulator —
+    /// iPhone 17 Pro Max, iOS 26.5 — through the cover it actually ships behind: enrolment, opened
+    /// from `CreateCampView:111` via `fullScreenPresentation`, with `EnrolmentFlowView`'s own
+    /// `NavigationStack` in between. Focusing the age field raised the bar over the number pad, and
+    /// tapping Done put both away. So a cover does not block `.keyboard` placement, and
+    /// `AddPlayerView`'s bar was never dead.
     ///
-    /// **One case argues the other way and is unresolved.** `AddPlayerView.swift:83-96` declares
-    /// this same bar and ships inside a cover — `EnrolmentFlowView` is presented through
-    /// `fullScreenPresentation` (`SetupView.swift:107`, `GroupsView.swift:120`) and wraps its own
-    /// `NavigationStack` (`:98`). Either that bar has been quietly dead since it was written, which
-    /// its `.scrollDismissesKeyboard(.interactively)` at `:138` would have hidden, or the
-    /// measurement missed an arrangement that works. Nobody has checked which on a device.
+    /// What the earlier measurement found is therefore narrower than the rule written from it. It
+    /// reported the bar missing inside `8l`'s block-detail cover at three depths, one of them with
+    /// a `NavigationStack` in between — which is the arrangement that demonstrably works above. The
+    /// two do not agree and the block-detail one has not been re-run, so what is left is a single
+    /// unreproduced negative, not a fact about covers. Anyone touching `8l`'s keyboard handling
+    /// should re-measure rather than trust either result.
     ///
-    /// So this is a warning rather than a law, and it is enough of one: a screen inside a cover
-    /// should draw its own control, because that works under both readings. See
-    /// `BlockNotesCard.doneButton`.
+    /// The part worth keeping is the failure *mode*, which is real whatever the cause: this
+    /// installs silently or not at all. It compiles either way and a dead bar reads exactly like a
+    /// live one, so a screen whose only way out this is deserves one pass by hand. Where that is
+    /// awkward — or where the way out belongs inline with the screen's own buttons rather than
+    /// floating over the keyboard — drawing it in the view is still right.
+    /// `BlockNotesCard.doneButton` is that, and stays that.
     ///
     /// Nothing for the Mac: `.keyboard` placement is iOS-only, and a Mac has an Escape key.
     func keyboardDoneBar(_ dismiss: @escaping () -> Void) -> some View {
