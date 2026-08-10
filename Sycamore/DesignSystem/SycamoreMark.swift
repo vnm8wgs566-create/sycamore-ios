@@ -85,9 +85,12 @@ private struct SeedOutline: Shape {
 
 /// `seed2a` — the shape the whole identity is built from.
 ///
-/// Deliberately shared with `FallingSeeds` rather than redrawn there. The seeds that fall
-/// during a load are *the mark's* seed, so if the logo's curves ever change the animation
-/// follows without anyone remembering to update it.
+/// Deliberately shared with `FallingSeeds` rather than redrawn there. The seeds that fall on the
+/// entrance are *the mark's* seed, so if the logo's curves ever change the animation follows
+/// without anyone remembering to update it.
+///
+/// "On the entrance" and no longer "during a load": the flock used to fall over the camp picker
+/// too, and does not any more. See `FallingSeeds`.
 struct SycamoreSeed: View {
     var primary: Color = Theme.markGreen
     var secondary: Color = Theme.markGreenLight

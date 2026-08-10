@@ -79,8 +79,8 @@ enum ScheduleSampleDay {
     ///   - two `.assigned` blocks on **disjoint courts**, which run alongside each other and are
     ///     *not* a clash — the distinction `ScheduleTimeline`'s header exists to make;
     ///   - a **real clash**, the coach huddle laid over match play, which shares the venue with it;
-    ///   - blocks at all three of the card's layout heights: fifteen minutes (30pt), half an hour
-    ///     (60pt) and an hour and more.
+    ///   - blocks at all four of the card's layout tiers: fifteen minutes (30pt), half an hour
+    ///     (60pt), an hour (120pt) and longer still.
     ///
     /// The courts are minted per call rather than taken from `SampleData`, because what matters
     /// about them here is only that two of them are not the third.

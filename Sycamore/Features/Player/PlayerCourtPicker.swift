@@ -97,9 +97,10 @@ struct PlayerCourtPicker: View {
     /// A `static` here rather than in a token set. `OverviewTheme` would be its natural home,
     /// beside `pickerMark` and `pickerMeta` which this file already reads, and `coachPickerDetent`
     /// which it is the sibling of — but that file belongs to another unit this wave, and a
-    /// one-value enum of its own would be a token table nothing else ever enters. `static`, not
-    /// `private let`, because a private stored property makes the synthesised memberwise
-    /// initialiser private too, and `PlayerScreen` calls it.
+    /// one-value enum of its own would be a token table nothing else ever enters. `static` because
+    /// it is a property of the type and not of a sheet — this file's `@ScaledMetric private var`
+    /// beside it shows a private stored property is no obstacle to the memberwise init, which an
+    /// earlier version of this comment claimed it was.
     private static let detent: Double = 0.88
 
     var body: some View {

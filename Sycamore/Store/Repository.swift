@@ -112,7 +112,9 @@ protocol SycamoreRepository: SectionEightData {
     /// A drag on screen 6. Sections arrive top to bottom, so a kid dropped across a
     /// venue rule simply appears in the next section and changes venue.
     func reorderCamp(_ assignments: [RankAssignment], campID: Camp.ID) async throws -> Camp
-    /// The player sheet's "Move up a court", and any explicit venue change.
+    /// `8q`'s "Move to another court" — any court in the camp, in either direction and across
+    /// venues — and any other explicit venue change. It was one court up inside one venue until
+    /// the kid's screen grew a picker to aim with.
     func movePlayer(
         _ playerID: Player.ID, toVenue venueID: Venue.ID, group groupID: Group.ID?, campID: Camp.ID
     ) async throws -> Camp

@@ -30,11 +30,11 @@
 //  answer does.
 //
 //  That is not theoretical. `ScheduleView` resolves the day it opens on from `store.today` inside
-//  `body` (`ScheduleView.swift:79`) rather than seeding a `@State`, so the chip row, every block
+//  `body` (`ScheduleView.swift:116`) rather than seeding a `@State`, so the chip row, every block
 //  card and the current-block calculation rebuilt once a minute on a screen nobody had touched —
 //  which is the state the tab is in on every fresh presentation. The same read is at
 //  `AttendanceView.swift:206`, `OverviewView.swift:67`, `OverviewScreen.swift:87`,
-//  `CourtScreen.swift:167` and `PlayerScreen.swift:231`.
+//  `CourtScreen.swift:167` and `PlayerScreen.swift:250`.
 //
 //  So `today` is stored, and `refresh(to:)` writes it only when the day has actually rolled over.
 //  The `if` is the whole of the fix and not an optimisation on top of one: `@Observable` does not

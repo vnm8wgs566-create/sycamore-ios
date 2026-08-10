@@ -7,9 +7,10 @@
 //
 //  Lighter than the same kid on Groups. That row is a control you swipe, tap and drag; this one
 //  is a line of a list you read, so it is set at the design's 13.5/400 rather than at Groups'
-//  bold 15, and it takes no gestures of its own. The court screen wraps it in a button; the row
-//  stays a line either way, so a card that only reads and a screen that also opens draw the same
-//  kid identically.
+//  bold 15, and it takes no gestures of its own. `CourtRosterButton` wraps it where a screen
+//  wants the tap — the court screen and Overview's cards both do now — and the row stays a line
+//  either way, so every screen that lists a kid draws them identically whether or not it opens
+//  them. The gesture belongs to the screen; the line belongs here.
 //
 //  It draws `PlayerRow.isAway` now, which it used to carry and ignore. Overview never produces
 //  an away row — `TodayCourts.rosters` drops those kids before a card ever sees them — so the

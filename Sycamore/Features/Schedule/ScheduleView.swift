@@ -66,8 +66,10 @@ struct ScheduleView: View {
     /// index over the same day. A clash arriving a frame late is a warning line appearing a frame
     /// late — invisible, which is the whole of the argument above. A *placement* arriving a frame
     /// late is a block drawn at the wrong minute and a newly-added block not drawn at all, because
-    /// the layer indexes by id and would find nothing. So it is computed where it is used, in
-    /// `ScheduleBlockLayer`, from the very blocks being drawn.
+    /// the layer indexes by id and would find nothing. So the timeline is packed in `canvas`,
+    /// from the very blocks being drawn, and handed down — see the note where it is built. This
+    /// `@State` is the *conflict* index, which is the opposite case: it changes only when somebody
+    /// writes a block, so holding it is what stops a day of pair comparisons every clock tick.
     @State private var conflicts = ScheduleConflicts(day: [])
 
     /// The block `8l` is showing. Re-resolved from the store after every write, so the cover

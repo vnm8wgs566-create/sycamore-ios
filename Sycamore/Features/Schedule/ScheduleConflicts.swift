@@ -10,8 +10,10 @@
 //  Asking it per card is O(N²) — every card walks the whole day — and `ScheduleView.body` re-runs
 //  every time the app's clock ticks, because it reads `store.timeOfDay` to mark the block running
 //  now. So the naive spelling pays a whole day of pair comparisons a minute, for ever, to draw a
-//  warning that changes only when somebody writes a block. `ScheduleView.swift:286-291` already
-//  records this screen paying that bill once for `currentBlockIDs`.
+//  warning that changes only when somebody writes a block. This screen used to record the same
+//  bill being paid once for a `currentBlockIDs` set; that set is gone — the calendar canvas asks
+//  `ScheduleBlock.running(in:at:)` from `ScheduleBlockLayer`, which is its own `View` precisely so
+//  a clock tick invalidates the layer and not the day around it.
 //
 //  So the index is built from `.onChange(of: blocks, initial: true)` and held, rather than
 //  computed in a body: it depends on exactly one value, and that value is what re-derives it.

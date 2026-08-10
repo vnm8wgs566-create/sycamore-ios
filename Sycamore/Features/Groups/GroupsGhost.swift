@@ -19,7 +19,8 @@
 //
 //  They are two answers to one question, and that is deliberate. The layout is the thing the
 //  reader sees; the arithmetic is the model of it, and the only place the model is actually
-//  evaluated at runtime is `GroupsView.aim(at:)`, which parks the carried card on the space.
+//  evaluated at runtime is `GroupsView.park(on:)`, which parks the carried card on the space.
+//  (It was `aim(at:)` until the drop stopped needing a second tap to release it.)
 //  An overlay ghost drawn at `top` over a separately-opened spacer would be two things that
 //  must agree pixel-for-pixel across Dynamic Type, a folded card and the "+N more" row — and
 //  any disagreement shows as the ghost sitting beside its own hole. So `GroupsGhostTests`

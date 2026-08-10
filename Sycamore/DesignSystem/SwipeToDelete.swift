@@ -8,8 +8,9 @@
 //  `BlockNotesCard.swift:103` — and both are right about `.swipeActions`, which is a `List`
 //  modifier and would silently do nothing: there is no `List` anywhere under `Sycamore/`. Where
 //  both go wrong is the next step, "so a hand-built one always loses to the scroll view". They
-//  generalised that from the only two `DragGesture`s in the app, `GroupCard.swift:503` and
-//  `RankView.swift:343`, and both of those are **vertical** drags — the same axis as the scroll,
+//  generalised that from the app's vertical `DragGesture`s — `GroupCard.swift:563`,
+//  `RankView.swift:353` and now `ScheduleBlockCard`'s two — and every one of those is a
+//  **vertical** drag — the same axis as the scroll,
 //  so nothing about the movement can separate them and only *time* can, which is why both sit
 //  behind a `LongPressGesture.sequenced(before:)`. A swipe is horizontal. Direction separates it,
 //  and direction costs the reader nothing.
@@ -340,8 +341,8 @@ struct SwipeToDelete<ID: Hashable & Sendable, Content: View>: View {
                 // display rate. `state` is a binding into the screen that owns the list, so an
                 // unguarded assignment re-ran that whole body on every frame of every swipe —
                 // the scroll view, every sibling row, every stepper — for a value that changes
-                // once per gesture. `GroupsView.swift:206` guards its frame writes for exactly
-                // this reason.
+                // once per gesture. `GroupsView.swift:286` guards its frame writes for exactly
+                // this reason, behind `isMeasuring`.
                 if state.trackingID != id { state.trackingID = id }
                 if state.openID != nil, state.openID != id { state.openID = nil }
             }

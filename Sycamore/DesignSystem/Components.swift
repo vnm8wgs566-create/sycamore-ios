@@ -374,9 +374,12 @@ struct Chip: View {
                 // Order matters and is the whole fix. `.contentShape` before `.frame` pins the
                 // hit region to the drawn plate and the added height is inert — which is what
                 // three call sites had already worked around by hand
-                // (`ScheduleView.swift:139`, `GroupsMove.swift:169`, `EarlyPickupSheet.swift:181`)
-                // and five had not. Growing here rather than at the call site is what makes those
-                // workarounds unnecessary rather than merely redundant.
+                // (`ScheduleView.swift:293`, `EarlyPickupSheet.swift:181`) and five had not.
+                // Growing here rather than at the call site is what makes those workarounds
+                // unnecessary rather than merely redundant.
+                //
+                // A third was `GroupsMove.swift`'s move bar, which has been deleted along with the
+                // latch it served — see that file's header.
                 label
                     .frame(minHeight: HitTarget.minimum)
                     .contentShape(.rect)
@@ -506,8 +509,10 @@ struct Pill: View {
                 }
             }
             // Same order, same reason as `Chip`: the capsule is drawn at ~33pt and the target is
-            // grown to 44 around it. `GroupsMove.swift:179` had already tried to grow "Drop here"
-            // from the outside and could not, because the shape was pinned in here.
+            // grown to 44 around it. Groups' move bar had already tried to grow "Drop here" from
+            // the outside and could not, because the shape was pinned in here — that bar is gone
+            // now, dropped along with the latch it existed to release, but it is the case that
+            // proved the growing belongs on this side of the boundary rather than at the caller.
             .frame(minHeight: HitTarget.minimum)
             .contentShape(.rect)
         }
