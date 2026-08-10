@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>Your Sycamore sign-in code</title>
+<!--[if mso]>
+<xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+<![endif]-->
+<style>
+  a { color: #1A7F55; }
+  a:hover { color: #14684A; }
+  @media (max-width: 620px) {
+    .gutter { padding-left: 20px !important; padding-right: 20px !important; }
+    .otp-cell { width: 44px !important; height: 56px !important; font-size: 23px !important; }
+    .title { font-size: 27px !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .page { background: #0F0F11 !important; }
+    .card { background: #1C1C1E !important; border-color: #2F2F32 !important; }
+    .ink { color: #F5F5F7 !important; }
+    .ink-soft { color: #9AA0A8 !important; }
+    .ink-muted { color: #8E939B !important; }
+    .otp-cell { border-color: #3B3B3E !important; color: #F5F5F7 !important; background: #1C1C1E !important; }
+    .panel { background: #16201A !important; border-color: #27503C !important; }
+    .panel-ink { color: #C8D2CC !important; }
+    .rule { background: #2F2F32 !important; }
+    a, .accent { color: #4FB585 !important; }
+  }
+</style>
+</head>
+<body class="page" style="margin:0; padding:0; background:#F6F7F9; -webkit-font-smoothing:antialiased;">
+
+<div style="display:none; font-size:1px; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all;">Your six-digit Sycamore code. It expires in 60 minutes.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="page" style="background:#F6F7F9;">
+  <tr>
+    <td align="center" style="padding:32px 12px 48px 12px;">
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px; max-width:600px;">
+
+        <!-- Masthead -->
+        <tr>
+          <td style="padding:0 0 20px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="40" style="width:40px; padding-right:11px;">
+                  <img src="https://sycamorecamps.com/email/sycamore-mark-240.png" width="40" height="40" alt="Sycamore" style="display:block; width:40px; height:40px; border:0; border-radius:9px;">
+                </td>
+                <td class="ink" style="font-family:Georgia,'Times New Roman',serif; font-size:22px; line-height:24px; letter-spacing:-0.5px; color:#0B0B0C; vertical-align:middle;">Sycamore</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Card -->
+        <tr>
+          <td class="card" style="background:#FFFFFF; border:1px solid #EDEEF1; border-radius:18px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+
+              <tr>
+                <td class="gutter" style="padding:38px 40px 0 40px;">
+                  <div class="title ink" style="font-family:Georgia,'Times New Roman',serif; font-size:31px; line-height:34px; letter-spacing:-0.7px; color:#0B0B0C; mso-line-height-rule:exactly;">Your sign-in code</div>
+                  <div class="ink-soft" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14.5px; line-height:22px; color:#71757E; padding-top:10px; mso-line-height-rule:exactly;">Enter these six digits in the Sycamore app to finish signing in as <span class="ink" style="color:#0B0B0C; font-weight:600;">{{ .Email }}</span>.</div>
+                </td>
+              </tr>
+
+              <!-- Six OTP cells. Requires Go template slicing, which Supabase supports.
+                   If your project rejects it, delete this row and use the single-plate
+                   fallback commented out below. -->
+              <tr>
+                <td class="gutter" style="padding:26px 40px 0 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; border-collapse:separate; border-spacing:9px 0;">
+                    <tr>
+                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 0 1 }}</td>
+                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 1 2 }}</td>
+                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 2 3 }}</td>
+                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 3 4 }}</td>
+                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 4 5 }}</td>
+                      <td class="otp-cell" align="center" width="76" height="64" style="width:76px; height:64px; border:2px solid #E4E5E9; border-radius:15px; background:#FFFFFF; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:-0.8px; color:#0B0B0C; mso-line-height-rule:exactly; line-height:60px;">{{ slice .Token 5 6 }}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Fallback, if `slice` is unavailable:
+              <tr>
+                <td class="gutter" style="padding:26px 40px 0 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr><td class="otp-cell" align="center" height="64" style="height:64px; border:2px solid #E4E5E9; border-radius:15px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:26px; font-weight:600; letter-spacing:10px; color:#0B0B0C; line-height:60px;">{{ .Token }}</td></tr>
+                  </table>
+                </td>
+              </tr>
+              -->
+
+              <tr>
+                <td class="gutter" style="padding:20px 40px 0 40px;">
+                  <div class="ink-muted" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#8A8E96; mso-line-height-rule:exactly;">The code expires in 60 minutes and can be used once.</div>
+                </td>
+              </tr>
+
+              <tr>
+                <td class="gutter" style="padding:30px 40px 0 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="panel" style="background:#EDF6F1; border:1px solid #C3DFCF; border-radius:15px;">
+                    <tr>
+                      <td class="panel-ink" style="padding:15px 16px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12.5px; line-height:19px; color:#14684A; mso-line-height-rule:exactly;">Your permissions come from the camp, not the login. The same account can be an admin at one camp and a coach at another.</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <tr>
+                <td class="gutter" style="padding:28px 40px 34px 40px;">
+                  <div class="ink-muted" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12.5px; line-height:19px; color:#8A8E96; mso-line-height-rule:exactly;">Didn't request this? You can ignore this email — no one can sign in without the code. If it keeps happening, tell us at <a href="mailto:support@sycamorecamps.com" class="accent" style="color:#1A7F55; text-decoration:none; font-weight:600;">support@sycamorecamps.com</a>.</div>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:22px 8px 0 8px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr><td class="rule" height="1" style="height:1px; background:#EDEEF1; font-size:0; line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="padding-top:16px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11.5px; line-height:18px; color:#A2A6AE; mso-line-height-rule:exactly;">
+                  Sycamore — camp management for people standing on a court.<br>
+                  This is an automated message about your account, sent because someone asked for a sign-in code for {{ .Email }}.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>
