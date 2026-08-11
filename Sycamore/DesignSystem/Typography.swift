@@ -240,18 +240,34 @@ struct TypeStyle: Sendable, Equatable {
 
 extension TypeStyle {
 
-    /// `800 35/1.05`, `-.042em` — sign-in wordmark.
-    static let display = TypeStyle(size: 35, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.05, isSerif: true)
-    /// `800 31/1.08`, `-.038em` — "Check your email".
-    static let title1 = TypeStyle(size: 31, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.08, isSerif: true)
-    /// `800 29/1.1`, `-.038em` — "Which camp?", "New camp".
-    static let title2 = TypeStyle(size: 29, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.1, isSerif: true)
-    /// `800 28/1`, `-.038em` — Groups / Rank / Setup.
-    static let tabTitle = TypeStyle(size: 28, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.02, isSerif: true)
-    /// `800 24/1.1`, `-.035em`.
+    // ── One serif scale ──────────────────────────────────────────────────────────────────────
+    //
+    // Five stops and no strays, from `tokens/typography.css` in the design-system project
+    // (`4e61fd7f`): 40 sign-in · 32 roots · 30 pushed · 26 sheets · 24 in-card. Newsreader at 400
+    // throughout; the design draws no serif at any other size.
+    //
+    // This table used to hold seven, transcribed one screen at a time from an earlier design —
+    // 35 / 31 / 29 / 28 / 24 / 22 / 21. The audit that produced the token file collapsed them,
+    // and its own note says the 33px size "was retired", so the near-duplicates are not sizes the
+    // design lost track of: they are sizes it decided against. `title1` is now an alias of
+    // `title2` for the same reason the CSS makes it one — every screen that reached for a title
+    // wants the same title.
+
+    /// `400 40/1`, `-.025em` — the sign-in wordmark, and nothing else.
+    static let display = TypeStyle(size: 40, weight: .regular, trackingEm: -0.025, lineHeightMultiple: 1, isSerif: true)
+    /// Alias of `title2`. Kept as a name because call sites read "title1" as "the big one".
+    static let title1 = TypeStyle(size: 32, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.02, isSerif: true)
+    /// `400 32/1.02`, `-.022em` — a tab root: Overview, Groups, Inbox, Tuesday.
+    static let title2 = TypeStyle(size: 32, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.02, isSerif: true)
+    /// `400 32/1.02` — a tab root. Same stop as `title2`; the 28 it held was retired.
+    static let tabTitle = TypeStyle(size: 32, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.02, isSerif: true)
+    /// `400 30/1.05`, `-.022em` — a *pushed* page: a block, a kid, First sort.
+    static let pageTitle = TypeStyle(size: 30, weight: .regular, trackingEm: -0.022, lineHeightMultiple: 1.05, isSerif: true)
+    /// `400 24/1.15`, `-.02em` — the serif sentence inside a card, and a person's name.
     static let profileName = TypeStyle(size: 24, weight: .regular, trackingEm: -0.02, lineHeightMultiple: 1.15, isSerif: true)
-    /// `800 22`, `-.03em`.
-    static let sheetTitle = TypeStyle(size: 22, weight: .regular, trackingEm: -0.02, isSerif: true)
+    /// `400 26/1.05`, `-.02em` — a bottom sheet's title. Was 22, which the spec caught as the
+    /// single most widespread type error in the app: every sheet drew four points small.
+    static let sheetTitle = TypeStyle(size: 26, weight: .regular, trackingEm: -0.02, lineHeightMultiple: 1.05, isSerif: true)
     /// `600 17`, `-.03em` — venue heading in Rank, a court card's big line, a group's name.
     static let venueHeading = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.03)
     /// `600 16.5`, `-.028em` — coach name, camp name.
@@ -266,8 +282,27 @@ extension TypeStyle {
     static let meta = TypeStyle(size: 12, weight: .regular)
     /// `600 13` — sport chips, time pills, venue chips.
     static let chip = TypeStyle(size: 13, weight: .semibold)
-    /// `700 11`, `+.1em`, uppercase — "YOUR CAMPS".
-    static let sectionHeader = TypeStyle(size: 11, weight: .bold, trackingEm: 0.1, isUppercased: true)
+    /// **The label.** `600 12.5`, `-.01em`, sentence case — "Your camps", "Venues", "Still to
+    /// mark · 2".
+    ///
+    /// ── Why every tracked capital in this app is gone ────────────────────────────────────────
+    ///
+    /// The design system's type file says it outright: *"the tracked uppercase overline is
+    /// retired. Labels are 600 12.5px, sentence case, -.01em, --ink-tertiary. Counts ride the
+    /// label after a middot."* One row replaces five — `sectionHeader`, `overline`,
+    /// `overlineSmall`, `venueLabel` and `statLabel` were five transcriptions of the same
+    /// intention at 10, 10.5, 11, 11.5 and 11 points, tracked five different ways, and the
+    /// tracking was the part nobody could agree on: the old `overlineSmall` note spends a
+    /// paragraph weighing `+.14em` against `+.15em` across sixteen screens.
+    ///
+    /// The four below are now aliases of this one rather than deletions. Deleting them would be a
+    /// hundred-file rename for no gain, and each name still says something true about where it is
+    /// used; what matters is that they all draw the same thing, so no screen can drift again.
+    ///
+    /// Sentence case is also the accessible answer. VoiceOver reads a capitalised string as an
+    /// initialism often enough that "VENUES" is a coin toss, and letter-spaced capitals are the
+    /// hardest setting for dyslexic readers in the whole table.
+    static let sectionHeader = TypeStyle(size: 12.5, weight: .semibold, trackingEm: -0.01)
     /// `700 9.5`, uppercase — "Away", "In range", "Worker".
     ///
     /// The one weight in this table left above the design's 600 ceiling, because there is nothing
@@ -278,7 +313,12 @@ extension TypeStyle {
     /// on the venue status badges, `+.09em` on Profile's role badge. `+.08em` is the value
     /// carried by the style because it is the most common; `Badge(_:trackingEm:)` takes the
     /// other two, and `tracking(em:)` reaches them anywhere else.
-    static let badge = TypeStyle(size: 9.5, weight: .bold, trackingEm: 0.08, isUppercased: true)
+    /// `600 11`, sentence case, untracked — "2 short", "Admin", "Away".
+    ///
+    /// The design system's own words: *"sentence case, never tracked"*. This was 9.5 bold and
+    /// tracked, which made a badge the loudest small thing on a card while being the hardest to
+    /// read; it is now the only 11 in the table and it whispers.
+    static let badge = TypeStyle(size: 11, weight: .semibold)
     /// `ui-monospace/Menlo 700 12` — court chips.
     static let mono = TypeStyle(size: 12, weight: .bold, isMonospaced: true)
 }
@@ -383,9 +423,11 @@ extension TypeStyle {
     /// nothing has drawn it since section 8 re-cut the venue row. It is the row to reach for when
     /// something does, rather than a style to invent then. Delete it if the subtitle goes — but
     /// note that `TypeStyle.intakeFormatChip` now derives from it, so the derivation moves too.
-    static let venueLabel = TypeStyle(size: 11, weight: .semibold, trackingEm: 0.08, isUppercased: true)
+    /// Alias of `sectionHeader`. See its note — the tracked capitals are retired.
+    static let venueLabel = TypeStyle(size: 12.5, weight: .semibold, trackingEm: -0.01)
     /// `600 11.5`, `+.06em`, uppercase — a staff row's role, "45 MORE IN SYCAMORE".
-    static let overline = TypeStyle(size: 11.5, weight: .semibold, trackingEm: 0.06, isUppercased: true)
+    /// Alias of `sectionHeader`. See its note — the tracked capitals are retired.
+    static let overline = TypeStyle(size: 12.5, weight: .semibold, trackingEm: -0.01)
     /// `600 10.5`, `+.14em`, uppercase — every section heading in section 8: "STILL TO MARK · 2",
     /// "YOUR COURT", "NEEDS YOU · 2", "ADDED SO FAR", "VENUES".
     ///
@@ -398,16 +440,20 @@ extension TypeStyle {
     /// `8q`/`8r` and `+.15em` on `8a`/`8b`/`8f`/`8g`/`8h`/`8s`/`8t`/`8u`, which is 16 against 17
     /// and as near a tie as makes no difference. `+.14em` is carried because it is the value four
     /// of the seven callers already treated as the base; `tracking(em: 0.15)` reaches the other.
-    static let overlineSmall = TypeStyle(size: 10.5, weight: .semibold, trackingEm: 0.14, isUppercased: true)
+    /// Alias of `sectionHeader`. See its note — the tracked capitals are retired, and the
+    /// `+.14em` vs `+.15em` question this row's old comment agonised over is now moot.
+    static let overlineSmall = TypeStyle(size: 12.5, weight: .semibold, trackingEm: -0.01)
 
     // Sheets
     /// `800 21`, `-.03em` — the staff sheet's title, which sits beside an avatar.
-    static let sheetTitleSm = TypeStyle(size: 21, weight: .regular, trackingEm: -0.02, isSerif: true)
+    /// Alias of `sheetTitle`. The 21 was a sixth serif stop; the audit left five.
+    static let sheetTitleSm = TypeStyle(size: 26, weight: .regular, trackingEm: -0.02, lineHeightMultiple: 1.05, isSerif: true)
     /// `600 10`, `+.09em`, uppercase — stat tile label, a role pill, a venue's amber flag.
     ///
     /// The design tracks 10px five different ways (`+.1em` to `+.14em`) with no majority, so the
     /// `+.09em` this was transcribed at stays and each caller nudges it. Only the weight moved.
-    static let statLabel = TypeStyle(size: 10, weight: .semibold, trackingEm: 0.09, isUppercased: true)
+    /// Alias of `sectionHeader`. See its note — the tracked capitals are retired.
+    static let statLabel = TypeStyle(size: 12.5, weight: .semibold, trackingEm: -0.01)
     /// `600 20`, `-.03em` — stat tile value.
     static let statValue = TypeStyle(size: 20, weight: .semibold, trackingEm: -0.03)
     /// `600 15` — the stepper's value, the venue sheet's `4 – 7`.
