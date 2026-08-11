@@ -796,7 +796,14 @@ extension AppStore {
     func staffMember(_ id: StaffMember.ID) -> StaffMember? { camp?.staff(id) }
     func coach(forGroup id: Group.ID) -> StaffMember? { camp?.coach(forGroup: id) }
 
-    func isAway(_ id: Player.ID) -> Bool { camp?.isAway(id, on: today) == true }
+    func isAway(_ id: Player.ID) -> Bool { isAway(id, on: today) }
+
+    /// Away on some particular day of the camp's week.
+    ///
+    /// `Camp.isAway(_:on:)` has always taken a day; until `8q` grew its five chips nothing above
+    /// the model ever passed one but `today`, so a kid whose family had said "he is out Thursday"
+    /// could only be recorded on Thursday morning.
+    func isAway(_ id: Player.ID, on day: Weekday) -> Bool { camp?.isAway(id, on: day) == true }
     func leavesAt(_ id: Player.ID) -> TimeOfDay? { camp?.leavesAt(id, on: today) }
     func history(for id: Player.ID) -> [HistoryEvent] { camp?.history(for: id) ?? [] }
 
@@ -1324,23 +1331,30 @@ extension AppStore {
 
 extension AppStore {
 
-    func setAway(_ playerID: Player.ID, _ away: Bool) async {
+    /// Out, or back, on one named day.
+    ///
+    /// **The day is a parameter now rather than always `today`.** `8q` draws a chip per camp day
+    /// (`showApp.html:472-482`) because a family says "she is out Thursday" on Monday, and the
+    /// screen it says it to has to be able to write it down. `repository.setAttendance` has taken a
+    /// day the whole time; this was the one caller that pinned it to one value, so the whole of a
+    /// kid's week was unrecordable through an interface that already had the column for it.
+    func setAway(_ playerID: Player.ID, _ away: Bool, on day: Weekday) async {
         guard let campID = camp?.id else { return }
         // Composed *before* the write, because the sentence is about the camp as it stands plus
         // the change being asked for — and afterwards there is nothing left to compare against.
         // See `awayActivity` and the extension it sits in.
-        let row = awayActivity(playerID, away: away)
+        let row = awayActivity(playerID, away: away, on: day)
         await perform {
             self.camp = try await self.repository.setAttendance(
-                playerID: playerID, day: self.today, present: !away, campID: campID
+                playerID: playerID, day: day, present: !away, campID: campID
             )
             try await self.log(row, forCamp: campID)
         }
     }
 
-    /// Screen 5's swipe action and the player sheet's first row.
-    func toggleAway(_ playerID: Player.ID) async {
-        await setAway(playerID, !isAway(playerID))
+    /// Screen 5's swipe action, and `8q`'s chips.
+    func toggleAway(_ playerID: Player.ID, on day: Weekday) async {
+        await setAway(playerID, !isAway(playerID, on: day), on: day)
     }
 
     func setEarlyPickup(playerID: Player.ID, day: Weekday, at time: TimeOfDay?) async {
@@ -1708,16 +1722,23 @@ extension AppStore {
     /// standing as the last thing the feed ever said about that kid, and the next coach reading
     /// it at half nine would go looking for someone who is on court. A feed that cannot take
     /// something back is not quieter, it is wrong.
-    private func awayActivity(_ playerID: Player.ID, away: Bool) -> InboxItem? {
-        guard isAway(playerID) != away,
+    ///
+    /// **The day is named when it is not today**, and left unsaid when it is. A feed row is read
+    /// under a heading that already says which day it was *written* on, so "marked away" beside
+    /// that heading is unambiguous for the common case; a Thursday marked on Monday is not, and it
+    /// is the case `8q`'s chips just made reachable. Same rule `pickupActivity` follows one method
+    /// down, arrived at from the other direction.
+    private func awayActivity(_ playerID: Player.ID, away: Bool, on day: Weekday) -> InboxItem? {
+        guard isAway(playerID, on: day) != away,
               let player = player(playerID),
               let venueID = player.venueID ?? readVenueID
         else { return nil }
 
+        let when = day == today ? "" : " on \(day.fullName)"
         return InboxItem(
             venueID: venueID,
             kind: .activity,
-            title: "\(player.displayName) marked \(away ? "away" : "here")",
+            title: "\(player.displayName) marked \(away ? "away" : "here")\(when)",
             detail: activityDetail([player.groupID.flatMap { group($0)?.label }, byMe]),
             actorID: myStaffRecord?.id,
             playerID: playerID,

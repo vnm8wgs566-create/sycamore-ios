@@ -14,9 +14,13 @@
 //  the model has two — a kid is present or away, and "not answered yet" has nowhere to live. So
 //  it lives in `marked`, below, and is seeded from the kids the day already says are away.
 //
-//  Everything read and written here is today's. `AppStore.setAway` writes `store.today` and takes
-//  no day, which is right for a screen you stand on a court to use, but it does mean opening a
-//  Tuesday block on a Wednesday would mark Wednesday. See the PR body.
+//  Everything read and written here is today's, and this screen now says so out loud: `setAway`
+//  takes a day since `8q` grew a chip per camp day, and both writes below hand it `store.today`.
+//  That is right for a screen you stand on a court to use — the header names today, the roster is
+//  today's, and `Undo last` puts back what today said — but it does still mean opening a Tuesday
+//  block on a Wednesday marks Wednesday. What changed is that the assumption is now a value at the
+//  call site rather than a default buried in the store, which is where somebody fixing it would
+//  have to start.
 //
 
 import SwiftUI
@@ -251,13 +255,16 @@ struct AttendanceView: View {
             )
         )
         marked.insert(playerID)
-        Task { await store.setAway(playerID, away) }
+        // Roll call is a today screen top to bottom — the header names today, the roster is
+        // today's, and `Undo last` puts back what today said. The day is spelled out because
+        // `setAway` no longer assumes one; `8q`'s chips can write any day of the week.
+        Task { await store.setAway(playerID, away, on: store.today) }
     }
 
     private func undoLast() {
         guard let last = undoStack.popLast() else { return }
         if !last.wasMarked { marked.remove(last.playerID) }
-        Task { await store.setAway(last.playerID, last.wasAway) }
+        Task { await store.setAway(last.playerID, last.wasAway, on: store.today) }
     }
 
     private func close() {

@@ -59,7 +59,7 @@ struct InboxActivityTests {
         let groupID = try #require(player.groupID)
         let court = try #require(camp.group(groupID))
 
-        await store.setAway(player.id, true)
+        await store.setAway(player.id, true, on: store.today)
 
         #expect(store.errorMessage == nil)
         let row = try #require(Self.activity(store).first)
@@ -87,7 +87,7 @@ struct InboxActivityTests {
         let (store, camp) = Self.loaded()
         let player = try Self.firstPlayer(camp)
 
-        await store.setAway(player.id, true)
+        await store.setAway(player.id, true, on: store.today)
 
         #expect(store.isAway(player.id))
         #expect(Self.activity(store).first?.title.hasSuffix("marked away") == true)
@@ -100,8 +100,8 @@ struct InboxActivityTests {
         let (store, camp) = Self.loaded()
         let player = try Self.firstPlayer(camp)
 
-        await store.setAway(player.id, true)
-        await store.setAway(player.id, false)
+        await store.setAway(player.id, true, on: store.today)
+        await store.setAway(player.id, false, on: store.today)
 
         #expect(Self.activity(store).map(\.title) == [
             "\(player.displayName) marked here",
@@ -116,8 +116,8 @@ struct InboxActivityTests {
         let (store, camp) = Self.loaded()
         let player = try Self.firstPlayer(camp)
 
-        await store.setAway(player.id, true)
-        await store.setAway(player.id, true)
+        await store.setAway(player.id, true, on: store.today)
+        await store.setAway(player.id, true, on: store.today)
 
         #expect(Self.activity(store).count == 1)
     }
@@ -306,7 +306,7 @@ struct InboxActivityTests {
         let venueID = try #require(player.venueID)
         let court = try #require(camp.groups(in: venueID).first)
 
-        await store.setAway(player.id, true)
+        await store.setAway(player.id, true, on: store.today)
         await store.assignStaff(staff.id, toGroup: court.id)
 
         let contents = InboxContents(items: store.inboxItems, filter: .all)

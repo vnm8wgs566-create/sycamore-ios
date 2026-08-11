@@ -119,7 +119,7 @@ protocol SycamoreRepository: SectionEightData {
 
     // MARK: The day
 
-    /// Screen 5's swipe action and the player sheet's "Mark away today".
+    /// Screen 5's swipe action, and `8q`'s Away chips — one per day of the camp's week.
     func setAttendance(
         playerID: Player.ID, day: Weekday, present: Bool, campID: Camp.ID
     ) async throws -> Camp

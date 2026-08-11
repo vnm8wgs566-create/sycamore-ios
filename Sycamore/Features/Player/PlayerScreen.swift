@@ -163,6 +163,11 @@ struct PlayerScreen: View {
 
             leavingEarly
 
+            // Away above the pick-up row, which is the order the design draws them in and the
+            // order they are asked in: "is she in this week" comes before "what time does she go".
+            awayCard
+                .padding(.bottom, Spacing.small)
+
             actionRows
                 .padding(.bottom, OnTheDayTokens.contentGap)
 
@@ -347,8 +352,8 @@ struct PlayerScreen: View {
 
     // MARK: - Leaving early
 
-    /// Every pick-up on the books this week, which is what `8q` lists rather than the single
-    /// "today" reading the action row below still gives.
+    /// Every pick-up on the books this week, which is what `8q` lists — and, since the Away row
+    /// below grew a chip per camp day, the same week both halves of this screen now reason about.
     private var weekPickups: [Attendance] {
         (store.camp?.attendance ?? [])
             .filter { $0.playerID == playerID && $0.leavesAt != nil }
@@ -406,30 +411,143 @@ struct PlayerScreen: View {
 
     // MARK: - Actions
 
-    /// The two writes the design has no room for. `8q` spends its content on results and
-    /// pick-ups and its one action on the bar; these are the app's, and they are the only way to
-    /// mark a kid away or book a pick-up from the kid's own screen.
+    /// The one write the design has no room for. `8q` spends its content on results and pick-ups;
+    /// booking a pick-up from the kid's own screen is the app's, and this is the only route to it.
+    ///
+    /// Away used to be the row above this one — "Mark away today", a single boolean about a single
+    /// day. It is now `awayCard`, which is what the design draws and what a family actually says.
     private var actionRows: some View {
-        VStack(spacing: Spacing.small) {
-            ActionRow(
-                icon: "person.badge.minus",
-                title: isAway ? "Mark here today" : "Mark away today",
-                detail: isAway ? "Puts them back on the court" : "Stays on the list, greyed out"
-            ) {
-                Task { await store.toggleAway(playerID) }
-            }
+        ActionRow(
+            icon: "clock",
+            title: "Set early pick-up",
+            detail: pickupDetail
+        ) {
+            pickupTarget = PickupTarget(id: playerID)
+        }
+    }
 
-            ActionRow(
-                icon: "clock",
-                title: "Set early pick-up",
-                detail: pickupDetail
-            ) {
-                pickupTarget = PickupTarget(id: playerID)
+    // MARK: - Away
+
+    /// `showApp.html:472-482` — a row that names the state, and a chip per day of the camp's week.
+    ///
+    /// **The whole week, not today.** The row this replaces was a two-state toggle over
+    /// `store.today`: a parent saying on Monday that their daughter is out Thursday had nowhere to
+    /// put it, so it was either written down on a piece of paper or written into the app on
+    /// Thursday morning by somebody who remembered. `Camp.isAway(_:on:)` has taken a day since it
+    /// was written and `attendance` has held one row per day per kid; the screen was the only thing
+    /// that could not say which day it meant.
+    ///
+    /// **The camp's days, not the design's `Today / Day 2 / Day 3 / Day 4 / Day 5`.** Those are the
+    /// prototype's day model — an index into a week that starts whenever the camp does. This app
+    /// has real weekdays, `camp.days` says which of them it runs, and every other day chip in the
+    /// app is a `Weekday.shortName` off that list (`EarlyPickupSheet.dayChips`). A second spelling
+    /// on this one screen would be the only place in the app where "Day 3" had to be worked out.
+    ///
+    /// Today is not given a chip of its own either, for the same reason: it is one of these days,
+    /// lit like the rest, and a sixth chip reading "Today" would be a second way to say a thing
+    /// one of the five already says — with the two able to disagree the moment the clock rolls
+    /// over midnight while the screen is open.
+    /// Drawn as an `ActionRow` that grew a second storey rather than as a `Card`, so it reads as a
+    /// sibling of "Set early pick-up" directly beneath it — same radius, same border, same type,
+    /// same 13pt inset. The two used to *be* siblings, and a card here would make the row that
+    /// stayed look like the odd one out.
+    private var awayCard: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Spacing.medium) {
+                // `ph-fill ph-x-circle` — the design's own glyph, at the size and in the column
+                // every other row on this screen sets one. `GroupPlayerRow` marks an away kid with
+                // `person.badge.minus`, which is the *list's* answer to the same question; this is
+                // the one place the state is set rather than reported.
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(Theme.inkMuted)
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Away")
+                        .typeStyle(.rowLabel, color: Theme.ink)
+
+                    Text(awaySubtitle)
+                        // `inkTertiary` where `ActionRow` takes `inkMuted`: this line is the only
+                        // readback of which days are set, and `inkMuted` is 3.29:1 on white.
+                        .typeStyle(.meta, color: Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            // Read as one sentence. The chips below carry their own labels and their own selected
+            // state, so the heading and its reading are the part that would otherwise be two stops
+            // saying half a thing each.
+            .accessibilityElement(children: .combine)
+
+            dayChips
+                .padding(.top, Spacing.medium)
+                // `padding-left:45px` — under the words rather than under the glyph.
+                .padding(.leading, 22 + Spacing.medium)
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: shape)
+        .overlay { shape.strokeBorder(Theme.strokeAlt, lineWidth: BorderWidth.hairline) }
+    }
+
+    /// One chip per day the camp runs, wrapping rather than sharing the width.
+    ///
+    /// `FlowLayout` and not `EarlyPickupSheet`'s equal-width `HStack`, which is the difference
+    /// between a choice and a set: exactly one pick-up day is ever lit, so those five can stretch
+    /// to fill a row, while any number of these can be on and the row has to survive five chips
+    /// indented under a label at an accessibility text size. The design wraps them too.
+    ///
+    /// `.attribute` metrics — `600 12`, `6/12`, pill — which is the design's away chip to the
+    /// point. `.day` is the pick-up sheet's preset and carries `horizontalPadding: 0`, because it
+    /// is drawn `fillsWidth` in an equal-width row; used here it would draw "Mon" with no air
+    /// either side of it.
+    private var dayChips: some View {
+        FlowLayout(horizontalSpacing: Spacing.tight, verticalSpacing: Spacing.tight) {
+            ForEach(campDays) { day in
+                let out = store.isAway(playerID, on: day)
+
+                Button { toggleAway(on: day) } label: {
+                    Chip(day.shortName, isSelected: out, selectedTone: .dark, metrics: .attribute)
+                        .frame(minHeight: HitTarget.minimum)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                // "Tue" is read as a word; the day is spoken in full, and the state is a trait
+                // rather than a second word in the label so it is not read twice.
+                .accessibilityLabel(day.fullName)
+                .accessibilityAddTraits(out ? .isSelected : [])
+                .accessibilityHint(out ? "Puts them back on the court" : "Marks them out that day")
             }
         }
     }
 
-    private var isAway: Bool { store.isAway(playerID) }
+    /// The design's two readings (`state1.js:170`): what the row is for, or what it currently says.
+    ///
+    /// Days in full, comma-joined in week order. `shortName` would match the chips and read badly
+    /// in a sentence — "Out Tue, Thu" is a timetable, and this line is meant to be the answer to
+    /// "when is he in?" said out loud.
+    private var awaySubtitle: String {
+        let out = campDays.filter { store.isAway(playerID, on: $0) }
+        guard !out.isEmpty else { return "Mark the days out — tournaments plan around it" }
+        return "Out \(out.map(\.fullName).joined(separator: ", ")) — plans adapt"
+    }
+
+    /// The camp's running days in week order, falling back to the whole week when there is no camp
+    /// to ask. Same rule and same fallback as `EarlyPickupSheet.campDays`, and for the same reason:
+    /// a Monday-to-Friday camp must not offer a Saturday no block can fall in.
+    private var campDays: [Weekday] {
+        let days = Weekday.allCases.filter { store.camp?.days.contains($0) ?? false }
+        return days.isEmpty ? Weekday.allCases : days
+    }
+
+    private func toggleAway(on day: Weekday) {
+        Task { await store.toggleAway(playerID, on: day) }
+    }
 
     /// Once a pick-up is on the books the row reads it back instead of the invitation.
     private var pickupDetail: String {
