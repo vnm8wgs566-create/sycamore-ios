@@ -36,15 +36,13 @@ struct FirstRunStepTests {
         name: String = "Alex Ramos",
         skipped: Bool = false,
         list: FirstRunStep.CampList = .arrived,
-        hasCamps: Bool = true,
-        path: FirstRunStep.Path? = nil
+        hasCamps: Bool = true
     ) -> FirstRunStep {
         FirstRunStep.resolve(
             displayName: name,
             isNameSkipped: skipped,
             campList: list,
-            hasCamps: hasCamps,
-            path: path
+            hasCamps: hasCamps
         )
     }
 
@@ -66,57 +64,51 @@ struct FirstRunStepTests {
     @Test("An account that has a name is never asked for one")
     func aNamedAccountIsNotAsked() {
         #expect(step(name: "Alex Ramos", hasCamps: true) == .camps)
-        #expect(step(name: "Alex Ramos", hasCamps: false) == .runningOrJoining)
+        #expect(step(name: "Alex Ramos", hasCamps: false) == .camps)
     }
 
     /// The question is derived from the account rather than stepped through, so without this it
     /// would return on the very next pass and the app would have no way past it.
     @Test("\"Not now\" gets past the name question without answering it")
     func skippingTheName() {
-        #expect(step(name: "", skipped: true, hasCamps: false) == .runningOrJoining)
+        #expect(step(name: "", skipped: true, hasCamps: false) == .camps)
         #expect(step(name: "", skipped: true, hasCamps: true) == .camps)
     }
 
-    // MARK: Which way in
+    // MARK: Where an account with no camps lands
 
-    @Test("An account belonging to no camp is asked which way in")
-    func noCampsAsksTheWayIn() {
-        #expect(step(hasCamps: false) == .runningOrJoining)
+    @Test("An account belonging to no camp lands on the list that offers both ways in")
+    func noCampsGoesToTheList() {
+        #expect(step(hasCamps: false) == .camps)
     }
 
-    /// The ambush this rule exists to prevent. `store.camp == nil` is also what Profile's "Switch
-    /// camp" produces (`AppStore.switchCamp()`), and somebody with camps who taps it is asking
-    /// for the list — not to be asked whether they are starting a camp.
+    /// `store.camp == nil` is also what Profile's "Switch camp" produces
+    /// (`AppStore.switchCamp()`), and somebody with camps who taps it is asking for the list.
+    /// That is now the same destination as every other route through this rule, which is the
+    /// point of the fork having gone.
     @Test("Somebody who already belongs to a camp goes straight to the list, as they always did")
     func havingCampsSkipsTheQuestion() {
         #expect(step(hasCamps: true) == .camps)
     }
 
-    @Test("Choosing to run a camp routes to Shape the camp")
-    func creatingRoutesToTheShape() {
-        #expect(step(hasCamps: false, path: .creatingACamp) == .createCamp)
+    /// **The four tests that stood here asked about a screen the design does not have.** They
+    /// pinned the fork — "Are you running a camp, or joining one?" — and the two routes out of it.
+    /// `Sycamore App.dc.html` asks both questions as two rows on the camps list itself, so there
+    /// is no answer to remember and no order to enforce between it and the name.
+    ///
+    /// What survives of them is the rule below: an account that belongs to nothing lands on the
+    /// camps list, which is where both ways forward are.
+    @Test("An account that belongs to nothing lands on the camps list, not on a fork")
+    func belongingToNothingGoesToTheList() {
+        #expect(step(hasCamps: false) == .camps)
+        #expect(step(list: .arrived, hasCamps: false) == .camps)
     }
 
-    @Test("Choosing a code routes to the camps list, which is where the code field is")
-    func joiningRoutesToTheList() {
-        #expect(step(hasCamps: false, path: .joiningOne) == .camps)
-    }
-
-    /// An answer outlives the state it was given in. Nothing writes to the account when the
-    /// question is answered — `Membership.role` is decided by what happens next, not here — so if
-    /// the answer were not remembered the question would simply be asked again.
-    @Test("An answer holds, whatever else is true", arguments: [true, false])
-    func theAnswerHolds(_ hasCamps: Bool) {
-        #expect(step(hasCamps: hasCamps, path: .creatingACamp) == .createCamp)
-        #expect(step(hasCamps: hasCamps, path: .joiningOne) == .camps)
-    }
-
-    /// Order, stated as a rule: the name comes first even for somebody who has already chosen a
-    /// way in, so a nameless account cannot slip past by tapping quickly.
-    @Test("The name is asked before the way in, and before an answer to it is honoured")
+    /// Order, stated as a rule: the name still comes first, whatever the camps say.
+    @Test("The name is asked before anything about camps")
     func theNameComesFirst() {
-        #expect(step(name: "", hasCamps: false, path: .creatingACamp) == .name)
-        #expect(step(name: "", hasCamps: true, path: .joiningOne) == .name)
+        #expect(step(name: "", hasCamps: false) == .name)
+        #expect(step(name: "", hasCamps: true) == .name)
     }
 
     // MARK: Before the answer is in
@@ -134,7 +126,7 @@ struct FirstRunStepTests {
 
     @Test("The same empty list, once it has arrived, is the question a new account gets")
     func anArrivedEmptyListIsBelieved() {
-        #expect(step(list: .arrived, hasCamps: false) == .runningOrJoining)
+        #expect(step(list: .arrived, hasCamps: false) == .camps)
     }
 
     /// The third outcome, and the reason the input is not a `Bool`. A fetch that failed leaves the
@@ -178,17 +170,15 @@ struct FirstRunStepTests {
     /// standing on because a second fetch is in flight would be the flash again, backwards.
     @Test("A way in already chosen is honoured while the camps are still coming")
     func anAnswerOutranksTheHold() {
-        #expect(step(list: .pending, hasCamps: false, path: .creatingACamp) == .createCamp)
-        #expect(step(list: .pending, hasCamps: false, path: .joiningOne) == .camps)
-    }
+                    }
 
     // MARK: The orderings a real sign-in produces
 
     /// The whole complaint, walked through in order. `finishSignIn` sets `auth` and *then* awaits
     /// the memberships, so this coach is signed in, named, and momentarily indistinguishable from
-    /// somebody who belongs to nothing. `.runningOrJoining` must not appear at any point on the
-    /// way to their own list.
-    @Test("A coach with three camps is never asked whether they are starting one")
+    /// somebody who belongs to nothing, and be walked through a question about starting one.
+    /// `.notYet` covers the gap; the list itself is the only other thing they should ever see.
+    @Test("A coach with three camps waits, then sees their camps — and nothing in between")
     func aReturningCoachIsNeverAmbushed() {
         // Signed in; the fetch has not come back.
         #expect(step(list: .pending, hasCamps: false) == .notYet)
@@ -196,10 +186,10 @@ struct FirstRunStepTests {
         #expect(step(list: .arrived, hasCamps: true) == .camps)
     }
 
-    /// The same coach on a connection that dies mid sign-in. Both fetches fail, the list stays
-    /// empty and nothing is ever going to say otherwise — and they still must not be asked whether
-    /// they are starting a camp, because tapping "I'm running one" would give them a second one.
-    @Test("Nor is that coach ambushed when the list simply never comes")
+    /// The same coach on a connection that dies mid sign-in. Both fetches fail and the list
+    /// stays empty, and the answer is the same list they would have seen anyway — which is what
+    /// makes a failure survivable rather than a wrong turn.
+    @Test("Nor is that coach sent anywhere odd when the list simply never comes")
     func aReturningCoachIsNotAmbushedByAFailureEither() {
         #expect(step(list: .pending, hasCamps: false) == .notYet)
         #expect(step(list: .failed, hasCamps: false) == .camps)
@@ -207,13 +197,13 @@ struct FirstRunStepTests {
 
     /// The other ordering, which the hold must not slow down: a brand-new account meets the name
     /// question first, and by the time it is answered the empty list is a fact rather than a gap.
-    @Test("A brand-new account is asked for a name, then which way in, and holds only between them")
+    @Test("A brand-new account is asked for a name, then shown the list, holding only between")
     func aNewAccountWalksTheFlow() {
         #expect(step(name: "", list: .pending, hasCamps: false) == .name)
         // Saved, and the fetch is somehow still out.
         #expect(step(name: "Priya Nandan", list: .pending, hasCamps: false) == .notYet)
         // It lands, empty, which for this account is the truth.
-        #expect(step(name: "Priya Nandan", list: .arrived, hasCamps: false) == .runningOrJoining)
+        #expect(step(name: "Priya Nandan", list: .arrived, hasCamps: false) == .camps)
     }
 
     /// Every combination of the three things a sign-in settles in its own time — a name or none,
@@ -230,7 +220,7 @@ struct FirstRunStepTests {
             (name: "", list: .failed, camps: true, asks: .name),
             (name: "Alex", list: .pending, camps: false, asks: .notYet),
             (name: "Alex", list: .pending, camps: true, asks: .camps),
-            (name: "Alex", list: .arrived, camps: false, asks: .runningOrJoining),
+            (name: "Alex", list: .arrived, camps: false, asks: .camps),
             (name: "Alex", list: .arrived, camps: true, asks: .camps),
             (name: "Alex", list: .failed, camps: false, asks: .camps),
             (name: "Alex", list: .failed, camps: true, asks: .camps),

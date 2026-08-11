@@ -273,12 +273,7 @@ struct SetupView: View {
                     // and three screens replaced the same pin in this batch. It also hides
                     // itself — an emoji is how a venue is recognised, but the name sits
                     // immediately beside it and reading both would say the venue twice.
-                    IntakeIconTile(
-                        emoji: venue.icon,
-                        size: 40,
-                        glyphSize: 19,
-                        fill: Theme.color(for: venue.tint)
-                    )
+                    VenueLetterTile(venue.name, size: 40, radius: Radius.tile)
 
                     VStack(alignment: .leading, spacing: Spacing.hairGap) {
                         HStack(spacing: Spacing.nameBadge) {

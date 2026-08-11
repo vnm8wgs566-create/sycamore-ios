@@ -52,8 +52,6 @@ struct FirstRunView: View {
     ///
     /// Discarded when this view goes away, which is the correct lifetime: the moment a camp
     /// loads, `RootView` swaps in the tabs and there is no first run left to be in the middle of.
-    @State private var path: FirstRunStep.Path?
-
     /// "Not now" on the name question. Session-only, deliberately — see `FirstRunStep`.
     @State private var isNameSkipped = false
 
@@ -67,8 +65,7 @@ struct FirstRunView: View {
             displayName: store.account?.displayName ?? "",
             isNameSkipped: isNameSkipped,
             campList: campList,
-            hasCamps: !store.memberships.isEmpty,
-            path: path
+            hasCamps: !store.memberships.isEmpty
         )
     }
 
@@ -111,18 +108,6 @@ struct FirstRunView: View {
                     onSkip: { isNameSkipped = true }
                 )
 
-            case .runningOrJoining, .createCamp:
-                NavigationStack {
-                    RunningOrJoiningView(email: store.account?.email ?? "", onChoose: choose)
-                        // The screen draws its own header, so the stack's bar stays hidden —
-                        // applied here, to the root inside the stack, because it is this stack
-                        // that creates the need for it. `CampPickerView.swift:74` does the same.
-                        .hidesNavigationBar()
-                        .navigationDestination(isPresented: isCreatingACamp) {
-                            CreateCampView()
-                        }
-                }
-
             case .camps:
                 // Bare, without a stack of ours: screen 3 owns one and pushes `8b` onto it itself.
                 CampPickerView()
@@ -148,36 +133,6 @@ struct FirstRunView: View {
             await store.loadMemberships()
             hasStoppedWaiting = true
         }
-    }
-
-    /// `path` seen as the one thing `navigationDestination(isPresented:)` can take.
-    ///
-    /// A projection rather than a second `@State` `Bool`, because two pieces of state for one
-    /// fact is how a screen ends up pushed with no answer recorded — or an answer recorded with
-    /// nothing pushed. Reading it is a comparison of two enum cases; setting it is SwiftUI
-    /// reporting a pop, and clearing `path` there is what puts the question back rather than
-    /// leaving the flow pointing at a screen that is no longer on it.
-    ///
-    /// The usual objection to `Binding(get:set:)` does not apply. It is aimed at bindings that do
-    /// *work* on write — the ones that should be `@State` plus an `onChange` — and at fields that
-    /// rebuild one on every keystroke (`ProfileView.swift:49-52` and `CampPickerView.swift:342-344`
-    /// each argue that case). There is no effect here to move: it is a pure view of the answer,
-    /// read once per pass of a body that is a four-way switch.
-    ///
-    /// `navigationDestination(item:)` was the other option and is worse: `path` also holds the
-    /// answer that does *not* push, so the destination closure would have to be handed a value it
-    /// must refuse to draw anything for.
-    private var isCreatingACamp: Binding<Bool> {
-        Binding(
-            // Off the step rather than off `path` directly, so `FirstRunStep` stays the one
-            // authority on what is showing and `path` is read in exactly one place.
-            get: { step == .createCamp },
-            set: { isPushed in path = isPushed ? .creatingACamp : nil }
-        )
-    }
-
-    private func choose(_ chosen: FirstRunStep.Path) {
-        path = chosen
     }
 
     /// The name, straight onto the account. There is no local copy of it to keep in step — the

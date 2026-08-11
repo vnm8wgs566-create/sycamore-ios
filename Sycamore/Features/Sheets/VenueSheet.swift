@@ -12,9 +12,10 @@
 //
 //  Three of the pieces below it are not private, because "Shape the camp" grew an editor for the
 //  same venue one screen earlier (`VenueShapeSheet`) and draws the same blocks of the same
-//  drawing: `VenueNameFields` and `VenueLimitRow` live at the foot of this file, the icon tile
-//  moved out to `VenueIconTile.swift`, and everything between the icon grid and the button is in
-//  `VenueShapeFields.swift`. The box round the two fields went further still, to
+//  drawing: `VenueNameFields` and `VenueLimitRow` live at the foot of this file, and everything
+//  between the name and the button is in `VenueShapeFields.swift`. The icon grid and the limits
+//  card were both cut — a venue is drawn by its initial now, and its head-count ranges are
+//  derived rather than typed. The box round the two fields went further still, to
 //  `FormFieldMetrics.venueBox`, because that is where every other box in the app lives.
 //
 //  ── The commit moved, and that is the design's doing ─────────────────────────────────────────
@@ -141,9 +142,6 @@ struct VenueSheet: View {
             VenueNameFields(name: $draft.name, subtitle: $draft.subtitle)
                 .padding(.bottom, 18)
 
-            SheetSectionHeader("Icon")
-            iconGrid
-
             VenueFieldLabel(title: "Age group")
             VenueAgeBandPicker(ageBand: $draft.ageBand)
 
@@ -155,9 +153,6 @@ struct VenueSheet: View {
                 targetPerGroup: $draft.targetPerGroup
             )
             VenueDealLine(sentence: dealSentence, isWarning: isRecutting)
-
-            SheetSectionHeader("Limits", topPadding: 18)
-            limitsCard
 
             VenueFieldLabel(title: "Coaches", note: "optional")
             coachBlock
@@ -191,39 +186,6 @@ struct VenueSheet: View {
     private var statusBannerText: String? {
         guard let venueID else { return nil }
         return store.camp?.staffingStatus(for: venueID)?.bannerText
-    }
-
-    // MARK: - Icon
-
-    private var iconGrid: some View {
-        VenueIconGrid(selected: draft.icon) { icon in
-            draft.icon = icon
-            // A venue's tile tint follows its emoji unless someone has said otherwise. This is
-            // the whole of what `VenueShapeSheet` does not have to do — a `VenueShape`'s tint is
-            // computed from the emoji, so there is no second field there to keep in step.
-            draft.tint = .suggested(for: icon)
-        }
-    }
-
-    // MARK: - Limits
-
-    /// The two head-count ranges, still read-only here.
-    ///
-    /// They are set on `8b` by the camp-wide rates and per venue in `VenueShapeSheet`; this screen
-    /// has never had a control for them and the design's sheet draws none either. What it shows is
-    /// what the auto-partition and the staffing flag are measuring against, which is the only way
-    /// to find out why a venue reads "2 coaches short".
-    private var limitsCard: some View {
-        Card(radius: Radius.input, borderColor: Theme.strokeAlt) {
-            VenueLimitRow(title: "Coaches, min – max", detail: "On site at once") {
-                Text(draft.coachRangeLabel)
-                    .typeStyle(.stepperValue, color: Theme.ink)
-            }
-            VenueLimitRow(title: "Players, min – max", detail: "Auto-partition floor and ceiling") {
-                Text(draft.playerRangeLabel)
-                    .typeStyle(.stepperValue, color: Theme.ink)
-            }
-        }
     }
 
     // MARK: - What saving does
@@ -423,8 +385,9 @@ struct VenueSheet: View {
 ///
 /// Shared by the two venue editors — this one and `VenueShapeSheet`, which edits the same venue
 /// one screen before it exists. Three pieces of that block were hoisted out of this file at once
-/// (the box became `FormFieldMetrics.venueBox`, the tiles `VenueIconTile`, the limit rows
-/// `VenueLimitRow`); leaving what they compose *into* duplicated would have kept the 9pt gap, the
+/// (the box became `FormFieldMetrics.venueBox`, the limit rows `VenueLimitRow`, and the icon
+/// tiles a file that has since been deleted with the picker); leaving what they compose *into*
+/// duplicated would have kept the 9pt gap, the
 /// subtitle's grey, the capitalisation rule and the empty-string-to-nil rule in two files each.
 ///
 /// It owns its own focus, unlike `FormField`, which deliberately does not
@@ -495,8 +458,9 @@ struct VenueNameFields: View {
 /// same card in the same drawing — before the camp exists and after — so a row that drifted
 /// between them would be one card in three shapes.
 ///
-/// Named `VenueLimitRow` rather than `LimitRow` on the way out of `private`, the same reason
-/// `IconTile` became `VenueIconTile`: a bare `LimitRow` is a name three features could each want.
+/// Named `VenueLimitRow` rather than `LimitRow` on the way out of `private`: a bare `LimitRow`
+/// is a name three features could each want. Still drawn by `VenueShapeFields`' camp-wide rates,
+/// which is why cutting this sheet's Limits card did not take it with them.
 struct VenueLimitRow<Trailing: View>: View {
     let title: String
     let detail: String

@@ -28,12 +28,13 @@ struct EarlyPickupSheet: View {
     /// have nothing to put down.
     var onClose: (() -> Void)?
 
-    /// Who collects, and the note under a pick-up. Neither has a column: `Attendance` carries a
-    /// day, a present flag and a time and nothing else, so these are held here and are gone when
-    /// the sheet is. See the PR body — they want a migration, not a workaround.
-    @State private var collector: String = ""
-    @State private var collectors: [Weekday: String] = [:]
-    @FocusState private var isCollectorFocused: Bool
+    // **"Who collects" is gone.** It asked a real question into a `@State` with no column
+    // behind it: `Attendance` carries a day, a present flag and a time and nothing else, so a
+    // name typed at the side of a court survived until the sheet closed and then did not exist.
+    // A field that quietly discards what a parent told you is worse than no field.
+    //
+    // The design's leave record is a day and a time, which is what this sheet now collects. If
+    // it should ask again it needs a column first, and the schema is the place to start.
 
     var body: some View {
         SheetChrome(
@@ -85,11 +86,6 @@ struct EarlyPickupSheet: View {
                 Text(label(for: record))
                     .typeStyle(.onTheDayName, color: Theme.ink)
                     .lineLimit(1)
-                if let who = collectors[record.day], !who.isEmpty {
-                    Text(who)
-                        .typeStyle(.onTheDaySubtitle, color: Theme.inkMuted)
-                        .lineLimit(1)
-                }
             }
 
             Spacer(minLength: 0)
@@ -136,11 +132,8 @@ struct EarlyPickupSheet: View {
             dayChips
                 .padding(.top, Spacing.medium)
 
-            HStack(spacing: Spacing.small) {
-                timeField
-                collectorField
-            }
-            .padding(.top, OnTheDayTokens.blockGap)
+            timeField
+                .padding(.top, OnTheDayTokens.blockGap)
 
             PrimaryButton(
                 addLabel,
@@ -209,34 +202,6 @@ struct EarlyPickupSheet: View {
         .accessibilityValue(store.pickupTime.clockLabel)
     }
 
-    /// No `.autocorrectionDisabled()`, unlike every other field in the app. This one is a
-    /// person's name typed one-handed at the side of a court, and the four screens that switch
-    /// autocorrect off are typing an address, an org name or a printed code — none of which the
-    /// dictionary can help with. A name it can.
-    private var collectorField: some View {
-        let field = FormField(
-            "Who collects",
-            text: $collector,
-            label: "Who collects",
-            metrics: .sheetBox,
-            type: .onTheDayValue,
-            // A placeholder is one weight lighter than a value in this design — `400` against
-            // the time field's `500` — so the two read apart before the colour difference lands.
-            promptType: .onTheDayPlaceholder,
-            icon: "person",
-            focus: $isCollectorFocused
-        )
-
-        // Both travel down the environment to the `TextField` inside `FormField`.
-        #if os(iOS)
-        return field
-            .textInputAutocapitalization(.words)
-            .submitLabel(.done)
-        #else
-        return field
-        #endif
-    }
-
     /// A day that already has a pick-up is edited, not doubled — `setEarlyPickup` upserts one
     /// row per day. The label says so rather than letting the button quietly overwrite.
     private var addLabel: String {
@@ -269,19 +234,14 @@ struct EarlyPickupSheet: View {
         if let existing = store.camp?.leavesAt(playerID, on: day) {
             store.pickupTime = existing
         }
-        collector = collectors[day] ?? ""
     }
 
     private func addPickup() {
         let day = store.pickupDay
-        let who = collector.trimmingCharacters(in: .whitespacesAndNewlines)
-        collectors[day] = who.isEmpty ? nil : who
         Task { await store.setEarlyPickup(playerID: playerID, day: day, at: store.pickupTime) }
     }
 
     private func remove(_ day: Weekday) {
-        collectors[day] = nil
-        if day == store.pickupDay { collector = "" }
         Task { await store.clearEarlyPickup(playerID: playerID, day: day) }
     }
 

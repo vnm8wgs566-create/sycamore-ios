@@ -96,7 +96,7 @@ private struct CampDaysPickerPreviewHarness: View {
     private func row(_ title: String, days: Binding<CampDays>) -> some View {
         VStack(alignment: .leading, spacing: Spacing.small) {
             Text(title)
-                .typeStyle(.intakeOverline, color: Theme.inkMuted)
+                .typeStyle(.intakeOverline, color: Theme.inkTertiary)
             CampDaysPicker(days: days)
             Text("\(days.wrappedValue.summaryLine) · \(days.wrappedValue.countLine)")
                 .typeStyle(.intakeRowMeta, color: Theme.inkMuted)

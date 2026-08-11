@@ -543,13 +543,7 @@ struct CreateCampView: View {
     /// The tile hides itself from VoiceOver because the name is read on the very next line.
     private func venueRowFace(_ venue: VenueShape) -> some View {
         HStack(spacing: Spacing.row) {
-            IntakeIconTile(
-                emoji: venue.icon,
-                size: 40,
-                // 21-on-44 is the design's ratio (`:276`); on this 40pt plate that is 19.
-                glyphSize: 19,
-                fill: Theme.color(for: venue.tint)
-            )
+            VenueLetterTile(venue.name, size: 40, radius: Radius.tile)
 
             // Both lines hold to one. A name is eighty characters at most and the stepper on the
             // right is not giving any of its width up, so an unlimited row would grow to four
@@ -624,7 +618,7 @@ struct CreateCampView: View {
     private func summaryRow(_ lead: String, trailing: String) -> some View {
         CardRow(spacing: 9, horizontalPadding: 13, verticalPadding: Spacing.row) {
             Text(lead)
-                .typeStyle(.intakeOverline, color: Theme.inkMuted)
+                .typeStyle(.intakeOverline, color: Theme.inkTertiary)
             Spacer(minLength: 0)
             Text(trailing)
                 .typeStyle(.intakeRowMeta, color: Theme.inkFaint)

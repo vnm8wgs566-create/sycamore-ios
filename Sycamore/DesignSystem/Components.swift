@@ -917,11 +917,13 @@ struct InitialsAvatar: View {
 /// `44 × 44; border-radius:14px; background:#EDF6F1; font:600 17px; color:#14684A`
 /// (`design/rebuild/section-t4.html:149`).
 ///
-/// Neither of the two shapes already here fits. `VenueIconTile` is the 52pt *emoji* tile a venue
-/// wears where it is being set up or edited; `InitialsAvatar` is a circle, and circles belong to
-/// people. This is the third thing: a place, in a list of places you might be standing.
+/// **This is now how a venue is drawn everywhere**, not just in a list. The 52pt emoji tile it
+/// used to sit beside is gone: the design system retired the three pastels and the six emoji
+/// together, and the ruling to cut the icon picker arrived at the same place independently.
+/// `InitialsAvatar` is a circle, and circles belong to people. This is the other thing: a place.
 ///
-/// A venue with an emoji still draws its letter here, which is the point — the emoji tile is
+/// A venue drew its letter here even when it had an emoji, which was always the point — the tile
+/// was
 /// decoration a venue *chose*, and three tennis venues choose the same 🎾. A column of distinct
 /// letters is what makes the list scannable at the speed somebody opens it: once, at 8am, to say
 /// where they are.
@@ -933,15 +935,25 @@ struct VenueLetterTile: View {
     /// The venue's name. Only its first character is drawn.
     let name: String
     var size: CGFloat = 44
+    /// The design draws this tile at 44 with `--radius-tile` (14). A caller drawing it smaller
+    /// has to bring the radius down with it or the plate reads as a circle — at 26pt a 14 is
+    /// more than half the width, and a venue's letter starts looking like a person's avatar.
+    var radius: CGFloat = Radius.row
     /// `600 17`, untracked. `.venueHeading` is the same size and weight and carries `-.03em`,
     /// which is right for a run of words and wrong for one glyph: SwiftUI's tracking trails the
     /// last character as well as sitting between them, so a tracked single letter sits fractionally
     /// off the centre of its own tile. The design authors this one with no `letter-spacing` at all.
     var font: TypeStyle = .venueHeading.tracking(em: 0)
 
-    init(_ name: String, size: CGFloat = 44, font: TypeStyle = .venueHeading.tracking(em: 0)) {
+    init(
+        _ name: String,
+        size: CGFloat = 44,
+        radius: CGFloat = Radius.row,
+        font: TypeStyle = .venueHeading.tracking(em: 0)
+    ) {
         self.name = name
         self.size = size
+        self.radius = radius
         self.font = font
     }
 
@@ -951,7 +963,7 @@ struct VenueLetterTile: View {
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
             .fill(Theme.accentTint)
             .frame(width: size, height: size)
             .overlay {

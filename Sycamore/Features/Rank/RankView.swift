@@ -128,8 +128,12 @@ struct RankView: View {
     private func heading(for section: RankSection) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 9) {
-                Text(section.venue.icon)
-                    .font(.system(size: 20))
+                VenueLetterTile(
+                    section.venue.name,
+                    size: 26,
+                    radius: Radius.control,
+                    font: .chip
+                )
                 Text(section.venue.name)
                     .typeStyle(.venueHeading, color: Theme.ink)
                 Spacer(minLength: 0)

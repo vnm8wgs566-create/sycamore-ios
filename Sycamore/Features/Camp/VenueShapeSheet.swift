@@ -176,9 +176,6 @@ struct VenueShapeSheet: View {
             nameBlock(problem: nameProblem)
                 .padding(.bottom, 18)
 
-            SheetSectionHeader("Icon")
-            iconGrid
-
             VenueFieldLabel(title: "Age group")
             VenueAgeBandPicker(ageBand: $draft.ageBand)
 
@@ -193,9 +190,6 @@ struct VenueShapeSheet: View {
             // No kids anywhere yet — the camp is not created until the end of the flow — so this
             // is always the "what adding it will do" variant, and never amber.
             VenueDealLine(sentence: VenueDealSentence.adding(groups: draft.groups))
-
-            SheetSectionHeader("Limits", topPadding: 18)
-            limitsBlock(problem: numberProblem)
 
             saveButton(isValid: isValid, hint: nameProblem ?? numberProblem ?? "")
                 .padding(.top, 18)
@@ -252,73 +246,6 @@ struct VenueShapeSheet: View {
             }
         )
     }
-
-    // MARK: - Icon
-
-    /// Screen 11's grid, drawn here at last. `8b`'s row used to hide these six behind a `Menu` on
-    /// the tile, on the argument that "a card's worth of height would not fit the row" — which was
-    /// true of the row and is not true of a sheet. This is where they fit.
-    private var iconGrid: some View {
-        // Nothing else is written. `VenueShape.tint` is computed from the emoji, so the plate is
-        // already the right colour by the time this returns — unlike `VenueSheet`, which has a
-        // stored tint to bring along.
-        VenueIconGrid(selected: draft.icon) { draft.icon = $0 }
-    }
-
-    // MARK: - Limits
-
-    private func limitsBlock(problem: String?) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            limitsCard
-            if let problem {
-                errorLine(problem)
-            }
-        }
-    }
-
-    /// The two absolutes the auto-partition works between — which the design's sheet does not draw
-    /// and this screen keeps anyway.
-    ///
-    /// `sheet-shVenue` asks for courts, groups, a target and an age band, and stops. It can: in the
-    /// design these are the venue's *whole* shape. Here they are not — `sites.player_max` and
-    /// `sites.coach_min` are columns with a CHECK between them, `8b`'s "Every venue" card is two
-    /// rates that write into them, and this sheet is the only place a venue may sit off those
-    /// rates. Dropping the pair to match the drawing would have taken the per-venue override away
-    /// from the card that offers it.
-    ///
-    /// The court stepper that used to head this card has gone up to `VenueCountsCard`, beside the
-    /// group count it is so easily confused with. Its detail line went with it.
-    private var limitsCard: some View {
-        Card(radius: Radius.input, borderColor: Theme.strokeAlt) {
-            // Where the design's static `Players, min – max` reading used to be. Half of that
-            // reading is now a control and the other half is a constant, so the detail line is
-            // where the constant is stated in words rather than drawn as a number nobody can move.
-            VenueLimitRow(
-                title: "Kids at most",
-                detail: "Auto-partition ceiling. The floor stays 0."
-            ) {
-                numberField(
-                    "Kids at most",
-                    text: numberBinding($maxKidsText, into: \.maxKids, within: CampShape.venueKidsRange),
-                    ceiling: CampShape.venueKidsRange.upperBound,
-                    focus: $isMaxKidsFocused
-                )
-            }
-
-            VenueLimitRow(
-                title: "Coaches at least",
-                detail: "Fewer than this flags the venue short. One over is still in range."
-            ) {
-                numberField(
-                    "Coaches at least",
-                    text: numberBinding($minCoachesText, into: \.minCoaches, within: CampShape.venueCoachRange),
-                    ceiling: CampShape.venueCoachRange.upperBound,
-                    focus: $isMinCoachesFocused
-                )
-            }
-        }
-    }
-
     /// The court stepper stays a stepper — its range is `1...40` and the row on `8b` has one too,
     /// so this is the same control in the same units.
     ///

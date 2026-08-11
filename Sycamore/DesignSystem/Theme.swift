@@ -347,37 +347,47 @@ extension Theme {
 
 // MARK: - Radii
 
+/// From `tokens/radii.css` in the design system (`4e61fd7f`), whose own note is the rule this
+/// table now follows: *"16 is the card, 13 the banner/control, 999 every chip and pill. The 12px
+/// chip and 5px badge radii were retired — anything selectable or worn is a pill."*
+///
+/// This held fifteen values covering 5 to 999 in steps of one and two, transcribed a screen at a
+/// time. Eleven survive. The four that went are named below as aliases rather than deleted,
+/// because each is spelled at a dozen call sites and the point is that they now *draw* the same
+/// thing — a rename would be churn that proves nothing.
 enum Radius {
     /// Device bezel in the design frames.
-    static let device: CGFloat = 36
+    static let device: CGFloat = 34
     /// Sheet top corners.
     static let sheet: CGFloat = 24
-    /// Large cards (`YOUR CAMPS`, `Create a camp`).
-    static let cardLarge: CGFloat = 18
-    /// Standard card.
-    static let card: CGFloat = 17
-    /// Full-width buttons.
+    /// Every card, and the 56pt hero CTA. Was 17, with an 18 beside it for "large" cards; the
+    /// design draws one card radius.
+    static let card: CGFloat = 16
+    /// Alias of `card`. The 18 was a second card radius the design does not have.
+    static let cardLarge: CGFloat = 16
+    /// Full-width buttons — the same 16 as a card, which is what the token file says.
     static let button: CGFloat = 16
     /// Inputs, OTP cells, single-row cards.
     static let input: CGFloat = 15
-    /// Action rows in sheets, venue icon tiles.
+    /// The 44pt venue tile, and an action row in a sheet.
     static let row: CGFloat = 14
-    /// Stat tiles, search field, sheet fields.
+    /// The 40pt tile — and the banner, the timeline block and the 48pt in-card CTA, which the
+    /// design draws at this radius rather than at the 10 `banner` used to carry.
     static let tile: CGFloat = 13
-    /// Square-ish selectable chips (day, role).
-    static let chipSquare: CGFloat = 12
-    /// Stepper track, small status banner.
+    /// Alias of `tile`. The design's `--radius-control` is 13; the 10 this held was a stray.
+    static let banner: CGFloat = 13
+    /// The 34pt icon tile, and the stepper track.
     static let control: CGFloat = 11
-    /// Inline banner inside a card.
-    static let banner: CGFloat = 10
     /// Stepper +/- buttons.
     static let stepperButton: CGFloat = 9
-    /// Mono court chip (`🌳 C1`).
-    static let monoChip: CGFloat = 7
-    /// Badge.
-    static let badge: CGFloat = 5
-    /// Pills and circles.
+    /// Pills, circles, chips, badges — anything selectable or worn.
     static let pill: CGFloat = 999
+    /// Retired: a selectable chip is a pill. Was 12.
+    static let chipSquare: CGFloat = 999
+    /// Retired: a badge is a pill. Was 5.
+    static let badge: CGFloat = 999
+    /// Retired: a court chip is worn, so it is a pill. Was 7.
+    static let monoChip: CGFloat = 999
 }
 
 // MARK: - Spacing

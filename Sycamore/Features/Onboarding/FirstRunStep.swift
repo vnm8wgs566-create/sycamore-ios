@@ -76,14 +76,6 @@ import Foundation
 /// Which of the getting-started questions is on screen.
 enum FirstRunStep: Hashable, Sendable {
 
-    /// Which way in somebody chose. Deliberately not a role: `memberships.role` is decided by
-    /// which of these two they take — creating a camp makes you its admin, a code makes you
-    /// whatever the camp granted — so this steers the route and writes nothing.
-    enum Path: Hashable, Sendable {
-        case creatingACamp
-        case joiningOne
-    }
-
     /// How far the account's camp list has got, which is not the same question as what is in it.
     ///
     /// The empty array that `AppStore.memberships` starts every session as is all three of these
@@ -105,10 +97,6 @@ enum FirstRunStep: Hashable, Sendable {
     case notYet
     /// "What should the camp call you?"
     case name
-    /// "Are you running a camp, or joining one?"
-    case runningOrJoining
-    /// `8b Shape the camp`, pushed so it keeps its own way back.
-    case createCamp
     /// Screen 3 — the picker, which is where the code field lives and where somebody with camps
     /// already has always landed.
     case camps
@@ -127,13 +115,11 @@ enum FirstRunStep: Hashable, Sendable {
     ///     for why a fetch's third outcome is worth a name.
     ///   - hasCamps: whether the account belongs to any camp at all. See the header for why the
     ///     path question turns on this and not on `camp == nil`.
-    ///   - path: the answer to the path question, once there is one.
     static func resolve(
         displayName: String,
         isNameSkipped: Bool,
         campList: CampList,
-        hasCamps: Bool,
-        path: Path?
+        hasCamps: Bool
     ) -> FirstRunStep {
         // First, and without waiting for anything: the name is read off the account, which arrived
         // with the sign-in. Asking for it while the camps are still in the air costs the flow
@@ -141,10 +127,7 @@ enum FirstRunStep: Hashable, Sendable {
         if !isNameSkipped, displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .name
         }
-        switch path {
-        case .creatingACamp: return .createCamp
-        case .joiningOne: return .camps
-        case nil:
+        do {
             // Somebody who already belongs to a camp is not new, whatever cleared the current one
             // — and a camp in hand is its own proof that the list arrived. So `campList` is
             // consulted on the empty case alone, which is the only one that is ambiguous.
@@ -153,15 +136,23 @@ enum FirstRunStep: Hashable, Sendable {
             switch campList {
             case .pending:
                 return .notYet
+            // **The camps list, not a fork screen.** `Sycamore App.dc.html` has no "Running a
+            // camp, or joining one?" page: `showCamps` asks both questions as two rows under the
+            // camps themselves — "Start a new camp" and "Join with a code" — and the region list
+            // shows it is the only thing between sign-in and a camp.
+            //
+            // Screen 3 already draws both affordances and always did, which is why the `.failed`
+            // branch below has been routing here all along and saying so at length. An empty list
+            // is now the same answer as an unreadable one, for the same reason: both put somebody
+            // in front of every way forward instead of asking which kind of person they are.
             case .arrived:
-                return .runningOrJoining
+                return .camps
             // The list never came, so "belongs to nothing" is a guess and the ambush is back on
             // the table. Screen 3 is the safe answer to a question nobody can answer: it draws
             // "No camps yet" for an empty list, prints `errorMessage` under it
             // (`CampPickerView.swift:140`), tries the fetch again on its own `.task`, and offers
             // both ways forward — the code field and "Create a camp" — without asking which one
-            // this person is. `.runningOrJoining` would be right for one of the two readings and
-            // an interrogation for the other.
+            // this person is — which is now the answer for an empty list as well as a failed one.
             case .failed:
                 return .camps
             }

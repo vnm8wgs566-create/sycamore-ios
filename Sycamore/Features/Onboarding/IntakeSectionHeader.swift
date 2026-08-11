@@ -2,12 +2,13 @@
 //  IntakeSectionHeader.swift
 //  Sycamore
 //
-//  `600 10.5 / +.15em / uppercase`, with the design's optional trailing action.
+//  The design system's label — `600 12.5 / -.01em`, sentence case — with the design's optional
+//  trailing action.
 //
-//  Not `DesignSystem/SectionHeader`, which is `700 11 / +.1em` from the design this app shipped
-//  with. Editing that one to match would restyle every screen in the app from a branch that owns
-//  five of them; this is a replacement for it, not a sibling, and should take its place once the
-//  whole of section 8 has landed.
+//  It was `600 10.5 / +.15em / uppercase`, and it was written as a deliberate rival to
+//  `DesignSystem/SectionHeader` because changing that one "would restyle every screen in the app".
+//  The audit did exactly that on purpose: the two are the same row now, and `trackingEm` survives
+//  only as an escape hatch no caller uses.
 //
 
 import SwiftUI
@@ -15,7 +16,7 @@ import SwiftUI
 struct IntakeSectionHeader: View {
 
     let title: String
-    var trackingEm: CGFloat = 0.15
+    var trackingEm: CGFloat = -0.01
     var actionTitle: String?
     var action: (() -> Void)?
     var horizontalPadding: CGFloat = 5
@@ -25,7 +26,7 @@ struct IntakeSectionHeader: View {
 
     init(
         _ title: String,
-        trackingEm: CGFloat = 0.15,
+        trackingEm: CGFloat = -0.01,
         actionTitle: String? = nil,
         horizontalPadding: CGFloat = 5,
         bottomPadding: CGFloat = Spacing.small,
@@ -42,7 +43,7 @@ struct IntakeSectionHeader: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.tight) {
             Text(title)
-                .typeStyle(.intakeOverline.tracking(em: trackingEm), color: Theme.inkMuted)
+                .typeStyle(.intakeOverline.tracking(em: trackingEm), color: Theme.inkTertiary)
                 .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: 0)

@@ -64,7 +64,13 @@ extension TypeStyle {
 
     /// `600 10.5`, `+.15em`, uppercase — a section header. `8c` and `8d` set the same style a
     /// hair tighter at `+.14em`, which is what `overlineSmall` itself carries.
-    static let intakeOverline = TypeStyle.overlineSmall.tracking(em: 0.15)
+    /// The label, unchanged from `overlineSmall`.
+    ///
+    /// This used to re-add `+.15em` on top of it, which is exactly the tracking the design system
+    /// retired — so with the aliases pointed at the sentence-case label, this one line was still
+    /// letter-spacing every section heading in the intake flow. "Join another" on the camps list
+    /// was the tell.
+    static let intakeOverline = TypeStyle.overlineSmall
     /// `600 11`, `+.06em`, uppercase — the XLSX / CSV plates on `8c`'s drop plate.
     ///
     /// `venueLabel` at a quarter less tracking. Both are a format-ish word set small and wide, and
@@ -144,7 +150,7 @@ extension TypeStyle {
             Text("How many places you run, and how many courts inside each.")
                 .typeStyle(.intakeLead, color: Theme.inkTertiary)
             Text("Venues")
-                .typeStyle(.intakeOverline, color: Theme.inkMuted)
+                .typeStyle(.intakeOverline, color: Theme.inkTertiary)
             Text("First name, last name")
                 .typeStyle(.intakeChecklist, color: Theme.inkWarm)
             Text("Sycamore")
