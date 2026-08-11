@@ -77,3 +77,55 @@ struct PushedScreenRoutingTests {
         #expect(store.pushedScreen == nil)
     }
 }
+
+/// The half the first pass missed: `previousPushedScreen` is only meaningful if nothing else can
+/// leave a value in it. Thirty-odd sites assign `pushedScreen` directly — a tab opening a screen,
+/// one screen replacing another, a sign-out clearing it, or SwiftUI writing `nil` back on an
+/// interactive dismissal — and none of them maintained it.
+@MainActor
+@Suite("The way back cannot go stale")
+struct PushedScreenStalenessTests {
+
+    private func store() -> AppStore { AppStore(repository: InMemoryRepository()) }
+
+    /// The sequence a reviewer walked: push, dismiss by hand, then open something from a *tab*.
+    /// Its back arrow must mean the tabs, not the screen from two navigations ago.
+    @Test("A screen dismissed by hand is not restored by a later, unrelated pop")
+    func aDismissalForgetsWhatItCovered() {
+        let store = store()
+        store.pushedScreen = .campHome
+        store.push(.profile)
+
+        // SwiftUI writing nil back on an interactive dismissal.
+        store.pushedScreen = nil
+
+        store.push(.campSettings)
+        store.popPushed()
+
+        #expect(store.pushedScreen == nil)
+    }
+
+    @Test("Replacing one screen with another forgets the first")
+    func aDirectReplacementForgets() {
+        let store = store()
+        store.pushedScreen = .campHome
+        store.push(.profile)
+
+        // A direct assignment, the way most of the app navigates.
+        store.pushedScreen = .rank
+        store.popPushed()
+
+        #expect(store.pushedScreen == nil)
+    }
+
+    /// And the case it exists for still works after all that.
+    @Test("A push still remembers what it covered")
+    func aPushStillRemembers() {
+        let store = store()
+        store.pushedScreen = .campHome
+        store.push(.profile)
+        store.popPushed()
+
+        #expect(store.pushedScreen == .campHome)
+    }
+}

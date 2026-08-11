@@ -25,7 +25,7 @@
 //
 //  Asked for directly: these two cards were to hold their tabs rather than apologise for them.
 //  Four numbers move and one colour, all of them noted at their sites with the design's own
-//  figure beside them — headline 24 → 29 (`title2`, an existing row), padding 22/18 → 30/20,
+//  figure beside them — headline 24 → `title2`, an existing row, padding 22/18 → 30/20,
 //  the three internal gaps up a step, and the hairline frame replaced with `accentBorder` at
 //  1.5. Nothing else. In particular the **fill stays white**: `accentSurface` would have taken
 //  the paragraph from 4.62:1 to 4.38:1, under AA for 13.5pt, and buying presence by making the
@@ -59,7 +59,7 @@ private enum ComingSoonType {
     /// so it is nudged here rather than given a row of its own in the table.
     static let overline = TypeStyle.metaStrong.tracking(em: -0.01)
 
-    /// `400 29/1.1 Newsreader`, `-.022em` — "What is on right now".
+    /// `title2` — the tab-root serif, `400 32/1.02`, `-.022em`. "What is on right now".
     ///
     /// Serif, because in this app serif means *the name of the thing you are looking at* — and
     /// this card's headline is the closest thing the screen has to one.
@@ -71,8 +71,10 @@ private enum ComingSoonType {
     /// tabs confidently, so the headline steps up to the row the app already uses for the
     /// biggest thing on a screen that is not the wordmark: "Which camp?", "New camp".
     ///
-    /// A token rather than `profileName.size(29)`. An invented size is a number nobody can
-    /// look up, and this one already exists with its own tracking and leading worked out.
+    /// A token rather than an invented size, which is why this line did not have to be touched
+    /// when the design system re-cut the serif scale underneath it: `title2` was 29 when this was
+    /// written and is 32 now, and the card simply grew with the app. A `profileName.size(29)`
+    /// would still be 29.
     static let headline = TypeStyle.title2
 
     /// `400 13.5/1.55` — the paragraph.
@@ -113,7 +115,7 @@ private enum ComingSoonMetrics {
     /// The design's `padding:22px 18px`, opened up.
     ///
     /// Every number from here down to `actionGap` is a step above the design's, and they move
-    /// together on purpose: a 29pt headline in a 22pt box is a bigger word in the same small
+    /// together on purpose: a 32pt headline in a 22pt box is a bigger word in the same small
     /// card, which reads as crowding rather than confidence. The room is what turns the size
     /// into presence. The design's own figures are kept in each comment so the departure stays
     /// legible and reversible.
@@ -271,7 +273,7 @@ struct ComingSoonView: View {
 
                 Text(headline)
                     .typeStyle(ComingSoonType.headline, color: Theme.ink)
-                    // A 29pt serif line with 1.1 of leading clips its descenders the moment the
+                    // A 32pt serif line with 1.02 of leading clips its descenders the moment the
                     // frame narrows, and "What is on right now" wraps to two lines at the default
                     // size now rather than only at the accessibility ones. Wrapping is the right
                     // answer; truncating the name of the screen is not.

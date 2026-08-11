@@ -102,6 +102,11 @@ struct CampHomeView: View {
         .sheet(isPresented: $isSwitchingCamps) {
             CampPickerView(isManagingCamps: true)
                 .environment(store)
+                // A sheet covers the presenter's overlay, so it carries its own — the same copy
+                // `ProfileView:160` and `OverviewScreen:312` make for the same picker. Without it
+                // a bad invite code typed from inside a camp reports nothing at all, and the only
+                // thing on screen is a code field that has stopped responding.
+                .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
         }
     }
 

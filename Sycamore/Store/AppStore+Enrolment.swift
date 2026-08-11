@@ -81,6 +81,16 @@ extension AppStore {
         // Declared outside `perform` because it is read on both sides of it.
         var seatedVenues: Set<Venue.ID> = []
 
+        // Who was here before, so the sentence at the end can say who is new.
+        //
+        // **Not `commit.inserting`'s own ids.** That was the first attempt and it could only ever
+        // report "0 dealt": `IntakePlayer.id` belongs to the *file row*, and `asPlayer()` mints a
+        // fresh `Player.id` rather than carrying it across, so the two sets are disjoint by
+        // construction. It compiled because both are `UUID` — the exact trap `RosterSelection`
+        // warns about in prose — and no test asserted the sentence, so a forty-kid import that
+        // seated perfectly announced "0 dealt into 6 groups · 40 to place".
+        let before = Set((camp?.players ?? []).map(\.id))
+
         await perform {
             // One round trip per venue, almost always exactly one — a sign-up list carries no
             // venue column, so everybody lands in the first. Batched rather than looped over
@@ -130,12 +140,17 @@ extension AppStore {
         // asked for. A roster of forty where six are outside every band is "34 dealt · 6 to
         // place"; saying "40 dealt" would be the screen's word against the venue's.
         guard errorMessage == nil, !commit.inserting.isEmpty else { return }
-        let arrived = Set(commit.inserting.map(\.id))
-        let dealt = camp?.players.count { arrived.contains($0.id) && $0.groupID != nil } ?? 0
-        let waiting = commit.inserting.count - dealt
-        let groups = seatedVenues.reduce(into: 0) { total, id in
-            total += camp?.groups(in: id).count ?? 0
-        }
+        let arrived = (camp?.players ?? []).filter { !before.contains($0.id) }
+        guard !arrived.isEmpty else { return }
+
+        let dealt = arrived.count { $0.groupID != nil }
+        let waiting = arrived.count - dealt
+
+        // The courts somebody actually landed on, not every court at the venue. "34 dealt into 6
+        // groups" was true of a venue where only three of the six received anybody, which is the
+        // same class of over-claim as the count above.
+        let landedOn = Set(arrived.compactMap(\.groupID))
+        let groups = landedOn.count
 
         if waiting > 0 {
             say("\(dealt) dealt into \(groups) \(groups == 1 ? "group" : "groups") · \(waiting) to place")

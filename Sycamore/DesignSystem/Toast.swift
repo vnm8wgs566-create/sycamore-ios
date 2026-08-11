@@ -92,11 +92,16 @@ struct ToastPill: View {
         }
         .padding(.horizontal, ToastMetrics.horizontalPadding)
         .padding(.vertical, ToastMetrics.verticalPadding)
-        .background(Theme.ink, in: .rect(cornerRadius: Radius.pill))
+        .background(Theme.toastFill, in: .rect(cornerRadius: Radius.pill))
         .shadow(Shadows.toast)
-        // One utterance, announced when it appears — a toast nobody can see is exactly the case
-        // VoiceOver has to speak, and reading "Austin moved to Group 3" then "Undo" as two
-        // separate stops loses which write the button belongs to.
+        // One utterance rather than two stops: reading "Austin → Group 3" and then "Undo"
+        // separately loses which write the button belongs to.
+        //
+        // **Combining does not announce it.** The comment here used to say "announced when it
+        // appears", which `.accessibilityElement(children: .combine)` does not do — it makes the
+        // pill *readable* once somebody navigates to it, and a pill that lives 3.2 seconds is one
+        // nobody navigates to in time. The announcement is posted by the presenter, which is
+        // where the appearing happens.
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isStaticText)
     }
@@ -133,6 +138,16 @@ private struct ToastPresenter: ViewModifier {
                     // Keyed on the id so a second toast arriving while the first is up restarts
                     // the clock rather than inheriting the remains of it.
                     .task(id: toast.id) {
+                        // Spoken, because it is the only report of a write that has already
+                        // happened and it takes itself away. `.announcement` interrupts nothing
+                        // and does not move focus, which is right for a thing that is not asking
+                        // for a decision — the Undo is a bonus, not a prompt.
+                        #if canImport(UIKit)
+                        var announcement = AttributedString(toast.message)
+                        announcement.accessibilitySpeechAnnouncementPriority = .high
+                        AccessibilityNotification.Announcement(announcement).post()
+                        #endif
+
                         try? await Task.sleep(for: ToastMetrics.lifetime)
                         guard !Task.isCancelled else { return }
                         self.toast = nil

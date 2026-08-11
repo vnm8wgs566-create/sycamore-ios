@@ -44,7 +44,7 @@ struct EarlyPickupSheet: View {
             onClose: close
         ) {
             Text("Coaches see this on the day, in the block it falls in.")
-                .typeStyle(.onTheDayLede, color: Theme.inkMuted)
+                .typeStyle(.onTheDayLede, color: Theme.inkTertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, OnTheDayTokens.headerTop)
 
@@ -175,6 +175,23 @@ struct EarlyPickupSheet: View {
         return days.isEmpty ? Weekday.allCases : days
     }
 
+    /// Moves the selection onto a day the camp actually runs.
+    ///
+    /// **Filtering the chips was only half of it**, which is the shape of the original bug rather
+    /// than a new one: `store.pickupDay` defaults to `.today`, so a coach opening this on a
+    /// Saturday at a Monday-to-Friday camp saw five chips with **none of them lit** and a button
+    /// that would write a Saturday pick-up no block could ever contain. Taking the chip away
+    /// stopped it being *offered*; it did not stop it being *held*.
+    ///
+    /// The next running day rather than the first, so a Saturday lands on Monday and a Wednesday
+    /// at a Mon/Wed/Fri camp stays where it is.
+    private func clampPickupDayToCampDays() {
+        let days = campDays
+        guard !days.isEmpty, !days.contains(store.pickupDay) else { return }
+        let today = store.pickupDay.rawValue
+        store.pickupDay = days.first { $0.rawValue > today } ?? days[0]
+    }
+
     private var dayChips: some View {
         HStack(spacing: Spacing.tight) {
             ForEach(campDays) { day in
@@ -195,6 +212,10 @@ struct EarlyPickupSheet: View {
                 .accessibilityAddTraits(store.pickupDay == day ? .isSelected : [])
             }
         }
+        // Runs when the sheet opens and again if the camp's days change under it. Without it the
+        // row can draw a full set of chips with none of them lit — see
+        // `clampPickupDayToCampDays`.
+        .onChange(of: campDays, initial: true) { _, _ in clampPickupDayToCampDays() }
     }
 
     /// A menu wearing the same box as the field beside it. `.sheetBox` is where that box lives

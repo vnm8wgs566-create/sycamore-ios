@@ -142,16 +142,19 @@ struct CampPickerView: View {
                     joinRow
                 }
 
-                // Printed in both contexts now. A join that fails from inside a camp used to
-                // report nothing at all, so the only thing on screen was a code field that had
-                // stopped responding.
-                // The failure is not printed here.
+                // The failure is not printed here, and every route that draws this view
+                // carries a banner instead.
                 //
-                // It used to be, because this screen could be reached with nothing else on it to
-                // report a bad code — "the only thing on screen was a code field that had stopped
-                // responding". `RootView` hangs `storeErrorBanner` over every branch that draws
-                // this view, including the first run, so saying it again put "No camp uses that
-                // code." at the top of the screen and in the middle of it at the same time.
+                // It used to be printed inline, from when this screen could be reached with
+                // nothing else on it to report a bad code. Since an empty membership list lands
+                // here, the first run showed it twice — once in `RootView`'s banner and once in
+                // the middle of the page.
+                //
+                // The three presenters each carry their own, because a sheet covers the
+                // presenter's overlay: `RootView:96` for the first run, `ProfileView:160` and
+                // `CampHomeView:105` for the two that raise it as a sheet from inside a camp.
+                // That last one was missed when the inline copy was removed, which made a bad
+                // code silent on exactly the route this comment used to be about.
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.large)

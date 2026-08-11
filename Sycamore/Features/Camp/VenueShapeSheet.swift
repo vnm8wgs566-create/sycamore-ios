@@ -82,28 +82,19 @@ struct VenueShapeSheet: View {
 
     @State private var draft: VenueShape
 
-    /// The two limits, as text — what is in the boxes, which is not always a number.
-    ///
-    /// A stepper never has this problem and these could not be steppers. `playerMax` reaches
-    /// `courtRange.upperBound × kidsRange.upperBound` — 384 — and `IntakeStepper` has never been
-    /// asked for a range past 24; two hundred taps is not a control. A field can hold "4" on the
-    /// way to "48", and it can hold "" on the way to anything, so the value is `Int(text)` and
-    /// `nil` is what makes the sheet invalid.
-    ///
-    /// Every number that parses is written straight into `draft` (see `numberBinding`), so the
-    /// row's numbers are never a stale second copy of what is on screen — `draft` is what the
-    /// header reads and what Save sends, and these two are only the raw keystrokes behind it.
-    @State private var maxKidsText: String
-    @State private var minCoachesText: String
-
-    @FocusState private var isMaxKidsFocused: Bool
-    @FocusState private var isMinCoachesFocused: Bool
+    // The two head-count fields and their raw keystrokes stood here. The Limits card they
+    // belonged to was cut, and nothing replaced them: `maxKids` and `minCoaches` are derived
+    // from the court count by `draft.setCourts(kidsPerCourt:coachesPerCourt:)`, which is where
+    // `8b`'s camp-wide rates already decided them.
+    //
+    // `numberProblem` went with them. Seeded from the venue as `"\(venue.maxKids)"` and
+    // uneditable, both strings always parsed — so the guard could not fail, and `isValid` was
+    // asking a question with one possible answer.
 
     /// Wide enough for three digits and a caret. Scaled, because it is the one measurement here
     /// that is a *text* width — at `.accessibility3` "384" is half again as wide and a fixed box
     /// would truncate the number it exists to show. `IntakeStepper` scales its own for the same
     /// reason (`:31-32`).
-    @ScaledMetric(relativeTo: .body) private var numberFieldWidth: CGFloat = 72
 
     /// What the row was called on the way in, or nil for a row nobody has named yet.
     ///
@@ -151,8 +142,6 @@ struct VenueShapeSheet: View {
         if !isEditing { opening.name = "" }
 
         _draft = State(initialValue: opening)
-        _maxKidsText = State(initialValue: "\(venue.maxKids)")
-        _minCoachesText = State(initialValue: "\(venue.minCoaches)")
     }
 
     var body: some View {
@@ -163,8 +152,7 @@ struct VenueShapeSheet: View {
         // `isPositionalName` and lowercases every other venue's name, so at eight venues that was
         // about a hundred throwaway strings for each character typed into the name field.
         let nameProblem = nameProblem
-        let numberProblem = numberProblem
-        let isValid = nameProblem == nil && numberProblem == nil
+        let isValid = nameProblem == nil
 
         return SheetChrome(
             title: title,
@@ -191,7 +179,7 @@ struct VenueShapeSheet: View {
             // is always the "what adding it will do" variant, and never amber.
             VenueDealLine(sentence: VenueDealSentence.adding(groups: draft.groups))
 
-            saveButton(isValid: isValid, hint: nameProblem ?? numberProblem ?? "")
+            saveButton(isValid: isValid, hint: nameProblem ?? "")
                 .padding(.top, 18)
 
             if isEditing {
@@ -266,8 +254,6 @@ struct VenueShapeSheet: View {
                     kidsPerCourt: shape.kidsPerCourt,
                     coachesPerCourt: shape.coachesPerCourt
                 )
-                maxKidsText = "\(draft.maxKids)"
-                minCoachesText = "\(draft.minCoaches)"
             }
         )
     }
@@ -297,43 +283,11 @@ struct VenueShapeSheet: View {
         )
     }
 
-    /// A field sized to three digits, on the plate a stepper's track is drawn on.
-    private func numberField(
-        _ label: String,
-        text: Binding<String>,
-        ceiling: Int,
-        focus: FocusState<Bool>.Binding
-    ) -> some View {
-        let field = FormField(
-            "\(ceiling)",
-            text: text,
-            label: label,
-            metrics: .numberBox,
-            type: .intakeStepperValue,
-            focus: focus
-        )
-        .frame(width: numberFieldWidth)
-        .multilineTextAlignment(.center)
-
-        #if os(iOS)
-        return field
-            // A number pad has no return key, which is why the sheet's way out is the button
-            // below rather than `.onSubmit`.
-            .keyboardType(.numberPad)
-            .textInputAutocapitalization(.never)
-        #else
-        return field
-        #endif
-    }
-
     // MARK: - Validity
 
     private var trimmedName: String {
         draft.name.trimmingCharacters(in: .whitespaces)
     }
-
-    private var maxKids: Int? { Int(maxKidsText) }
-    private var minCoaches: Int? { Int(minCoachesText) }
 
     /// Why this name cannot be saved, in the order the reader would find out.
     ///
@@ -360,15 +314,6 @@ struct VenueShapeSheet: View {
             return "Another venue in this camp is already called that."
         }
         return nil
-    }
-
-    private var numberProblem: String? {
-        switch (maxKids, minCoaches) {
-        case (nil, nil): "Both limits need a number."
-        case (nil, _): "Kids at most needs a number."
-        case (_, nil): "Coaches at least needs a number."
-        default: nil
-        }
     }
 
     /// `.intakeNote` rather than `.intakeRowMeta`: these lines wrap, and it is the style section

@@ -165,12 +165,20 @@ struct FirstRunStepTests {
         #expect(step(name: "", skipped: true, list: .pending, hasCamps: false) == .notYet)
     }
 
-    /// An answer already given outranks the hold: to have chosen a way in you were shown the
-    /// question, which the rule only asks once the list is in. Un-drawing the screen they are
-    /// standing on because a second fetch is in flight would be the flash again, backwards.
-    @Test("A way in already chosen is honoured while the camps are still coming")
-    func anAnswerOutranksTheHold() {
-                    }
+    /// **This test asserted nothing.** It pinned the fork screen's "an answer already given
+    /// outranks the hold", and when the fork went its two `path:` expectations went with it —
+    /// leaving a named test with an empty body, green forever, claiming to check a rule that no
+    /// longer exists. A green test that asserts nothing is worse than no test: it reads as
+    /// coverage.
+    ///
+    /// What is worth keeping from it is the shape underneath: the hold is about the *list*, not
+    /// about the person, so a second fetch in flight must not un-draw a camps list already on
+    /// screen.
+    @Test("A list already in hand is not un-drawn by a fetch still in flight")
+    func havingCampsOutranksTheHold() {
+        #expect(step(list: .pending, hasCamps: true) == .camps)
+        #expect(step(list: .arrived, hasCamps: true) == .camps)
+    }
 
     // MARK: The orderings a real sign-in produces
 

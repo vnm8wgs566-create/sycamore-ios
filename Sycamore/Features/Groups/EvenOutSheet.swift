@@ -9,7 +9,7 @@
 //  ---------------------------------------------------------------------------------------------
 //
 //  `RankView`'s "Even out" pill fires `store.evenOut()` on the tap. That is a re-deal of every
-//  court in the camp with no preview, no count and — the app having no snackbar — no undo. On a
+//  court in the camp with no preview, no count and no way back. On a
 //  venue somebody has spent a morning arranging by hand, the tap is indistinguishable from the
 //  tap that does nothing, right up until the screen redraws with forty children somewhere else.
 //
@@ -34,8 +34,9 @@
 //  ---------------------------------------------------------------------------------------------
 //
 //  The design snapshots the roster before the deal and offers **Undo** on a toast. Neither exists
-//  here: this app has no toast — `SwipeToDelete.swift:188-189` states that as a fact about the app
-//  — and there is no undo stack to hang a snapshot from. Inventing both to serve one sheet would
+//  here. The app has a toast now (`Toast.swift`), so half of that gap has closed and `evenOut`
+//  simply has not been wired to it yet; what is still missing is the snapshot an Undo would
+//  restore, and there is no undo stack to hang one from. Inventing both to serve one sheet would
 //  be a transient surface and an undo vocabulary that nothing else in the app speaks, decided by
 //  whoever happened to write this file. The preview is the mitigation the app can actually keep:
 //  you see the whole move before it happens, which is the half of the design's safety net that

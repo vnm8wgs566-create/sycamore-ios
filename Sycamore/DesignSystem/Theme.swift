@@ -177,11 +177,22 @@ enum Theme {
     /// App-mark glyph only.
     static let lime = Color(light: "CBFF3C", dark: "CBFF3C")
 
-    /// `#7BC5A1` — "Undo" on the black toast pill, from `design/app/regions/toast.html`.
+    /// `#0B0B0C` — the toast pill, fixed in both schemes.
     ///
-    /// Fixed rather than scheme-adaptive, because the pill it sits on is fixed: the toast is
-    /// `ink` in both schemes, so a green that lightened in the dark would be lightening against
-    /// a background that never moved. It measures 7.4:1 on `#0B0B0C`.
+    /// **Its own token rather than `ink`, and that was a real bug rather than tidiness.** The pill
+    /// filled with `Theme.ink` and set white copy on it — and `ink` is the one token in this block
+    /// that flips, to `#F5F5F7` in the dark. So every confirmation the app speaks, including its
+    /// only Undo, drew white on near-white at **1.09:1**. The comment beside it asserted "the
+    /// toast is `ink` in both schemes", which was false about the line above it.
+    ///
+    /// Fixed rather than adaptive because a toast is not a surface of the app — it is a thing that
+    /// floats over one, like the shadow it casts (`Shadows.toast` is fixed for the same reason).
+    static let toastFill = Color(hex: "0B0B0C")
+
+    /// `#7BC5A1` — "Undo" on the toast pill, from `design/app/regions/toast.html`.
+    ///
+    /// Fixed, because `toastFill` is: a green that lightened in the dark would be lightening
+    /// against a background that never moves. Measured 9.69:1 on it.
     static let undoGreen = Color(hex: "7BC5A1")
 
     // MARK: App mark
@@ -485,10 +496,19 @@ enum Shadows {
     ///
     /// `0.2` in CSS becomes `0.35` here for `liftedRow`'s reason, spelled out at the head of this
     /// enum: SwiftUI's shadow spreads what CSS concentrates.
-    /// `0 12 36 rgba(11,11,12,.3)` — the toast pill, which floats over everything.
-    static let toast = ShadowToken(color: Color(hex: "0B0B0C").opacity(0.3), radius: 18, y: 12)
-
     static let liftedKid = ShadowToken(color: Color(hex: "1A7F55").opacity(0.35), radius: 16, y: 14)
+
+    /// `0 12 36 rgba(11,11,12,.3)` — the toast pill, which floats over everything.
+    ///
+    /// Fixed rather than the scheme-aware `cast`, and for the same reason `Theme.toastFill` is:
+    /// the pill is not a surface of the app but a thing over one, so its shadow does not follow
+    /// the app's scheme any more than its fill does.
+    ///
+    /// Declared *after* `liftedKid` on purpose. It was inserted above it, which put six lines
+    /// arguing for a green drag-shadow — "a kid held above a list of kids" — on top of a black
+    /// toast, and orphaned `liftedKid` from the only thing that explains why it is the one tinted
+    /// shadow in the file.
+    static let toast = ShadowToken(color: Color(hex: "0B0B0C").opacity(0.3), radius: 18, y: 12)
 
     /// `0 -12px 40px rgba(11,11,12,.18)` — the cast a bottom sheet throws *up* the screen
     /// (`design/rebuild/section-t4.html:143`, and the same line on every sheet in sections 4 and 5).

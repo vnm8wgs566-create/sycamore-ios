@@ -492,7 +492,25 @@ final class AppStore {
     var activeSheet: ActiveSheet?
     /// Profile, Camp settings, Manage camps and (for now) Rank. One at a time — the design
     /// never stacks two of them.
-    var pushedScreen: PushedScreen?
+    var pushedScreen: PushedScreen? {
+        didSet {
+            // **Any assignment that is not `push(_:)` forgets what was underneath.**
+            //
+            // Thirty-odd sites assign this directly — a tab opening a screen, one screen replacing
+            // another, a sign-out or a camp switch clearing it, or SwiftUI writing `nil` back on
+            // an interactive dismissal. None of them maintained `previousPushedScreen`, so a
+            // later `popPushed()` could restore a screen that had not been underneath anything
+            // for several navigations: open the camp page, push Profile, swipe it away, then open
+            // Camp settings from a *tab* and its back arrow would land on the camp page.
+            //
+            // `push(_:)` sets both in one step and is the only thing that may leave a value here,
+            // which is what `isPushing` guards.
+            if !isPushing { previousPushedScreen = nil }
+        }
+    }
+
+    /// True only for the duration of `push(_:)`'s own assignment. See `pushedScreen`'s `didSet`.
+    private var isPushing = false
 
     /// What was showing before `pushedScreen`, so a back control can put it back.
     ///
@@ -1547,7 +1565,7 @@ extension AppStore {
         let landed = groupID.flatMap { camp?.group($0) }.map { "Group \($0.number)" }
             ?? camp?.venue(venueID)?.name
             ?? "the venue"
-        say("\(name) → \(landed)", undo: undoMove(playerID, to: wasAt, campID: campID))
+        say("\(name) → \(landed)", undo: undoMove(playerID, to: wasAt))
     }
 
     /// The way back from a move, or nil when there is nowhere to go back to.
@@ -1556,7 +1574,7 @@ extension AppStore {
     /// a whole graph would also undo anything else that happened in the 3.2 seconds the pill was
     /// up, and on a camp morning that is somebody else's write on somebody else's phone.
     private func undoMove(
-        _ playerID: Player.ID, to previous: (Venue.ID?, Group.ID?)?, campID: Camp.ID
+        _ playerID: Player.ID, to previous: (Venue.ID?, Group.ID?)?
     ) -> (@Sendable @MainActor () -> Void)? {
         guard let previous, let venueID = previous.0 else { return nil }
         let groupID = previous.1
@@ -2139,8 +2157,11 @@ extension AppStore {
     /// that *replace* one screen with another, or open one from a tab, go on doing. This is for
     /// the handful that open a screen from another screen and owe it a way back.
     func push(_ screen: PushedScreen) {
-        previousPushedScreen = pushedScreen
+        let covered = pushedScreen
+        isPushing = true
         pushedScreen = screen
+        isPushing = false
+        previousPushedScreen = covered
     }
 
     /// The way back: whatever `push` covered, or the tabs if it covered nothing.

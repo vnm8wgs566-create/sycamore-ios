@@ -55,9 +55,11 @@ struct PlayerScreen: View {
     @FocusState private var isNoteFocused: Bool
 
     /// Whether the remove row is asking rather than telling. See `removeRow`.
+    ///
+    /// A counter rode beside this to "restart the disarm timer", which it could not do: the task
+    /// is keyed on this flag, the flag only ever goes false → true → false, and a second arming
+    /// cannot happen while it is already true. There was nothing for the counter to distinguish.
     @State private var isArmedToRemove = false
-    /// Bumped each time it arms, so the disarm timer restarts rather than inheriting the last one.
-    @State private var armedAt = 0
 
     /// `8n`, presented from here rather than through `store.activeSheet`.
     ///
@@ -194,7 +196,6 @@ struct PlayerScreen: View {
                     Task { await store.removePlayer(playerID) }
                 } else {
                     isArmedToRemove = true
-                    armedAt += 1
                 }
             } label: {
                 HStack(spacing: 11) {
@@ -213,7 +214,7 @@ struct PlayerScreen: View {
         // before, so the second tap would otherwise be a silent one.
         .accessibilityLabel(removeLabel)
         .accessibilityHint(isArmedToRemove ? "" : "Asks again before removing")
-        .task(id: armedAt) {
+        .task(id: isArmedToRemove) {
             guard isArmedToRemove else { return }
             try? await Task.sleep(for: .milliseconds(2600))
             guard !Task.isCancelled else { return }
@@ -254,8 +255,16 @@ struct PlayerScreen: View {
         }
         // Seeded from the kid, and re-seeded if they change underneath — the screen is reachable
         // for one kid at a time, but a re-read can replace the player while it is open.
+        // Seeded from the kid, and re-seeded only when the field is not being typed in.
+        //
+        // **The focus guard is the whole of it.** `setPlayerNotes` trims before writing, so the
+        // saved value comes back a character shorter than what is on screen the moment somebody
+        // types a trailing space — and re-seeding then deleted that space out from under the
+        // caret, mid-sentence, 600ms after they typed it. Adopting only while unfocused keeps the
+        // re-seed for the case it exists for (the kid changing underneath) and takes it out of
+        // the case it was corrupting.
         .onChange(of: player?.notes ?? "", initial: true) { _, saved in
-            guard saved != noteDraft else { return }
+            guard !isNoteFocused, saved != noteDraft else { return }
             noteDraft = saved
         }
         .onChange(of: noteDraft) { _, _ in noteEdits += 1 }
@@ -266,6 +275,13 @@ struct PlayerScreen: View {
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
             await store.setPlayerNotes(playerID, to: noteDraft)
+        }
+        // Leaving the field commits immediately rather than waiting out the settle. Without this
+        // a note typed and then dismissed inside 600ms was simply lost: the task is cancelled
+        // with the view, and cancellation is indistinguishable from the next keystroke.
+        .onChange(of: isNoteFocused) { wasFocused, isFocused in
+            guard wasFocused, !isFocused, noteEdits > 0 else { return }
+            Task { await store.setPlayerNotes(playerID, to: noteDraft) }
         }
     }
 

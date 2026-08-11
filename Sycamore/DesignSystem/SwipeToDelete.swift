@@ -185,9 +185,13 @@ struct SwipeRevealPlan: Equatable, Sendable {
 /// A row that slides left to reveal one destructive action.
 ///
 /// The reveal is the whole gesture: a full swipe does **not** commit. Every caller of this deletes
-/// something there is no undo for — `CampShape.removeVenue` is a `removeAll` and no screen in this
-/// app draws a snackbar — and Mail's full-swipe commit is only safe because Mail has an Undo. The
-/// tap on the revealed panel is the commit.
+/// something there is no undo for, and Mail's full-swipe commit is only safe because Mail has one.
+/// The tap on the revealed panel is the commit.
+///
+/// The app has a toast now (`Toast.swift`) and `AppStore.say(_:undo:)` can carry an Undo, so the
+/// second half of that argument has moved: what these callers delete is not *undoable*, rather than
+/// there being nowhere to offer it. `removeGroup` and `removeVenue` both say so at their intents —
+/// a deleted group cannot be written back, and a venue's kids are deleted rather than unassigned.
 struct SwipeToDelete<ID: Hashable & Sendable, Content: View>: View {
 
     let id: ID
