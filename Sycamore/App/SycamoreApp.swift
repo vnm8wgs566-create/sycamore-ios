@@ -123,21 +123,26 @@ struct SycamoreApp: App {
                     // The choreography, end to end:
                     //
                     //   0.00  the mark lands       (0.42s)
-                    //   0.22  the word types in    (eight keystrokes at 0.07s — the first
-                    //         letter at 0.29, the last at 0.78)
-                    //   0.78  — held 0.47s, so the name is read rather than glimpsed —
-                    //   1.25  the whole entrance — mark, word, seeds and ground — fades to
-                    //         nothing over the page (0.6s, done at 1.85)
+                    //   0.22  the word settles     (0.5s — down, into focus, and to rest,
+                    //         finishing at 0.72)
+                    //   0.72  — held 0.47s, so the name is read rather than glimpsed —
+                    //   1.19  the whole entrance — mark, word, seeds and ground — fades to
+                    //         nothing over the page (0.6s, done at 1.79)
                     //
                     // Down from 2.8s. This is opened many times a day by someone standing on a
                     // court, and a second of that was the splash being admired rather than
-                    // read. 1.85s still lands every beat.
+                    // read. 1.79s still lands every beat.
                     //
-                    // Those numbers are `Motion.Entrance`'s, not this comment's. The 1.25 below
+                    // **The word used to type itself in**, eight keystrokes at 0.07s. A wordmark
+                    // that types is a terminal's gesture and said nothing about this app; what it
+                    // does now is what everything else on that screen is doing — the seeds are
+                    // falling, and the word comes down and settles with them.
+                    //
+                    // Those numbers are `Motion.Entrance`'s, not this comment's. The 1.19 below
                     // is the sum of beats that `FallingSeeds` plays, so it is computed from them
                     // rather than typed out here — a comment in this file cannot stop the hold
-                    // going stale when the typing rate changes in that one, and a hold that has
-                    // gone stale means the fade starting over a half-written word.
+                    // going stale when the settle duration changes in that one, and a hold that
+                    // has gone stale means the fade starting over a word still arriving.
                     //
                     // Under Reduce Motion the hold is shorter still: the seeds are gone and the
                     // word is simply already there, so the same 0.47s dwell measured from the

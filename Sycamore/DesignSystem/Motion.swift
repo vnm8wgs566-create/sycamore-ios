@@ -85,54 +85,81 @@ enum Motion {
 
     /// The cold-launch entrance, in seconds from its first frame.
     ///
-    /// `SeedEntrance` plays the first half — the mark landing, then the word typing. `SycamoreApp`
-    /// plays the second — waiting out `hold(reduceMotion:)`, then `fade(reduceMotion:)`.
+    /// `SeedEntrance` plays the first half — the mark landing, then the word settling beside it.
+    /// `SycamoreApp` plays the second — waiting out `hold(reduceMotion:)`, then
+    /// `fade(reduceMotion:)`.
     enum Entrance {
 
-        /// The word the entrance writes.
+        /// The word the entrance sets.
         ///
-        /// It lives beside the clock rather than inside the view because its length *is* part of
-        /// the clock: the word is typed a character at a time, so the number of characters is
-        /// what decides when the typing ends and therefore when the fade may start. Keeping it
-        /// here is what lets `hold(reduceMotion:)` below be derived instead of written down.
+        /// It lives beside the clock rather than inside the view because it used to *be* part of
+        /// the clock: the word was typed a character at a time, so its length decided when the
+        /// typing ended and therefore when the fade could start. It no longer is — the word
+        /// arrives whole — and `wordFinished` below is a constant now rather than a count. The
+        /// string stays here because the two files that draw it should not each hold a copy.
         static let wordmark = "Sycamore"
 
         /// The mark arriving — scaling up from 0.92 and fading in.
         static let land: Double = 0.42
 
-        /// The gap between the mark landing and the first letter. The word follows the mark
-        /// rather than arriving with it, so the two read as one thing happening in order rather
-        /// than two things appearing at once.
+        /// The gap between the mark landing and the word beginning to settle. The word follows the
+        /// mark rather than arriving with it, so the two read as one thing happening in order
+        /// rather than two things appearing at once.
         static let markToWord: Double = 0.22
 
-        /// One keystroke. Eight of them write the wordmark in 0.56s — precisely the span the
-        /// width-wipe this replaced took, so the beat the entrance was designed around is
-        /// unchanged and only the mechanism is different.
+        /// The word settling into place: down, into focus, and to rest.
         ///
-        /// The rate is the whole of the effect. Much under 50ms an eight-letter word reads as a
-        /// smear rather than as typing; much over 100ms it outstays the launch it decorates.
+        /// ── Why this is not the typing it replaces ────────────────────────────────────────────
         ///
-        /// Deliberately even. Real typing is uneven, but jitter over eight characters in half a
-        /// second is not read as human — it is read as a dropped frame.
-        static let keystroke: Double = 0.07
+        /// The identity is a samara — the winged seed that spins as it falls, which is what the
+        /// flock behind the lockup is doing. A wordmark that *types* is a terminal's gesture and
+        /// belongs to a different family of product entirely; it said nothing about this app, and
+        /// it said it for 0.56 seconds every cold launch. What the word does now is what
+        /// everything else on the screen is doing: it comes down, and it settles.
+        ///
+        /// Four values move together over this span — a small drop, a blur clearing, a fraction of
+        /// scale, and the opacity — because that combination is what reads as *settling* rather
+        /// than as fading. Drop alone is a slide; blur alone is a focus pull; together they are a
+        /// thing coming to rest.
+        ///
+        /// **The word stays one `Text` run**, which the typing had to fight for and this gets for
+        /// free. Splitting it per letter would throw away kerning and the design's `-.022em`
+        /// tracking, and "Sycamore" with the pairs pulled apart is a different wordmark. Typing
+        /// also needed a hidden full-width copy underneath to stop the mark being shoved sideways
+        /// eight times; a word that arrives whole reserves its own width from the first frame, so
+        /// that scaffolding is gone with it.
+        ///
+        /// Half a second, matched to `land` plus a little: the mark takes 0.42 to arrive and the
+        /// word should not beat it into stillness.
+        static let settle: Double = 0.5
+
+        /// How far the word falls into place. Small on purpose — this is a seed landing on a
+        /// surface, not one dropping onto it, and anything past about ten points reads as the
+        /// word sliding in from off screen.
+        static let settleDrop: CGFloat = 10
+
+        /// How far out of focus the word starts. Enough to be unmistakably soft on the first
+        /// frame, not so much that it is a smear the reader waits out.
+        static let settleBlur: CGFloat = 6
+
+        /// The word starts a touch large, as something arriving from nearer the reader does, and
+        /// comes down to size with the rest of it.
+        static let settleScale: CGFloat = 1.04
+
+        /// When the word comes to rest, measured from the first frame — 0.72s.
+        ///
+        /// A derived constant rather than a count of characters, which is what it was: with the
+        /// typing gone there is no per-letter interval left for the length of the word to
+        /// multiply. Kept derived all the same, because it is the number `hold(reduceMotion:)`
+        /// needs and the two are played in different files.
+        static var wordFinished: Double { markToWord + settle }
 
         /// How long the finished lockup is held before the entrance begins to clear: the
         /// difference between the name being read and the name being glimpsed.
         static let dwell: Double = 0.47
 
-        /// When the last character lands, measured from the first frame — 0.78s.
-        ///
-        /// `Task.sleep` guarantees a floor rather than an exact interval, so the real figure runs
-        /// fractionally over eight times. `dwell` is what absorbs that.
-        static var wordFinished: Double {
-            markToWord + keystroke * Double(wordmark.count)
-        }
-
-        /// When the fade starts, measured from the first frame — 1.25s, or 0.89s under Reduce
+        /// When the fade starts, measured from the first frame — 1.19s, or 0.89s under Reduce
         /// Motion, where the word is simply already there and there is nothing to wait out.
-        ///
-        /// Derived rather than written down. This is the number that has to move when the typing
-        /// rate does, and it is played in a different file from the typing.
         static func hold(reduceMotion: Bool) -> Double {
             (reduceMotion ? land : wordFinished) + dwell
         }
