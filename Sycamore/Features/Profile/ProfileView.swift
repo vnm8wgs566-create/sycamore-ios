@@ -5,8 +5,20 @@
 //  `8s` — Profile. "Only what belongs to a person."
 //
 //  Not a tab any more. Section 8 spends all four tabs on the day itself and reaches this from
-//  the avatar in every header, so it arrives as a sheet: the close disc in the corner is the
-//  design's, and the swipe down is the sheet's. There is no tab bar to clear at the bottom.
+//  the avatar in every header, so it arrives as a sheet, and the swipe down is the sheet's.
+//
+//  **The close disc is the app's, and this used to say it was the design's.** No surviving design
+//  draws one: `Sycamore Flow.dc.html:337-388` draws Profile as a full page under the floating tab
+//  bar with no ✕ and no back control, because it was a tab, and `SPEC.md:218` and `:262` both say
+//  "Profile is a page, not a sheet" in as many words. The design of record goes further and draws
+//  no profile screen at all — `openProfile` (`design/app/state1.js:42`) opens the *camp* page, and
+//  the only account facts in the whole prototype are a signed-in email and a Sign out row on it.
+//
+//  So this screen is an addition, the sheet is an addition, and the disc is the sheet's way out.
+//  All three are worth keeping — the app has an editable name, an emergency phone, a notification
+//  switch and a delete-account path, none of which the prototype has anywhere to put — but they
+//  are the app's decisions, and a comment claiming a drawing behind them is the one thing that
+//  makes them impossible to re-examine. The same correction applies to `AvatarWell` below.
 //
 //  The screen is three cards and two buttons. "On today" is where you are standing right now.
 //  "You" is the account — the things you can change, the one you cannot, the switch, and the one
@@ -617,8 +629,12 @@ private struct AvatarWell: View {
             }
 
             // 24pt accent disc with a 2.5px ring in the surface colour, hung a couple of points
-            // off the corner. The only mark on this screen the design does not draw — it is what
-            // says the disc is a well rather than a picture.
+            // off the corner — what says the well is a well rather than a picture.
+            //
+            // This used to call itself "the only mark on this screen the design does not draw",
+            // which is wrong in both directions: `Sycamore Flow.dc.html:345` draws exactly this
+            // camera disc, and the ✕ at the top — which the header claimed *was* the design's —
+            // appears in no surviving drawing. See this file's header.
             Circle()
                 .fill(Theme.accent)
                 .frame(width: 24, height: 24)

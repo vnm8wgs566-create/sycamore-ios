@@ -6,18 +6,25 @@
 //  got there.
 //
 //  A pushed screen, as the design draws it: white header block running up under the status bar,
-//  back caret, serif title, and one bar pinned to the bottom edge. It was a detent sheet on
+//  back caret, serif title. It was a detent sheet on
 //  `ActiveSheet.player` until `PushedScreen` learned to carry a payload — a sheet inset the
 //  header behind rounded corners, and put a grabber and a swipe-down over a screen that already
 //  draws its own way out.
 //
-//  Two of `8q`'s blocks have nothing to draw from. There is no match model, so `RESULTS` and the
-//  `Record 6–2` stat cell have no source; and a pick-up carries a day and a time but no collector,
-//  so the "Mum" / "Dad" column is not there. Both are noted rather than faked.
+//  Two of `8q`'s blocks have nothing to draw from. There is no match model, so `RESULTS` has no
+//  source; and a pick-up carries a day and a time but no collector, so the "Mum" / "Dad" column is
+//  not there. Both are noted rather than faked.
 //
-//  The pinned bar reads "Move to another group", as the design writes it, and it opens
-//  `PlayerCourtPicker` — every group in the camp, venue by venue, with its fill and its coach on
-//  it.
+//  "Move to another group" is the third row of the first card, where `showApp.html:434` puts it,
+//  and it opens `PlayerCourtPicker` — every group in the camp, venue by venue, with its fill and
+//  its coach on it.
+//
+//  **It was a bar pinned to the bottom edge, and that was the app's, not the design's.** The
+//  design's kid page has nothing pinned down there at all; the only thing at the foot of that
+//  frame is the floating tab bar, which a pushed screen does not have either. Keeping both the bar
+//  and the design's row would have been one intent drawn twice, so the bar and `PlayerMoveBar`
+//  went. What survives unchanged is when it stands down — see `canMoveElsewhere`, which is asked
+//  of the same type the picker lists from.
 //
 //  It read "Move up a court" and did exactly that, on the argument recorded here that an arbitrary
 //  move belonged to `8p` because "it needs the whole ladder on screen to aim at, which this screen
@@ -29,10 +36,10 @@
 //  It then read "Move to another court" for a while, which is the divergence this file used to
 //  record as known and unclosed. A move changes which rank band a kid is in — the thing Groups
 //  titles "Group N" — and naming it after the place that band happens to play on made the two
-//  screens most often used together disagree about what the row was called. Bar, picker and
-//  VoiceOver all say group now, off `Group.number`.
+//  screens most often used together disagree about what the row was called. Row, picker and
+//  VoiceOver all say group now, off `Group.label`.
 //
-//  `AppStore.moveUpACourt` went with the first change. This bar was its only caller, and the one
+//  `AppStore.moveUpACourt` went with the first change. The bar was its only caller, and the one
 //  direction it could go is a question nothing asks now that the picker offers every group in
 //  either direction.
 //
@@ -104,7 +111,6 @@ struct PlayerScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // `#F8F9F8`, not `grouped`'s `#F6F7F9` — section 8's page is a shade warmer.
         .background(Theme.surfaceWarm)
-        .overlay(alignment: .bottom) { moveBar }
         .sheet(item: $pickupTarget) { target in
             EarlyPickupSheet(store: store, playerID: target.id) { pickupTarget = nil }
         }
@@ -292,62 +298,109 @@ struct PlayerScreen: View {
 
     // MARK: - Stats
 
-    /// One card of three cells, not three cards. `8q` draws a single `16`-radius plate with
-    /// `padding:14` and `gap:12`, where this screen had three separate `grouped` tiles.
+    /// `showApp.html:431-435` — one card, three rows: where they are, where they stand, and the
+    /// way to move them.
     ///
-    /// **There is one rank in this app, and this card used to draw two.** It read
-    /// `GROUPS #7 · GROUP 1 · ON COURT #3`, where the first numeral is `overallRank` — the camp
-    /// ladder, 1…N, the number every row on the Groups screen wears — and the third is
-    /// `courtRank`, the kid's seat inside their own group. Two hashed numerals side by side, in
-    /// identical type, and nothing on the card said which was which; the smaller one read as the
-    /// authoritative one, because a smaller number looks like a better place.
+    /// **It was three cells on a plate**, and the shape is the design's rather than a preference:
+    /// three numerals side by side read as a scoreboard, and two of the three were answers to
+    /// questions nobody was asking on this screen. A labelled row can say what its number means
+    /// in words, which is what made the two-rank confusion below possible to fix at all.
     ///
-    /// `courtRank` is also, since section 8, a number with nothing of its own to say. A group is a
-    /// *band of the ladder* — `Camp.reindex()` re-derives every court's sequence from
-    /// `overallRank`, and `GroupsLandingPlan` reads a group's order back off the ladder rather than
-    /// authoring it — so "third on this court" is entirely determined by "seventh in the camp". A
-    /// cell that competes with the rank and adds nothing to it is the cell to spend.
+    /// ── The rank stays camp-wide, and the design's does not ───────────────────────────────────
     ///
-    /// What replaces it is the thing that made `#7` mean anything: how many kids there are. The
-    /// design's own third cell is `RECORD 6–2` and there is still no match model to fill it, so the
-    /// slot goes to the ladder's denominator rather than to a dash or to a second rank.
+    /// `state1.js:142` composes `kid.rank + ' of ' + klist.length` — a place *inside the group*,
+    /// "3 of 9". This draws the camp ladder instead, and says so in the label.
+    ///
+    /// The prototype can mean either, because its groups are independent lists. This app's are
+    /// not: a group is a **band of the ladder**, `Camp.reindex()` re-derives every court's
+    /// sequence from `overallRank`, and `GroupsLandingPlan` reads a group's order back off the
+    /// ladder rather than authoring it. So "third in this group" is entirely determined by
+    /// "seventh in the camp" and carries nothing of its own — and it would disagree, in type, with
+    /// the numeral the Groups screen wears beside the same child two taps away.
+    ///
+    /// What the design *is* right about is the denominator. `#7` alone was the old first cell and
+    /// `42 kids` was the old third, which is one fact printed as two; `#7 of 42` is the row those
+    /// two cells were always trying to be.
+    ///
+    /// ── And the move came off the bottom of the screen ────────────────────────────────────────
+    ///
+    /// The third row is `Move to another group`, in `accentDark` with a caret, which is where the
+    /// design puts it. It was a bar pinned to the bottom edge — an app addition; the design's own
+    /// kid page has nothing down there but the tab bar, and this is a pushed screen with neither.
+    /// Two of them would be one intent drawn twice, so the bar is gone and this is it. It opens
+    /// the same `PlayerCourtPicker` and stands down on the same question — see `canMoveElsewhere`.
     private var statCard: some View {
-        let shape = RoundedRectangle(cornerRadius: OnTheDayTokens.card, style: .continuous)
-
-        return HStack(alignment: .top, spacing: Spacing.medium) {
-            StatCell(label: "Rank", value: "#\(player?.overallRank ?? 0)")
-            StatCell(label: "Group", value: groupNumber)
-            StatCell(label: "Camp", value: campRoll)
+        Card(radius: OnTheDayTokens.card) {
+            statRow("Group", value: groupNumber)
+            statRow("Rank in camp", value: ladderPlace)
+            moveRow
         }
-        .padding(OnTheDayTokens.cardInsetWide)
-        .background(Theme.surface, in: shape)
-        .overlay { shape.strokeBorder(Theme.hairline, lineWidth: BorderWidth.hairline) }
     }
 
-    /// The bare numeral the design shows — "1", not "Group 1", because the cell beside it is
-    /// already labelled "Group".
+    /// `padding:13px`, a `500 14.5` title and a `500 14` value in the warm body ink.
+    private func statRow(_ title: String, value: String) -> some View {
+        CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 13) {
+            Text(title)
+                .typeStyle(.onTheDayRowTitle, color: Theme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(value)
+                .typeStyle(.onTheDayValue, color: Theme.inkWarm)
+        }
+        // One utterance: "Rank in camp, #7 of 42" rather than two stops that each say half.
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The design's third row — the whole of what the pinned bar used to be.
     ///
-    /// `Group.number`, which is the same field `GroupCard`'s title and `PlayerCourtChoices`' rows
-    /// count off. This cell has always read it; the move path has now been brought up to it.
+    /// Disabled rather than hidden when there is nowhere to go, which is what the bar did and for
+    /// the reason it did it: a row that vanishes at a camp with one group is a control the reader
+    /// has to discover twice.
+    private var moveRow: some View {
+        Button {
+            courtRequest = PlayerCourtRequest(id: playerID)
+        } label: {
+            CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 13) {
+                Text("Move to another group")
+                    .typeStyle(.onTheDayRowTitle, color: Theme.accentDark)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                DisclosureChevron(size: 15)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: HitTarget.minimum)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canMoveElsewhere)
+        .opacity(canMoveElsewhere ? 1 : 0.45)
+        .accessibilityHint(canMoveElsewhere ? "" : "There is nowhere else in this camp to put them")
+    }
+
+    /// The bare numeral the design shows — "Group 1", because the row beside it is labelled
+    /// "Group" and the value carries the word the way the design writes it.
     ///
-    /// The em dash is not only the loading state any more. A kid can genuinely be at a venue with
-    /// no group — a band that refuses them, or a group that was deleted out from under them — and
-    /// this is what that looks like here. The Groups tab is where it is explained and where it can
-    /// be fixed; the bar at the foot of this screen is the other way to fix it.
+    /// `Group.number`, which is what every card on the Groups tab is titled with. `Group.label`
+    /// is the **court** — "Court 1", the place that band plays on — and this row is labelled
+    /// "Group", so drawing the label here put two different words on one line. The court is on the
+    /// breadcrumb at the top of this screen, where it belongs.
+    ///
+    /// The em dash is not only the loading state. A kid can genuinely be at a venue with no group
+    /// — a band that refuses them, or a group deleted out from under them — and this is what that
+    /// looks like here. The Groups tab is where it is explained; the row below is one way to fix
+    /// it.
     private var groupNumber: String {
         guard let groupID = player?.groupID, let group = store.group(groupID) else { return "—" }
-        return "\(group.number)"
+        return "Group \(group.number)"
     }
 
-    /// `42 kids` — what the rank beside it is out of.
+    /// `#7 of 42` — the camp ladder and what it is out of.
     ///
-    /// The camp's roll and not the venue's, because `overallRank` is camp-wide: `Camp.reindex()`
-    /// sorts the whole roster and numbers it 1…N, and a venue is a contiguous run of that list
-    /// rather than a ladder of its own. Pairing `#7` with a venue's 20 would be the same two-ranks
-    /// confusion arriving by a different door.
-    private var campRoll: String {
-        let count = store.camp?.playerCount ?? 0
-        return "\(count) kid\(count == 1 ? "" : "s")"
+    /// The em dash is not only the loading state. A kid can genuinely be unranked before the first
+    /// sort, and a `#0` would read as a place.
+    private var ladderPlace: String {
+        guard let rank = player?.overallRank, rank > 0 else { return "—" }
+        return "#\(rank) of \(store.camp?.playerCount ?? rank)"
     }
 
     // MARK: - Leaving early
@@ -486,8 +539,6 @@ struct PlayerScreen: View {
 
             dayChips
                 .padding(.top, Spacing.medium)
-                // `padding-left:45px` — under the words rather than under the glyph.
-                .padding(.leading, 22 + Spacing.medium)
         }
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -495,26 +546,38 @@ struct PlayerScreen: View {
         .overlay { shape.strokeBorder(Theme.strokeAlt, lineWidth: BorderWidth.hairline) }
     }
 
-    /// One chip per day the camp runs, wrapping rather than sharing the width.
+    /// One chip per day the camp runs, sharing the width — the same row `EarlyPickupSheet` draws,
+    /// off the same `campDays`, in the same `.day` metrics at `fillsWidth`.
     ///
-    /// `FlowLayout` and not `EarlyPickupSheet`'s equal-width `HStack`, which is the difference
-    /// between a choice and a set: exactly one pick-up day is ever lit, so those five can stretch
-    /// to fill a row, while any number of these can be on and the row has to survive five chips
-    /// indented under a label at an accessibility text size. The design wraps them too.
+    /// **It was a `FlowLayout` of `.attribute` chips, and that was wrong twice.** The design does
+    /// wrap them (`flex-wrap:wrap`) and `.attribute` is its chip to the point — but drawn on a
+    /// five-day camp the fifth chip wrapped to a second line **outside the card**, hanging below
+    /// its bottom border: `FlowLayout` reported a one-line height and then placed two. The layout
+    /// is used by three other screens and is not this file's to diagnose; what this file can say
+    /// is that it does not need to wrap at all.
     ///
-    /// `.attribute` metrics — `600 12`, `6/12`, pill — which is the design's away chip to the
-    /// point. `.day` is the pick-up sheet's preset and carries `horizontalPadding: 0`, because it
-    /// is drawn `fillsWidth` in an equal-width row; used here it would draw "Mon" with no air
-    /// either side of it.
+    /// Equal widths never do. Seven chips at the widest a week gets still share 344pt comfortably,
+    /// the row is one line at every text size the app allows, and it is the row a reader has
+    /// already met on the pick-up sheet — where exactly one is ever lit rather than any number.
+    /// That last difference is the only one left, and it is carried by the chips' own state.
+    ///
+    /// The indent went with it. `padding-left:45px` lines a wrapped block up under a label; an
+    /// equal-width row that spans the card has nothing to line up with and only loses the width.
     private var dayChips: some View {
-        FlowLayout(horizontalSpacing: Spacing.tight, verticalSpacing: Spacing.tight) {
+        HStack(spacing: Spacing.tight) {
             ForEach(campDays) { day in
                 let out = store.isAway(playerID, on: day)
 
                 Button { toggleAway(on: day) } label: {
-                    Chip(day.shortName, isSelected: out, selectedTone: .dark, metrics: .attribute)
-                        .frame(minHeight: HitTarget.minimum)
-                        .contentShape(.rect)
+                    Chip(
+                        day.shortName,
+                        isSelected: out,
+                        selectedTone: .dark,
+                        metrics: .day,
+                        fillsWidth: true
+                    )
+                    .frame(minHeight: HitTarget.minimum)
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 // "Tue" is read as a word; the day is spoken in full, and the state is a trait
@@ -582,53 +645,23 @@ struct PlayerScreen: View {
         }
     }
 
-    // MARK: - The bar
-
-    /// `8q`'s pinned bar, reading the design's "Move to another group"; see the file header for
-    /// what it used to say, and `PlayerCourtPicker` for what it opens.
-    private var moveBar: some View {
-        PlayerMoveBar(isEnabled: canMoveElsewhere) {
-            courtRequest = PlayerCourtRequest(id: playerID)
-        }
-        .padding(.horizontal, Spacing.gutter)
-        .padding(.bottom, OnTheDayTokens.barInset)
-    }
+    // MARK: - Somewhere else to go
 
     /// Whether there is anywhere else in the camp to put them.
     ///
-    /// It used to ask whether there was a group *above* this one, because the bar performed that
-    /// one move and `moveUpACourt` returns silently when there is not — a bar that answers a tap
-    /// with nothing being worse than one that says it is spent. The bar opens a list now, so the
-    /// question is whether the list would have anything in it: a kid in the top group has eleven
-    /// other groups to choose from and the bar has no business standing down for them.
+    /// It used to ask whether there was a group *above* this one, because the control performed
+    /// that one move and `moveUpACourt` returns silently when there is not — a control that
+    /// answers a tap with nothing being worse than one that says it is spent. It opens a list
+    /// now, so the question is whether the list would have anything in it: a kid in the top group
+    /// has eleven other groups to choose from and this has no business standing down for them.
     ///
     /// Asked of `PlayerCourtChoices` — the type the sheet itself lists from — rather than with a
     /// predicate of its own. A live bar over an empty picker, or a dead bar over a full one, is a
     /// disagreement neither screen could show you; one answer cannot disagree with itself. A
     /// camp still loading, or one with no groups shaped yet, comes back false through the same
-    /// route and the bar stands down and says so.
+    /// route and the row stands down and says so.
     private var canMoveElsewhere: Bool {
         PlayerCourtChoices(for: playerID, in: store.camp).hasSomewhereElse
-    }
-}
-
-// MARK: - Stat cell
-
-/// One third of `8q`'s stat card: `600 10 / +.14em / uppercase` over `600 17 / -.03em`, with the
-/// design's 5pt between them. No plate of its own — the card behind all three is the plate.
-private struct StatCell: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label)
-                .typeStyle(.onTheDayStatLabel, color: Theme.inkFaint)
-            Text(value)
-                .typeStyle(.onTheDayStatValue, color: Theme.ink)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -727,8 +760,9 @@ private struct TimelineEntry: View {
         .preferredColorScheme(.dark)
 }
 
-/// The app caps Dynamic Type at `.accessibility1`; the stat card's three cells and the pinned bar
-/// are what break first if a frame is fixed rather than floored.
+/// The app caps Dynamic Type at `.accessibility1`; the first card's rows and the away chips are
+/// what break first if a frame is fixed rather than floored — a row with a long title and a long
+/// value, and five chips indented under a label.
 #Preview("A kid — accessibility1") {
     PlayerScreen(store: .preview, playerID: SampleData.austinZ.id)
         .showsMockStatusBar()

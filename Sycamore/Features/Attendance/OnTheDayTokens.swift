@@ -161,6 +161,15 @@ extension TypeStyle {
     /// `400 14` — a field's placeholder.
     static let onTheDayPlaceholder = TypeStyle.rowValue
 
+    /// `500 14.5`, `-.01em` — the title of a row in a settings-shaped card: the three on `8q`'s
+    /// first block (`showApp.html:432-434`), where the design sets every one of them at 14.5.
+    ///
+    /// The same numbers as `onTheDayDestructive` below, and deliberately its own token rather than
+    /// a second caller of that one: they coincide because the design draws one row size, not
+    /// because a destructive row and a stat row are the same thing. Naming the ordinary case after
+    /// the destructive one would make the next person moving either of them move both.
+    static let onTheDayRowTitle = TypeStyle(size: 14.5, weight: .medium, trackingEm: -0.01)
+
     /// `500 14.5`, `-.01em` — the destructive row at the foot of a kid's page
     /// (`showApp.html:489`). Half a point above `onTheDayValue` and the design does set it there,
     /// which is the one place on this screen a half-point earns its own row: it is the only

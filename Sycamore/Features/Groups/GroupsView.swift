@@ -364,9 +364,10 @@ struct GroupsView: View {
         guard let camp = store.camp,
               let groupID = camp.smallestGroupID(in: venue.id)
         else { return nil }
-        // `Group.label`, not `"Group \(number)"`: a camp whose sport calls them lanes says lanes,
-        // and `reindex()` is what keeps that word right after a removal renumbers the rest.
-        return camp.group(groupID)?.label
+        // `Group.number`, which is what the cards below are titled with — `label` is the *court*
+        // ("Court 2"), a different fact, and an Add that promised one while the card said the
+        // other would be two names for one destination.
+        return camp.group(groupID).map { "Group \($0.number)" }
     }
 
     private func cardView(_ entry: GroupsEntry) -> some View {

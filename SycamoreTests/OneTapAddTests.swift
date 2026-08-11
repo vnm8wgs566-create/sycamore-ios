@@ -83,19 +83,22 @@ struct OneTapAddTests {
         await store.movePlayer(kid.id, toVenue: venue.id)
 
         let landed = try #require(store.camp?.player(kid.id)?.groupID)
-        let label = try #require(store.camp?.group(landed)?.label)
-        #expect(store.toast?.message == "\(kid.displayName) → \(label)")
+        let group = try #require(store.camp?.group(landed))
+        #expect(store.toast?.message == "\(kid.displayName) → Group \(group.number)")
         #expect(store.toast?.message.contains(venue.name) == false)
     }
 
-    /// And it uses the camp's own word for a court. A camp whose sport calls them lanes was told
-    /// "Group 3", because the sentence spelled the noun out rather than reading `Group.label`.
+    /// **The sentence names the band, not the court.** This test asserted the opposite and passed:
+    /// it was written believing `Group.label` was what the app calls a group, and it is not —
+    /// `label` is `"Court 1"` / `"Lane 2"`, the place the band plays on, while every card on the
+    /// Groups tab is titled `Group N` off `Group.number` (`GroupCard.title`). A toast reading
+    /// "Ellis → Court 3" under a card headed "Group 3" is one move with two names, and it shipped
+    /// for exactly as long as it took to look at the screen.
     ///
-    /// The relabelling is done by `removeGroup`, which is the only thing that rewrites a label
-    /// after the venue was shaped — `Fixture.camp` is a tennis camp, so setting `sport` afterwards
-    /// leaves three groups still called courts until something renumbers them.
-    @Test("The sentence uses the sport's word for a court")
-    func theSentenceUsesTheSportsWord() async throws {
+    /// A swim camp is still the sharp case, in the other direction: `label` would say "Lane 3"
+    /// there, and the toast must still say "Group 3", because that is what the card says.
+    @Test("The sentence names the group, which is not the court")
+    func theSentenceNamesTheGroup() async throws {
         var camp = Fixture.camp([.init("Home", courts: 3)], players: 6)
         camp.evenOut()
         camp.sport = .swim
@@ -109,9 +112,10 @@ struct OneTapAddTests {
         await store.movePlayer(kid.id, toVenue: venue.id)
 
         let landed = try #require(store.camp?.player(kid.id)?.groupID)
-        let label = try #require(store.camp?.group(landed)?.label)
-        #expect(label.hasPrefix(Sport.swim.groupNoun))
-        #expect(store.toast?.message.hasSuffix(label) == true)
+        let group = try #require(store.camp?.group(landed))
+        #expect(group.label.hasPrefix(Sport.swim.groupNoun))
+        #expect(store.toast?.message.hasSuffix("Group \(group.number)") == true)
+        #expect(store.toast?.message.contains(group.label) == false)
     }
 
     /// A move to a *named* group still says that group, which is the drag's path and the one this
@@ -124,7 +128,7 @@ struct OneTapAddTests {
 
         await store.movePlayer(kid.id, toVenue: venue.id, group: target.id)
 
-        #expect(store.toast?.message == "\(kid.displayName) → \(target.label)")
+        #expect(store.toast?.message == "\(kid.displayName) → Group \(target.number)")
     }
 }
 

@@ -24,7 +24,7 @@ struct SycamoreApp: App {
     ///
     /// `InMemoryRepository()` is still what every `#Preview` and the `AppStore.preview` family
     /// construct, so previews keep rendering without a network.
-    @State private var store = AppStore(repository: SycamoreApp.repository())
+    @State private var store = SycamoreApp.makeStore()
 
     /// Postgres, unless a debug build was launched with `-offline`.
     ///
@@ -40,6 +40,38 @@ struct SycamoreApp: App {
         if CommandLine.arguments.contains("-offline") { return InMemoryRepository() }
         #endif
         return SupabaseRepository()
+    }
+
+    /// The store the scene runs on, seeded if the launch asked for it.
+    ///
+    /// **`-sample` exists because verifying anything past sign-in costs twenty taps.** `-offline`
+    /// starts empty on purpose — it is the flag for walking the *on-ramp*, and a seeded store
+    /// would make the one flow it exists to test unreachable. But every screen past that on-ramp
+    /// needs a camp with eight kids in it before it will draw at all: Groups is locked below
+    /// eight, the kid's page needs a kid on a court, and the unassigned card needs a group removed
+    /// out from under one. Reaching any of them by hand is a camp, a venue, a roster and a
+    /// removal, every time the process restarts — which is the reason a session's worth of new UI
+    /// went unlooked-at.
+    ///
+    /// It seeds exactly what `AppStore.preview` does, which is the design's own camp: one account,
+    /// two memberships, a hundred kids over two venues. Both flags are `#if DEBUG`, so neither can
+    /// reach a shipped binary however it is launched.
+    ///
+    /// `-sample` implies `-offline`: there is nothing to seed a Postgres-backed store with from
+    /// here, and a flag that silently did nothing would be worse than one that is refused.
+    private static func makeStore() -> AppStore {
+        #if DEBUG
+        if CommandLine.arguments.contains("-sample") {
+            let store = AppStore(repository: InMemoryRepository(camps: [SampleData.uclaTennisCamp]))
+            store.auth = .signedIn(SampleData.account)
+            store.memberships = SampleData.memberships
+            store.selectedMembership = SampleData.uclaMembership
+            store.camp = SampleData.uclaTennisCamp
+            store.selectedTab = .groups
+            return store
+        }
+        #endif
+        return AppStore(repository: repository())
     }
 
     /// Cleared once the opening beat has played. Scene-scoped, so it happens on a cold launch

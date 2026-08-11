@@ -1592,11 +1592,17 @@ extension AppStore {
     /// The same rule the import toast had to learn, in the other direction: count what happened,
     /// not what was sent.
     private func landing(of playerID: Player.ID, at venueID: Venue.ID) -> String {
-        // `Group.label` rather than `"Group \(number)"`, which is what this said and what a camp
-        // whose sport calls them lanes was told anyway. The label is the model's own word for a
-        // court, kept right through a renumber by `reindex()`.
+        // **`Group.number`, not `Group.label`.** They are two different facts and this briefly
+        // said the wrong one: `label` is `"Court 1"` / `"Lane 2"` — the *place* a group plays on —
+        // while a group is a band of the ladder that every screen titles `Group N`
+        // (`GroupCard.title`). A move is about the band, so a toast reading "Ellis → Court 3"
+        // beside a card headed "Group 3" is the screen disagreeing with itself.
+        //
+        // The place still has its uses and still reads `label`: `8q`'s breadcrumb is
+        // "Sycamore · Court 1 · Nass", because that one is about where they will be standing.
         camp?.player(playerID)?.groupID
-            .flatMap { camp?.group($0)?.label }
+            .flatMap { camp?.group($0) }
+            .map { "Group \($0.number)" }
             ?? camp?.venue(venueID)?.name
             ?? "the venue"
     }
