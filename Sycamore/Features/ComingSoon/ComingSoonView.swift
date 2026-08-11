@@ -21,6 +21,19 @@
 //  specific one: 22 and 18 of padding, then 7, then 8, then 16, over a mark bleeding off the
 //  bottom-right corner.
 //
+//  ── Louder than the design draws it ──────────────────────────────────────────────────────────
+//
+//  Asked for directly: these two cards were to hold their tabs rather than apologise for them.
+//  Four numbers move and one colour, all of them noted at their sites with the design's own
+//  figure beside them — headline 24 → 29 (`title2`, an existing row), padding 22/18 → 30/20,
+//  the three internal gaps up a step, and the hairline frame replaced with `accentBorder` at
+//  1.5. Nothing else. In particular the **fill stays white**: `accentSurface` would have taken
+//  the paragraph from 4.62:1 to 4.38:1, under AA for 13.5pt, and buying presence by making the
+//  screen's only sentence harder to read is not a trade worth making.
+//
+//  The seed stays exactly as it was — 96pt at 18%, half off the corner. It was the one thing
+//  named as already right.
+//
 //  Deliberately *not* a glyph naming what is missing, which is what the app's other four
 //  hand-drawn empty states open with. `ScheduleEmptyDayHero:13-21` argues at length against the
 //  ghosted company mark as an empty-state icon, and every word of that argument holds — for an
@@ -46,13 +59,21 @@ private enum ComingSoonType {
     /// so it is nudged here rather than given a row of its own in the table.
     static let overline = TypeStyle.metaStrong.tracking(em: -0.01)
 
-    /// `400 24/1.15 Newsreader`, `-.02em` — "What is on right now".
+    /// `400 29/1.1 Newsreader`, `-.022em` — "What is on right now".
     ///
-    /// The same line `8f`, `8g` and `8h` open their empty states with, which is
-    /// `TypeStyle.profileName` (`GroupsType.lockedHeading` aliases it too). Serif, because in
-    /// this app serif means *the name of the thing you are looking at* — and this card's
-    /// headline is the closest thing the screen has to one.
-    static let headline = TypeStyle.profileName
+    /// Serif, because in this app serif means *the name of the thing you are looking at* — and
+    /// this card's headline is the closest thing the screen has to one.
+    ///
+    /// **`title2` and not the design's `profileName`, which is a deliberate departure.** The
+    /// design sets this line at 24, the same size `8f`, `8g` and `8h` open their empty states
+    /// with, and at 24 inside a white card on a white-ish page the whole screen reads as a
+    /// hedge — a tab apologising for itself. The instruction was to let these two hold their
+    /// tabs confidently, so the headline steps up to the row the app already uses for the
+    /// biggest thing on a screen that is not the wordmark: "Which camp?", "New camp".
+    ///
+    /// A token rather than `profileName.size(29)`. An invented size is a number nobody can
+    /// look up, and this one already exists with its own tracking and leading worked out.
+    static let headline = TypeStyle.title2
 
     /// `400 13.5/1.55` — the paragraph.
     ///
@@ -89,19 +110,40 @@ private enum ComingSoonMetrics {
     /// than anybody wants; hoisting all four is a change to three other files.
     static let cardRadius: CGFloat = 16
 
-    /// `padding:22px 18px` inside the card.
-    static let cardPaddingVertical: CGFloat = 22
-    static let cardPaddingHorizontal: CGFloat = 18
+    /// The design's `padding:22px 18px`, opened up.
+    ///
+    /// Every number from here down to `actionGap` is a step above the design's, and they move
+    /// together on purpose: a 29pt headline in a 22pt box is a bigger word in the same small
+    /// card, which reads as crowding rather than confidence. The room is what turns the size
+    /// into presence. The design's own figures are kept in each comment so the departure stays
+    /// legible and reversible.
+    static let cardPaddingVertical: CGFloat = 30  // design: 22
+    static let cardPaddingHorizontal: CGFloat = 20  // design: 18
 
-    /// `margin-top:7px` — the drop from "Coming soon" to the serif line.
-    static let headlineGap: CGFloat = 7
-    /// `margin-top:8px` — from that line to the paragraph.
-    static let bodyGap: CGFloat = 8
-    /// `max-width:280px` — how wide the paragraph runs before it wraps. The design caps it well
-    /// short of the card so it stays a paragraph rather than a banner.
-    static let copyWidth: CGFloat = 280
-    /// `margin-top:16px` — the drop to "Go to Groups".
-    static let actionGap: CGFloat = 16
+    /// The drop from "Coming soon" to the serif line. Design: `margin-top:7px`.
+    static let headlineGap: CGFloat = 9
+    /// From that line to the paragraph. Design: `margin-top:8px`.
+    static let bodyGap: CGFloat = 10
+    /// How wide the paragraph runs before it wraps. Design: `max-width:280px` — capped well
+    /// short of the card so it stays a paragraph rather than a banner. Widened by the same 20
+    /// the card's horizontal padding gained, so the measure is unchanged relative to the plate.
+    static let copyWidth: CGFloat = 300
+    /// The drop to "Go to Groups". Design: `margin-top:16px`.
+    static let actionGap: CGFloat = 20
+
+    /// The card's frame. The design draws `1px #EDEEF1`, the same hairline every other card in
+    /// the app carries, which is precisely why it disappears here — this card is alone on its
+    /// screen with nothing to be distinguished *from*.
+    ///
+    /// Green at 1.5 instead, which is the app's own "this one matters" frame: `accentBorder` is
+    /// what the sign-in panel and the venue plate already use, and `BorderWidth.input` is a
+    /// token rather than a number.
+    ///
+    /// The *fill* stays white, and that is not an aesthetic call. On `accentSurface` the
+    /// paragraph's `inkTertiary` measures 4.38:1, under the 4.5 AA needs for 13.5pt text; on
+    /// white it is 4.62:1. Tinting the plate would have bought presence by making the only
+    /// sentence on the screen harder to read.
+    static let borderWidth = BorderWidth.input
     /// `height:48px`. Two points over the 44pt minimum touch target before it scales at all.
     static let actionHeight: CGFloat = 48
 
@@ -216,7 +258,12 @@ struct ComingSoonView: View {
     // MARK: The card
 
     private var card: some View {
-        Card(radius: ComingSoonMetrics.cardRadius, isDivided: false) {
+        Card(
+            radius: ComingSoonMetrics.cardRadius,
+            borderColor: Theme.accentBorder,
+            borderWidth: ComingSoonMetrics.borderWidth,
+            isDivided: false
+        ) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Coming soon")
                     .typeStyle(ComingSoonType.overline, color: Theme.inkTertiary)
@@ -224,10 +271,10 @@ struct ComingSoonView: View {
 
                 Text(headline)
                     .typeStyle(ComingSoonType.headline, color: Theme.ink)
-                    // A 24pt serif line with 1.15 of leading clips its descenders the moment the
-                    // frame narrows, and "What is on right now" is two lines at the accessibility
-                    // sizes. Wrapping is the right answer; truncating the name of the screen is
-                    // not.
+                    // A 29pt serif line with 1.1 of leading clips its descenders the moment the
+                    // frame narrows, and "What is on right now" wraps to two lines at the default
+                    // size now rather than only at the accessibility ones. Wrapping is the right
+                    // answer; truncating the name of the screen is not.
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, ComingSoonMetrics.headlineGap)
                     .accessibilityAddTraits(.isHeader)
