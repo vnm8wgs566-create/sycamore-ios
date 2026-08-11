@@ -1973,6 +1973,28 @@ extension AppStore {
         }
     }
 
+    /// Takes one kid off the camp for good.
+    ///
+    /// Through `removePlayers`, which existed but was reachable only from roster reconciliation
+    /// (`AppStore+Enrolment.swift`) — so a child who left camp on Tuesday could not be taken off
+    /// the list until somebody re-imported the whole spreadsheet without them.
+    ///
+    /// **No Undo on the toast, and that is not laziness.** `removePlayers` is a delete. Putting
+    /// them back would mint a new row with a new id, at the foot of the ladder, with their court
+    /// and their rank and their note gone — which is a different child wearing the same name. The
+    /// two-tap on the row is where the caution lives instead.
+    func removePlayer(_ playerID: Player.ID) async {
+        guard let campID = camp?.id else { return }
+        let name = camp?.player(playerID)?.displayName
+
+        await perform {
+            self.camp = try await self.repository.removePlayers([playerID], campID: campID)
+        }
+
+        guard errorMessage == nil, let name else { return }
+        say("\(name) removed")
+    }
+
     func setRole(_ role: Role, forStaff staffID: StaffMember.ID) async {
         guard let campID = camp?.id else { return }
         await perform {

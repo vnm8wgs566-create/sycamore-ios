@@ -161,6 +161,13 @@ extension TypeStyle {
     /// `400 14` — a field's placeholder.
     static let onTheDayPlaceholder = TypeStyle.rowValue
 
+    /// `500 14.5`, `-.01em` — the destructive row at the foot of a kid's page
+    /// (`showApp.html:489`). Half a point above `onTheDayValue` and the design does set it there,
+    /// which is the one place on this screen a half-point earns its own row: it is the only
+    /// sentence drawn in `danger`, and it is the last thing anybody reads before deleting a child
+    /// from a camp.
+    static let onTheDayDestructive = TypeStyle(size: 14.5, weight: .medium, trackingEm: -0.01)
+
     /// `400 12.5` — a subtitle under a name, and the note under a pick-up.
     static let onTheDaySubtitle = TypeStyle.rowDetail
 

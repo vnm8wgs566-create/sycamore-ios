@@ -54,6 +54,11 @@ struct PlayerScreen: View {
     @State private var noteEdits = 0
     @FocusState private var isNoteFocused: Bool
 
+    /// Whether the remove row is asking rather than telling. See `removeRow`.
+    @State private var isArmedToRemove = false
+    /// Bumped each time it arms, so the disarm timer restarts rather than inheriting the last one.
+    @State private var armedAt = 0
+
     /// `8n`, presented from here rather than through `store.activeSheet`.
     ///
     /// This screen is itself presented, and the root that owns `activeSheet` is underneath it —
@@ -162,8 +167,63 @@ struct PlayerScreen: View {
             notesCard
                 .padding(.bottom, OnTheDayTokens.contentGap)
 
+            removeRow
+                .padding(.bottom, OnTheDayTokens.contentGap)
+
             history
         }
+    }
+
+    // MARK: - Remove
+
+    /// `showApp.html:488-491` — the last block on the design's kid page: a card whose single row
+    /// is red, arms on the first tap and removes on the second.
+    ///
+    /// A row rather than the `PrimaryButton` `VenueRemoveButton` draws, because that is what the
+    /// design puts here and because a filled destructive button at the foot of a scroll is one
+    /// thumb-reach from every other control on the screen.
+    ///
+    /// **It disarms itself after 2600ms** (`state1.js:172-178`), which the venue's control does
+    /// not — that one only disarms when it leaves the screen. A row left armed while somebody
+    /// reads the rest of the page is a deletion one stray tap away, and the timeout is the design
+    /// noticing that.
+    private var removeRow: some View {
+        Card(radius: Radius.card) {
+            Button {
+                if isArmedToRemove {
+                    Task { await store.removePlayer(playerID) }
+                } else {
+                    isArmedToRemove = true
+                    armedAt += 1
+                }
+            } label: {
+                HStack(spacing: 11) {
+                    Text(removeLabel)
+                        .typeStyle(.onTheDayDestructive, color: Theme.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    DisclosureChevron(color: Theme.dangerBorder)
+                }
+                .padding(OnTheDayTokens.cardInset)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        }
+        // A button whose *words* change is one VoiceOver re-reads on the next focus and not
+        // before, so the second tap would otherwise be a silent one.
+        .accessibilityLabel(removeLabel)
+        .accessibilityHint(isArmedToRemove ? "" : "Asks again before removing")
+        .task(id: armedAt) {
+            guard isArmedToRemove else { return }
+            try? await Task.sleep(for: .milliseconds(2600))
+            guard !Task.isCancelled else { return }
+            isArmedToRemove = false
+        }
+    }
+
+    private var removeLabel: String {
+        guard isArmedToRemove else { return "Remove from camp" }
+        return "Tap again to remove \(player?.firstName ?? "them")"
     }
 
     // MARK: - Notes
