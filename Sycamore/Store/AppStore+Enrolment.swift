@@ -72,16 +72,20 @@ extension AppStore {
         // missing the half the reader was most likely looking at.
         guard commit.inserting.isEmpty || !venues.isEmpty else { return }
 
+        // Which venues actually took somebody: the seating pass below asks only about those, and
+        // the sentence after the write counts their groups. A set rather than the grouping's keys,
+        // because two indices past the end of `venues` resolve to the same venue through the `min`
+        // and asking twice would be a wasted round trip on the one path where an import is already
+        // the slowest thing in the app.
+        //
+        // Declared outside `perform` because it is read on both sides of it.
+        var seatedVenues: Set<Venue.ID> = []
+
         await perform {
             // One round trip per venue, almost always exactly one — a sign-up list carries no
             // venue column, so everybody lands in the first. Batched rather than looped over
             // `addPlayer` because a roster is forty-odd kids and an insert either lands whole or
             // not at all; half a roster is worse than none, since nobody can tell which half.
-            // Which venues actually took somebody, so the seating pass below asks only about those.
-            // A set rather than the grouping's keys, because two indices past the end of `venues`
-            // resolve to the same venue through the `min` and asking twice would be a wasted round
-            // trip on the one path where an import is already the slowest thing in the app.
-            var arrivedAt: Set<Venue.ID> = []
 
             for (index, kids) in Dictionary(grouping: commit.inserting, by: \.venueIndex)
                 .sorted(by: { $0.key < $1.key }) {
@@ -89,7 +93,7 @@ extension AppStore {
                 camp = try await repository.importPlayers(
                     kids.map { $0.asPlayer() }, toVenue: venueID, campID: campID
                 )
-                arrivedAt.insert(venueID)
+                seatedVenues.insert(venueID)
             }
 
             // And then deal them onto courts.
@@ -109,7 +113,7 @@ extension AppStore {
             // different order on two devices would produce two different-looking camps from the
             // same file, and "why is Ellis on court 3 on your phone and court 1 on mine" is not a
             // question anybody should have to answer about an import.
-            for venueID in venues where arrivedAt.contains(venueID) {
+            for venueID in venues where seatedVenues.contains(venueID) {
                 camp = try await repository.seatArrivals(atVenue: venueID, campID: campID)
             }
 
@@ -120,6 +124,23 @@ extension AppStore {
             if !commit.removing.isEmpty {
                 camp = try await repository.removePlayers(commit.removing, campID: campID)
             }
+        }
+
+        // What actually happened, counted off the graph that came back rather than off what was
+        // asked for. A roster of forty where six are outside every band is "34 dealt · 6 to
+        // place"; saying "40 dealt" would be the screen's word against the venue's.
+        guard errorMessage == nil, !commit.inserting.isEmpty else { return }
+        let arrived = Set(commit.inserting.map(\.id))
+        let dealt = camp?.players.count { arrived.contains($0.id) && $0.groupID != nil } ?? 0
+        let waiting = commit.inserting.count - dealt
+        let groups = seatedVenues.reduce(into: 0) { total, id in
+            total += camp?.groups(in: id).count ?? 0
+        }
+
+        if waiting > 0 {
+            say("\(dealt) dealt into \(groups) \(groups == 1 ? "group" : "groups") · \(waiting) to place")
+        } else {
+            say("\(dealt) dealt into \(groups) \(groups == 1 ? "group" : "groups")")
         }
     }
 

@@ -177,6 +177,13 @@ enum Theme {
     /// App-mark glyph only.
     static let lime = Color(light: "CBFF3C", dark: "CBFF3C")
 
+    /// `#7BC5A1` — "Undo" on the black toast pill, from `design/app/regions/toast.html`.
+    ///
+    /// Fixed rather than scheme-adaptive, because the pill it sits on is fixed: the toast is
+    /// `ink` in both schemes, so a green that lightened in the dark would be lightening against
+    /// a background that never moved. It measures 7.4:1 on `#0B0B0C`.
+    static let undoGreen = Color(hex: "7BC5A1")
+
     // MARK: App mark
     //
     // From `Sycamore Logo v2.dc.html`. The mark is a sycamore samara — the winged seed that
@@ -478,6 +485,9 @@ enum Shadows {
     ///
     /// `0.2` in CSS becomes `0.35` here for `liftedRow`'s reason, spelled out at the head of this
     /// enum: SwiftUI's shadow spreads what CSS concentrates.
+    /// `0 12 36 rgba(11,11,12,.3)` — the toast pill, which floats over everything.
+    static let toast = ShadowToken(color: Color(hex: "0B0B0C").opacity(0.3), radius: 18, y: 12)
+
     static let liftedKid = ShadowToken(color: Color(hex: "1A7F55").opacity(0.35), radius: 16, y: 14)
 
     /// `0 -12px 40px rgba(11,11,12,.18)` — the cast a bottom sheet throws *up* the screen

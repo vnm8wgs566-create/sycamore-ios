@@ -608,6 +608,13 @@ final class AppStore {
     var isWorking = false
     var errorMessage: String?
 
+    /// What just happened, for the pill at the foot of the screen. See `Toast`.
+    ///
+    /// On the store rather than on a screen because the writes that deserve one mostly finish
+    /// *as their sheet closes* — "Venue added", "42 dealt into 6 groups" — so an overlay owned by
+    /// the sheet would leave with it before anybody read a word.
+    var toast: Toast?
+
     // MARK: Memo
 
     /// Last result of `groupsSections` and the inputs that produced it. Outside
@@ -1491,11 +1498,41 @@ extension AppStore {
     func movePlayer(_ playerID: Player.ID, toVenue venueID: Venue.ID, group groupID: Group.ID? = nil) async {
         guard let campID = camp?.id else { return }
         let row = moveActivity(playerID, toVenue: venueID, group: groupID)
+
+        // Read *before* the write, because undoing means putting them back where they were and
+        // afterwards there is no record of that anywhere: the graph that comes back is the new
+        // one. A kid with no court to return to gets no Undo rather than a button that would
+        // move them somewhere they have never been.
+        let wasAt = camp?.player(playerID).map { ($0.venueID, $0.groupID) }
+        let name = camp?.player(playerID)?.displayName
+
         await perform {
             self.camp = try await self.repository.movePlayer(
                 playerID, toVenue: venueID, group: groupID, campID: campID
             )
             try await self.log(row, forCamp: campID)
+        }
+
+        guard errorMessage == nil, let name else { return }
+        let landed = groupID.flatMap { camp?.group($0) }.map { "Group \($0.number)" }
+            ?? camp?.venue(venueID)?.name
+            ?? "the venue"
+        say("\(name) → \(landed)", undo: undoMove(playerID, to: wasAt, campID: campID))
+    }
+
+    /// The way back from a move, or nil when there is nowhere to go back to.
+    ///
+    /// Rebuilt as a closure over the *previous* placement rather than as a saved camp: restoring
+    /// a whole graph would also undo anything else that happened in the 3.2 seconds the pill was
+    /// up, and on a camp morning that is somebody else's write on somebody else's phone.
+    private func undoMove(
+        _ playerID: Player.ID, to previous: (Venue.ID?, Group.ID?)?, campID: Camp.ID
+    ) -> (@Sendable @MainActor () -> Void)? {
+        guard let previous, let venueID = previous.0 else { return nil }
+        let groupID = previous.1
+        return { [weak self] in
+            guard let self else { return }
+            Task { await self.movePlayer(playerID, toVenue: venueID, group: groupID) }
         }
     }
 
@@ -1816,6 +1853,9 @@ extension AppStore {
         optimistic.removeGroup(groupID, from: venueID)
         camp = optimistic
 
+        let number = rollback.group(groupID)?.number
+        let stranded = rollback.players(inGroup: groupID).count
+
         await perform {
             do {
                 let settled = try await self.repository.deleteGroup(groupID, campID: campID)
@@ -1824,6 +1864,16 @@ extension AppStore {
                 self.camp = rollback
                 throw error
             }
+        }
+
+        // No Undo. A deleted group cannot be written back — `deleteGroup` is a delete, not a
+        // soft one — so the honest button is none. The count of who is now standing about is the
+        // useful half anyway: it is the thing a coach has to act on next.
+        guard errorMessage == nil, let number else { return }
+        if stranded > 0 {
+            say("Group \(number) removed · \(stranded) \(stranded == 1 ? "kid" : "kids") to place")
+        } else {
+            say("Group \(number) removed")
         }
     }
 
@@ -1859,7 +1909,14 @@ extension AppStore {
               let created = camp?.venues.first(where: { !before.contains($0.id) })
         else { return }
 
-        await updateVenue(transform(created))
+        let shaped = transform(created)
+        await updateVenue(shaped)
+
+        // After the second write, not the first: until `updateVenue` lands, the venue is still
+        // the positionally-named "Venue 4" the repository appends, and a toast naming that would
+        // be announcing something the reader did not ask for.
+        guard errorMessage == nil else { return }
+        say("\(shaped.name) added")
     }
 
     func setRole(_ role: Role, forStaff staffID: StaffMember.ID) async {
@@ -1927,6 +1984,13 @@ extension AppStore {
 
     func present(_ sheet: ActiveSheet) { activeSheet = sheet }
     func dismissSheet() { activeSheet = nil }
+
+    /// Says what happened. Replaces whatever was up: two writes in a row means the second is
+    /// the one worth reading, and a queue would make a person wait 3.2 seconds to be told
+    /// something about a screen they have already left.
+    func say(_ message: String, undo: (@Sendable @MainActor () -> Void)? = nil) {
+        toast = Toast(message, undo: undo)
+    }
 
     /// Dismisses the error banner. `perform` also clears `errorMessage` the moment the
     /// next intent succeeds, so this is only for the user waving the banner away.

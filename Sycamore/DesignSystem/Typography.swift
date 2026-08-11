@@ -282,6 +282,12 @@ extension TypeStyle {
     static let meta = TypeStyle(size: 12, weight: .regular)
     /// `600 13` — sport chips, time pills, venue chips.
     static let chip = TypeStyle(size: 13, weight: .semibold)
+
+    /// `500 13` — the sentence in a toast. One of the two places the design still sets 500.
+    static let toastMessage = TypeStyle(size: 13, weight: .medium)
+    /// `600 13` — "Undo". A step heavier than the sentence beside it, because it is the only
+    /// thing in the pill anybody taps.
+    static let toastAction = TypeStyle(size: 13, weight: .semibold)
     /// **The label.** `600 12.5`, `-.01em`, sentence case — "Your camps", "Venues", "Still to
     /// mark · 2".
     ///

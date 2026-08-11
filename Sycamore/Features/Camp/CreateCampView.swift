@@ -540,6 +540,23 @@ struct CreateCampView: View {
     /// The tile is a plain `IntakeIconTile` again. It was a `Menu` of six emoji on the argument
     /// that screen 11's grid "is a card's worth of height and would not fit the row" — which was
     /// true, and stopped being the question the moment the row grew an editor with room for it.
+    /// The venue's own subtitle where it has one, and its shape where it does not.
+    ///
+    /// A blank string counts as no subtitle: the field writes `""` rather than nil when somebody
+    /// types into it and then clears it, and an empty second line looks like a rendering fault.
+    private func subtitleLine(_ venue: VenueShape) -> String {
+        let typed = venue.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return typed.isEmpty ? shapeSummary(venue) : typed
+    }
+
+    /// "6 courts · 6 groups", or with the band in front of it where the venue is asking.
+    private func shapeSummary(_ venue: VenueShape) -> String {
+        let courts = "\(venue.courts) \(venue.courts == 1 ? "court" : "courts")"
+        let groups = "\(venue.groups) \(venue.groups == 1 ? "group" : "groups")"
+        guard !venue.ageBand.isUnrestricted else { return "\(courts) · \(groups)" }
+        return "\(venue.ageBand.label) · \(courts) · \(groups)"
+    }
+
     /// The tile hides itself from VoiceOver because the name is read on the very next line.
     private func venueRowFace(_ venue: VenueShape) -> some View {
         HStack(spacing: Spacing.row) {
@@ -553,8 +570,15 @@ struct CreateCampView: View {
                 Text(venue.name)
                     .typeStyle(.intakeRowTitle, color: Theme.ink)
                     .lineLimit(1)
-                Text(venue.subtitle ?? "Tap to name it")
-                    .typeStyle(.intakeRowMeta, color: Theme.inkMuted)
+                // The venue's shape, not a prompt. This read "Tap to name it" under a venue that
+                // already had a name — the placeholder was written for the subtitle *field* and
+                // then used as a fallback for the whole line, so every venue without a subtitle
+                // was told to do something it had already done.
+                //
+                // What is worth saying instead is what the row cannot otherwise show: how the
+                // courts and groups it was just given differ, or its age band if it has one.
+                Text(subtitleLine(venue))
+                    .typeStyle(.intakeRowMeta, color: Theme.inkTertiary)
                     .lineLimit(1)
             }
 

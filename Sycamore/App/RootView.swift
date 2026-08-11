@@ -30,12 +30,19 @@ struct RootView: View {
     let store: AppStore
 
     var body: some View {
-        stage
+        @Bindable var store = store
+        return stage
             // Half the feature views take the store through the environment
             // (`@Environment(AppStore.self)`) and half take it as an init argument, so the
             // root supplies both.
             .environment(store)
             .tint(Theme.accent)
+            // Outside everything, including the sheets: a toast is usually raised *by* a sheet
+            // closing — "Venue added", "42 dealt into 6 groups" — so an overlay any lower would
+            // be torn down with the thing that raised it before a word of it was read. The error
+            // banner is repeated per-sheet for the opposite reason: it reports a failure that
+            // leaves the sheet standing.
+            .toasts($store.toast)
     }
 
     @ViewBuilder
