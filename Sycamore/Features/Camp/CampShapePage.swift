@@ -50,6 +50,22 @@ struct CampShapePage: View {
     /// `VenueSheet`'s add mode exists precisely for this and writes once, on Add.
     @State private var isAddingVenue = false
 
+    /// The venue whose sheet is open for editing, presented locally for the same reason
+    /// `isAddingVenue` and `isImportingRoster` are.
+    ///
+    /// **Edit went through `store.present(.venue(id))` and almost certainly never opened.** That
+    /// sets `AppStore.activeSheet`, which `MainTabView` presents — and this page only ever exists
+    /// *inside* the `campHome` sheet that same view is already presenting. Two `.sheet` modifiers
+    /// on one view cannot both be up, so the request went to a presenter underneath this screen.
+    /// The codebase records this trap in seven other files and works around it every time; this
+    /// page applied the workaround to its add sheet and its enrolment flow and left Edit on the
+    /// store.
+    ///
+    /// `item:` rather than a second `isPresented:` — two `.sheet(isPresented:)` on one view is the
+    /// arrangement that fails silently and intermittently, which is what the enrolment flow's
+    /// `fullScreenPresentation` sidesteps by being a different modifier.
+    @State private var editingVenue: VenueEditTarget?
+
     /// The design's `padding:14px 22px 18px`, less the 4pt the back disc's 44pt hit frame hangs
     /// above its 36pt circle.
     private let headerTop: CGFloat = 10
@@ -83,6 +99,11 @@ struct CampShapePage: View {
         .sheet(isPresented: $isAddingVenue) {
             VenueSheet(store: store) { isAddingVenue = false }
                 .environment(store)
+        }
+        .sheet(item: $editingVenue) { target in
+            VenueSheet(store: store, venueID: target.id) { editingVenue = nil }
+                .environment(store)
+                .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
         }
     }
 
@@ -186,7 +207,7 @@ struct CampShapePage: View {
                     Spacer(minLength: Spacing.small)
 
                     Button {
-                        store.present(.venue(venue.id))
+                        editingVenue = VenueEditTarget(id: venue.id)
                     } label: {
                         Text("Edit")
                             .typeStyle(.chipMedium, color: Theme.accent)
@@ -382,4 +403,13 @@ struct CampShapePage: View {
     return CampShapePage(store: store)
         .environment(store)
         .showsMockStatusBar()
+}
+
+/// The venue whose sheet is open, for `.sheet(item:)`.
+///
+/// A wrapper rather than the id itself because `Venue.ID` is a `UUID`, which is the same reason
+/// `PickupTarget` exists — and `item:` rather than a second `isPresented:` because two
+/// `.sheet(isPresented:)` on one view is the arrangement that fails silently.
+struct VenueEditTarget: Identifiable, Hashable, Sendable {
+    let id: Venue.ID
 }

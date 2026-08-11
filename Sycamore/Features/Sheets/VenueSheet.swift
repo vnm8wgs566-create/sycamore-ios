@@ -81,14 +81,19 @@ struct VenueSheet: View {
     private let openingCoaches: Set<StaffMember.ID>
 
     /// The venue as it stands, for editing.
+    ///
+    /// `onClose` is optional because this sheet is raised two ways. From a tab it goes through
+    /// `store.activeSheet`, and `close()` clears that slot. From `CampShapePage` it cannot —
+    /// that page lives *inside* the `campHome` sheet the same view presents, so it raises this
+    /// one locally and hands over the way to put its own state back.
     @MainActor
-    init(store: AppStore, venueID: Venue.ID) {
+    init(store: AppStore, venueID: Venue.ID, onClose: (() -> Void)? = nil) {
         let venue = store.venue(venueID) ?? .placeholder
         let standing = Set((store.camp?.coaches(in: venueID) ?? []).map(\.id))
 
         self.store = store
         self.venueID = venueID
-        self.onClose = nil
+        self.onClose = onClose
         self.openingGroupCount = venue.groupCount
         self.openingCoaches = standing
         _draft = State(initialValue: venue)
