@@ -75,8 +75,11 @@ struct SettingsRow: View {
     private var row: some View {
         CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 13) {
             if let icon {
+                // `IconSize.row` — 17, which is what the design sets every one of these at:
+                // the lock on Invite code, the pencil on Name & season, the swap on Switch
+                // camp, the map pin on Venues, the users-three on Staff. This drew 19.
                 Image(systemName: icon)
-                    .font(.system(size: 19, weight: .regular))
+                    .font(.system(size: IconSize.row, weight: .regular))
                     .foregroundStyle(iconColor)
                     // The design's Phosphor glyphs are all one width; SF Symbols are not, so the
                     // column is pinned to keep every title on the same left edge.
@@ -107,7 +110,7 @@ struct SettingsRow: View {
     private var accessoryView: some View {
         switch accessory {
         case .chevron:
-            DisclosureChevron(size: 15)
+            DisclosureChevron()
         case .lock:
             DisclosureChevron(systemName: "lock", size: 15)
         case .value(let text):
@@ -125,7 +128,7 @@ struct SettingsRow: View {
             SycamoreToggle(isOn: isOn, label: title)
         case .glyph(let name):
             Image(systemName: name)
-                .font(.system(size: 17, weight: .regular))
+                .font(.system(size: IconSize.row, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
         case .plain:
             EmptyView()

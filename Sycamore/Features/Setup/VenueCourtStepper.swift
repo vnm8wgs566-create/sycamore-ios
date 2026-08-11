@@ -106,7 +106,7 @@ struct VenueCourtStepper: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: IconSize.inline, weight: .medium))
                 .foregroundStyle(enabled ? tint : Theme.inkGhost)
                 .frame(width: buttonSize, height: buttonSize)
                 .background(

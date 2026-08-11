@@ -61,7 +61,7 @@ struct ScheduleShapesCard: View {
 
                 Spacer(minLength: Spacing.small)
 
-                DisclosureChevron(size: 15)
+                DisclosureChevron()
                     .accessibilityHidden(true)
             }
             .frame(minHeight: HitTarget.minimum)

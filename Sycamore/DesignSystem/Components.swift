@@ -49,7 +49,11 @@ struct SheetGrabber: View {
 /// The caret that closes almost every row in the design.
 struct DisclosureChevron: View {
     var systemName: String = "chevron.right"
-    var size: CGFloat = 16
+    /// `IconSize.caret` — 15, which is what the design draws and what **eight of this view's
+    /// fourteen callers were already passing by hand**. The default was 16, so the six that did
+    /// not override it drew a caret a point larger than every other row in the app, and the
+    /// component was being corrected rather than used. Now nobody passes it.
+    var size: CGFloat = IconSize.caret
     var color: Color = Theme.chevron
 
     var body: some View {
@@ -1435,7 +1439,7 @@ struct SearchField: View {
                         Text("Coach · Sycamore, Court 3").typeStyle(.metaStrong, color: Theme.inkMuted)
                     }
                     Spacer(minLength: 0)
-                    DisclosureChevron(size: 17)
+                    DisclosureChevron()
                 }
                 CardRow {
                     InitialsAvatar("NA", size: 36, tone: .dark)

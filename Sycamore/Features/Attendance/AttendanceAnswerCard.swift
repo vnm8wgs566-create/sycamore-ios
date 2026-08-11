@@ -128,7 +128,7 @@ struct AttendanceAnswerCard: View {
                     .typeStyle(.metaStrong, color: Theme.accent)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                DisclosureChevron(size: 14)
+                DisclosureChevron(size: IconSize.inline)
                     .accessibilityHidden(true)
             }
             // No padding of its own: the 44pt hit frame already supplies the design's air above

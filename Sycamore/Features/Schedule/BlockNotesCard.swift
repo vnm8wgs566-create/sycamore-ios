@@ -45,7 +45,7 @@ struct BlockNotesCard: View {
 
                         Spacer(minLength: Spacing.small)
 
-                        DisclosureChevron(size: 15)
+                        DisclosureChevron()
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .accessibilityHidden(true)
                     }

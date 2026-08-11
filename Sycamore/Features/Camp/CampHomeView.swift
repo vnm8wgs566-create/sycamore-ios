@@ -577,7 +577,7 @@ struct CampSummaryRow: View {
         CardRow(spacing: Spacing.row, horizontalPadding: 13, verticalPadding: 13) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 19, weight: .regular))
+                    .font(.system(size: IconSize.row, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
                     // The design's Phosphor glyphs are all one width and SF Symbols are not, so
                     // the column is pinned — the same 21 `SettingsRow` pins.
@@ -603,7 +603,7 @@ struct CampSummaryRow: View {
             // A caret only where there is somewhere to go. A row that ends in one and does
             // nothing is a promise the screen does not keep.
             if action != nil {
-                DisclosureChevron(size: 15)
+                DisclosureChevron()
                     .accessibilityHidden(true)
             }
         }

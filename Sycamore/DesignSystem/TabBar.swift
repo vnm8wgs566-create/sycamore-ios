@@ -58,8 +58,10 @@ struct FloatingTabBar: View {
                 // `selectedSymbol` already names the outline glyph for the two symbols with no
                 // filled variant (list.number, slider.horizontal.3), so the selected item just
                 // stops being hollow rather than changing shape.
+                // `font-size:19px` (`showApp.html:499`). It was 20 — off the design's scale by
+                // a point on the one control four screens share.
                 Image(systemName: isSelected ? tab.selectedSymbol : tab.symbol)
-                    .font(.system(size: 20, weight: .regular))
+                    .font(.system(size: IconSize.tab, weight: .regular))
 
                 if isSelected {
                     Text(tab.title)

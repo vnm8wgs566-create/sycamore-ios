@@ -41,7 +41,7 @@ struct AccentPill: View {
         HStack(spacing: Spacing.tight) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: IconSize.inline, weight: .regular))
                     .foregroundStyle(Theme.accent)
             }
             Text(title)

@@ -267,7 +267,7 @@ struct CampPickerView: View {
             if isCurrent {
                 openPill
             } else {
-                DisclosureChevron(size: 15)
+                DisclosureChevron()
                     .accessibilityHidden(true)
             }
         }

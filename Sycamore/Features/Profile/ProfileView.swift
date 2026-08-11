@@ -685,7 +685,7 @@ private struct AvatarWell: View {
                 .overlay { Circle().strokeBorder(Theme.surface, lineWidth: BorderWidth.avatarRing) }
                 .overlay {
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: IconSize.inChip))
                         .foregroundStyle(Theme.onAccent)
                 }
                 .offset(x: 2, y: 2)

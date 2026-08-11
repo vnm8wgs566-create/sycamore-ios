@@ -72,7 +72,7 @@ struct StaffSheet: View {
             Button(action: call) {
                 HStack(spacing: Spacing.row) {
                     Image(systemName: "phone.fill")
-                        .font(.system(size: 19))
+                        .font(.system(size: IconSize.row))
                         .foregroundStyle(Theme.accent)
 
                     VStack(alignment: .leading, spacing: 1) {

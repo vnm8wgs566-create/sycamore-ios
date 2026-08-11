@@ -646,7 +646,7 @@ struct VenueInviteRow: View {
 
         return HStack(spacing: 11) {
             Image(systemName: "lock")
-                .font(.system(size: 17, weight: .regular))
+                .font(.system(size: IconSize.row, weight: .regular))
                 .foregroundStyle(Theme.accent)
                 // Decorative: the line beside it says the same thing in words.
                 .accessibilityHidden(true)

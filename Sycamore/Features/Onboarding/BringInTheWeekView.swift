@@ -661,7 +661,7 @@ struct BringInTheWeekView: View {
 
             Spacer(minLength: 0)
 
-            DisclosureChevron(size: 15)
+            DisclosureChevron()
                 .accessibilityHidden(true)
         }
         // Both rows draw past 44 on their own, so this changes nothing today. It is here in this

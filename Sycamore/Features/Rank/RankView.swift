@@ -231,8 +231,11 @@ struct RankView: View {
     }
 
     private func handle(for row: PlayerRow, isLifted: Bool) -> some View {
+        // The same handle Groups draws, at the same size. Rank set it two points larger, so one
+        // control appeared at two weights on two screens a tap apart — `GroupsMetrics.handleGlyph`
+        // is 17 and has been the whole time.
         Image(systemName: "line.3.horizontal")
-            .font(.system(size: 19, weight: .regular))
+            .font(.system(size: IconSize.row, weight: .regular))
             .foregroundStyle(isLifted ? Theme.accent : Theme.chevron)
             .frame(width: 22, height: 38)
             // Drawn size unchanged; the outer frame only carries the tap.

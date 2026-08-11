@@ -476,6 +476,66 @@ enum Spacing {
     // literal with extra steps. The seventeen sites that want it keep writing it out.
 }
 
+// MARK: - Icon sizes
+
+/// The point sizes an SF Symbol is set at, named for what the design draws at each.
+///
+/// ── Why this exists ───────────────────────────────────────────────────────────────────────────
+///
+/// It did not, and the app had no icon scale at all: counted across the tree, glyphs were set at
+/// 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 and 23 — every integer in the range, chosen a
+/// call site at a time. Two rows on the same card could differ by a point for no reason anybody
+/// could name, and `DisclosureChevron`'s default was one size while eight of its fourteen callers
+/// passed a different one by hand, which is a component being corrected rather than used.
+///
+/// ── Where the numbers come from ───────────────────────────────────────────────────────────────
+///
+/// Counted off the Phosphor glyphs in `design/app/regions/`, all 91 of them: **15** (29 uses),
+/// **13** (15), **17** (14), 14 (9), 18 (7), 16 (6), **11** (5), 21 (3), 19 (2), 12 (1). The five
+/// bolded are the scale; the rest are one-off in-betweens, and none of them is drawn often enough
+/// to be a step.
+///
+/// Each step below is named for the *job* the design gives it rather than for its number, so a
+/// call site says what it is drawing. Where the design uses one size for two jobs — 15 is both a
+/// stepper's ± and a row's caret — there are two names, because those two move independently the
+/// first time anybody touches either.
+enum IconSize {
+
+    /// `11` — a mark **inside** a chip or pill: the ✕ that dismisses one, a caret set into a
+    /// capsule. The smallest the design goes, and only ever inside something else.
+    static let inChip: CGFloat = 11
+
+    /// `13` — a mark set inline with meta text: a pin before a venue name, an arrow between two
+    /// numbers, the ± on a compact stepper.
+    static let inline: CGFloat = 13
+
+    /// `15` — the caret at the end of a row. The design's commonest glyph and the one this app
+    /// most often got wrong: `DisclosureChevron` defaulted to 16 while most callers passed 15.
+    static let caret: CGFloat = 15
+
+    /// `15` — the ± on a stepper, and the leading glyph of a note. Same number as `caret` and
+    /// deliberately its own name: a stepper's controls and a row's affordance are two different
+    /// things that happen to be set at one size today.
+    static let control: CGFloat = 15
+
+    /// `17` — a glyph on a row or a 34pt tile: the lock, pencil, swap, map pin and users-three
+    /// the design sets across the camp page and every settings-shaped card.
+    static let row: CGFloat = 17
+
+    /// `19` — a glyph on a 40pt plate, which the design draws once: the file-arrow-up on the
+    /// import drop zone. Bigger than `row` because the plate behind it is.
+    static let plate: CGFloat = 19
+
+    /// `19` — a tab bar's icon (`showApp.html:499`). The same number as `plate` and its own name
+    /// for the usual reason: a tab icon and a glyph on a drop zone have nothing to do with each
+    /// other, and the tab bar is the one control in the app that four screens share.
+    static let tab: CGFloat = 19
+
+    /// `21` — a selection check, and the largest glyph the design sets. It is the only mark that
+    /// has to be readable at a glance from the far side of a list.
+    static let check: CGFloat = 21
+}
+
 // MARK: - Border widths
 
 enum BorderWidth {

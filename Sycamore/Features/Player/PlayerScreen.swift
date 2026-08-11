@@ -365,7 +365,7 @@ struct PlayerScreen: View {
                     .typeStyle(.onTheDayRowTitle, color: Theme.accentDark)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                DisclosureChevron(size: 15)
+                DisclosureChevron()
                     .accessibilityHidden(true)
             }
             .frame(minHeight: HitTarget.minimum)
@@ -441,7 +441,7 @@ struct PlayerScreen: View {
     private func pickupRow(_ record: Attendance) -> some View {
         HStack(spacing: Spacing.row) {
             Image(systemName: "clock")
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: IconSize.row, weight: .regular))
                 .foregroundStyle(OnTheDayTokens.warning)
                 .accessibilityHidden(true)
 
@@ -514,7 +514,7 @@ struct PlayerScreen: View {
                 // `person.badge.minus`, which is the *list's* answer to the same question; this is
                 // the one place the state is set rather than reported.
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20, weight: .regular))
+                    .font(.system(size: IconSize.row, weight: .regular))
                     .foregroundStyle(Theme.inkMuted)
                     .frame(width: 22)
                     .accessibilityHidden(true)
@@ -679,7 +679,7 @@ private struct ActionRow: View {
         Button(action: action) {
             HStack(spacing: Spacing.medium) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .regular))
+                    .font(.system(size: IconSize.row, weight: .regular))
                     .foregroundStyle(Theme.ink)
                     .frame(width: 22)
 
@@ -693,7 +693,7 @@ private struct ActionRow: View {
                 }
 
                 Spacer(minLength: 0)
-                DisclosureChevron(size: 15)
+                DisclosureChevron()
             }
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)

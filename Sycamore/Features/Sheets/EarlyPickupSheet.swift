@@ -92,7 +92,7 @@ struct EarlyPickupSheet: View {
 
             Button { remove(record.day) } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.system(size: IconSize.inline, weight: .regular))
                     .foregroundStyle(Theme.chevron)
                     .frame(width: HitTarget.minimum, height: HitTarget.minimum)
                     .contentShape(.rect)
