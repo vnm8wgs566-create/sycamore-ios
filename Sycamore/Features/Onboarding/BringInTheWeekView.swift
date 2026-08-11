@@ -58,6 +58,30 @@
 //     same promise on the card below for the same reason, and this is that decision reaching the
 //     line above it.
 //
+//  ---------------------------------------------------------------------------------------------
+//  AND THE LIST THAT IS NOT A FILE
+//  ---------------------------------------------------------------------------------------------
+//
+//  `sheet-shImport.html:6-10` puts a paste box under the picker, and it is now here: a hairline
+//  divider reading "or paste the list", a box, and a button that counts what is in it before it is
+//  pressed. `pasteBox` carries the argument for why a second way in earns its place, and
+//  `IntakeFile.parse(pasted:)` carries the only rule that differs from a file's — a paste may go
+//  without a header row, because the box states the order and an office never was asked.
+//
+//  Two things in that region of the design are still deliberately not drawn:
+//
+//  1. **"Use the sample roster · 42 kids"** (`state1.js:502-522`). The app does not invent kids —
+//     `IntakeRoster.swift` says so in as many words about `IntakeImport.preview`, which is the
+//     nearest thing and is preview-only. Forty-two fictional children written into a real camp is
+//     a demo affordance, and the paste box is the honest version of what it was for: a way to get
+//     a roster in without leaving the app.
+//  2. **The 78% bottom sheet** (`anySheet.html:2-6`). The design commits a file the moment it is
+//     chosen, so its sheet holds one screen; the app inserts a review step on purpose, and that
+//     screen is a roster of forty with sections and Fix buttons. `presentationDetents` applies to
+//     everything pushed inside the sheet, so adopting the chrome would put the review in a box
+//     three-quarters of a phone tall. The chrome is the design's answer to a flow this app
+//     deliberately does not have.
+//
 //  What survives underneath is "What a good file looks like". The frame does not draw it — the
 //  frame is one screen tall with `overflow:hidden`, and it spends its height on the on-ramp — but
 //  the card is the only place the **header-row requirement** is stated before a file is chosen,
@@ -108,7 +132,22 @@ struct BringInTheWeekView: View {
     let venueName: String
     /// The grey line under "Players". Composed by the caller — see the header.
     let subtitle: String
+    /// Where these kids are about to go, in one sentence: `Everyone is dealt into Sycamore's 6
+    /// groups, evenly — rank them after.`
+    ///
+    /// `state1.js:337` composes it from the venue on screen. Composed by the caller here for the
+    /// same reason `subtitle` is: onboarding may be shaping several venues at once and an import is
+    /// routed across them by age band, so "Sycamore's 6 groups" is true of exactly one arrangement
+    /// and the caller is the only thing that knows whether it is in it.
+    ///
+    /// It is the one line that says where these forty names are going, and until it existed this
+    /// screen said the opposite — "Everyone lands unranked" was read, correctly, as a claim that
+    /// nobody would be placed.
+    let dealNote: String
     let exit: Exit
+    /// A roster, however it arrived — a file the reader chose or a list they pasted. One closure
+    /// rather than two, because what happens next is the same review screen either way and
+    /// `IntakeImport.fileName` already carries which of the two it was.
     let onImported: (IntakeImport) -> Void
     let onAddByHand: () -> Void
     let onExit: () -> Void
@@ -118,6 +157,17 @@ struct BringInTheWeekView: View {
     /// banner over the screen — the fix is to choose a different file, and the button that does
     /// that is right there.
     @State private var readError: String?
+    /// What is in the paste box. Held here rather than by the caller: nothing has been parsed yet,
+    /// so there is nothing for a flow to hold, and a half-typed list is not state anything above
+    /// this screen has a use for.
+    @State private var pasted = ""
+    /// Why the pasted list did not come in. A separate line from `readError` on purpose — they sit
+    /// under different controls, and one stale message under the wrong box is the failure both are
+    /// arranged to avoid.
+    @State private var pasteError: String?
+    /// `FormTextArea`'s Return types a newline, so this screen owes it a way out. See
+    /// `keyboardDoneBar`, applied on `content` below.
+    @FocusState private var isTyping: Bool
 
     /// The cap on the sentence inside the plate, scaled for the reason `VenueEmptyState:55-57`
     /// gives for its own — a fixed 270 forces four words to the line at the largest sizes.
@@ -189,11 +239,10 @@ struct BringInTheWeekView: View {
                 dropPlate
 
                 if let readError {
-                    Text(readError)
-                        .typeStyle(.intakeNote, color: Theme.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 4)
+                    refusal(readError)
                 }
+
+                pasteBox
 
                 fileNote
                 actionsCard
@@ -214,6 +263,19 @@ struct BringInTheWeekView: View {
             .padding(.top, Spacing.sheet)
             .padding(.bottom, Spacing.hero)
         }
+        // The paste box's Return types a newline, so this is the only way the keyboard goes down
+        // without a drag — and the button that acts on what was typed is underneath it.
+        .scrollDismissesKeyboard(.interactively)
+        .keyboardDoneBar { isTyping = false }
+    }
+
+    /// A sentence about why something did not come in. Two controls raise one of these and they
+    /// look the same, because they are the same kind of news.
+    private func refusal(_ message: String) -> some View {
+        Text(message)
+            .typeStyle(.intakeNote, color: Theme.danger)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 4)
     }
 
     // MARK: The file
@@ -252,7 +314,12 @@ struct BringInTheWeekView: View {
             // as a claim about courts — and was the sentence a reader quoted back when an import
             // left every kid in one pile. Ranking is still something the camp does afterwards on
             // Rank; what changed is that the groups are no longer empty while it waits.
-            Text("We read names, ages and genders. Everyone is dealt into groups, unranked.")
+            //
+            // The second half is the caller's now, and it names the venue and its group count —
+            // `state1.js:337`'s `importHint`. In the plate rather than under the paste box the
+            // design puts it, because both routes end in the same deal and a sentence that only
+            // appears beside one of them is a fact half the readers never meet.
+            Text("We read names, ages and genders. \(dealNote)")
                 .typeStyle(.emptyBody, color: Theme.inkTertiary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -372,6 +439,106 @@ struct BringInTheWeekView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Spacing.tight)
+    }
+
+    // MARK: The list, pasted
+
+    /// `sheet-shImport.html:6-10` — a hairline divider reading "or paste the list", a box, and a
+    /// button that counts what is in it.
+    ///
+    /// ── Why a second way in at all ────────────────────────────────────────────────────────────
+    ///
+    /// The file picker is the right primary and stays it: a camp of forty arrives as a
+    /// spreadsheet. But a great many rosters arrive as *text* — the body of an email, a message
+    /// from the front desk, six late sign-ups a parent sent overnight — and every one of those had
+    /// to be saved into a file first, on a phone, standing on a court at ten to nine. The document
+    /// browser is not a route to something that is already on the clipboard.
+    ///
+    /// It is also the only way to get a roster in at all without leaving the app, which makes this
+    /// the one path a simulator or a fresh install can walk end to end.
+    ///
+    /// ── The count is the label, not a caption ─────────────────────────────────────────────────
+    ///
+    /// `pasteCta` (`state1.js:338`) reads "Add 12 kids" and dims to `.45` at zero. That is worth
+    /// transcribing exactly: it is the whole of the feedback on this control. A person pasting
+    /// twelve lines and reading "Add 12 kids" has had their list parsed in front of them, and one
+    /// reading "Add 11 kids" has been told about the blank line at the bottom before they commit to
+    /// anything. `IntakeFile.pastedCount` is what counts, on every keystroke, swallowing its own
+    /// refusals — see it for why.
+    @ViewBuilder
+    private var pasteBox: some View {
+        let count = IntakeFile.pastedCount(pasted)
+
+        divider("or paste the list")
+
+        FormTextArea(
+            // Two lines, which is what makes the format legible without a sentence explaining it.
+            // The order shown here *is* the contract `IntakeFile.parse(pasted:)` reads by when the
+            // paste carries no header of its own — see there for why a paste may go without one
+            // and a file may not.
+            "Serene Chu, 11, F\nLiam Prior, 12, M",
+            text: $pasted,
+            label: "Paste the list",
+            // `1.5px #E4E5E9` at radius 15 with `13/15` — the design's box, already a preset.
+            metrics: .sheetBoxLarge,
+            type: .intakeFieldValue,
+            promptType: .intakeFieldValue,
+            valueColor: Theme.ink,
+            // `height:96px` is about four lines at 13.5. A range rather than a fixed height,
+            // because a `TextField(axis:)` grows and a fixed 96 would scroll a list of forty inside
+            // a box the size of a stamp; the lower bound is the shape the design draws when empty.
+            lineLimit: 4...12,
+            focus: $isTyping
+        )
+
+        if let pasteError {
+            refusal(pasteError)
+        }
+
+        PrimaryButton(
+            count > 0 ? "Add \(count) kid\(count == 1 ? "" : "s")" : "Add kids",
+            height: ctaHeight,
+            radius: Radius.input,
+            font: .intakeButton,
+            action: addPasted
+        )
+        // `opacity:{{ pasteOp }}` — `.45` with nothing in the box. Disabled as well as dimmed,
+        // because the design's dimmed CTA is a no-op click and a button that looks pressable and
+        // is not is worse than one that says so to VoiceOver too.
+        .opacity(count > 0 ? 1 : 0.45)
+        .disabled(count == 0)
+    }
+
+    /// `flex:1` hairline, a word, `flex:1` hairline.
+    private func divider(_ label: String) -> some View {
+        HStack(spacing: Spacing.small) {
+            Hairline(color: Theme.hairline)
+            Text(label)
+                .typeStyle(.intakeFootnote, color: Theme.inkFaint)
+            Hairline(color: Theme.hairline)
+        }
+        // `margin:13px 0 9px` on a column that already carries 12 between its children.
+        .padding(.top, 1)
+        // The rules are decoration around a word; read as three elements they are two silences.
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Parses what is in the box for real, and hands it on.
+    ///
+    /// The button is already disabled at zero, so the throw here is the *other* refusals —
+    /// `nothingToImport` for a box of blank lines, which `pastedCount` also returns 0 for and which
+    /// this is the only thing that can put a sentence to.
+    private func addPasted() {
+        pasteError = nil
+        do {
+            onImported(try IntakeFile.parse(pasted: pasted))
+            // Cleared on success only. A refusal leaves the text exactly where the reader can fix
+            // it, which is the same rule `readError` follows one control up.
+            pasted = ""
+            isTyping = false
+        } catch {
+            pasteError = error.localizedDescription
+        }
     }
 
     /// Both routes into the picker, which are the same route.
@@ -495,6 +662,7 @@ struct BringInTheWeekView: View {
     BringInTheWeekView(
         venueName: "Venue 1",
         subtitle: "Nobody added yet · Venue 1",
+        dealNote: "Everyone is dealt into Venue 1's 6 groups, evenly — rank them after.",
         exit: .openCamp,
         onImported: { _ in },
         onAddByHand: {},
@@ -509,6 +677,7 @@ struct BringInTheWeekView: View {
     BringInTheWeekView(
         venueName: "Sycamore",
         subtitle: "2 added · 76 kids · Sycamore",
+        dealNote: "Everyone is dealt into Sycamore's 6 groups, evenly — rank them after.",
         exit: .done,
         onImported: { _ in },
         onAddByHand: {},

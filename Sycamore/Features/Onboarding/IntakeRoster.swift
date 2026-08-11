@@ -325,6 +325,69 @@ enum IntakeFile {
         return IntakeImport(fileName: fileName, players: players)
     }
 
+    /// What `IntakeImport.subtitle` calls a roster nobody chose a file for.
+    ///
+    /// A name rather than an empty string, because that field is printed — "From the pasted list ·
+    /// 2 need a detail" — and it is the only thing on the review screen that says where these
+    /// forty names came from.
+    static let pastedName = "the pasted list"
+
+    /// The order a pasted line is read in when it does not say. See `parse(pasted:)`.
+    ///
+    /// Spelled as column names rather than as three indices so it goes through the same
+    /// `Columns(header:)` every file does: a paste and a file then agree about what "Gender" means,
+    /// and there is one place to be wrong instead of two. `Name` rather than `First`/`Last`, which
+    /// is what makes "Serene Chu" split on the space — the box's placeholder writes it that way and
+    /// `Columns.player(from:)` has read a single name column since it was written.
+    private static let pastedHeader = ["Name", "Age", "Gender"]
+
+    /// A roster somebody typed or pasted in, rather than a file they chose.
+    ///
+    /// ## Why this may go without a header row when a file may not
+    ///
+    /// `parse(rows:named:)` refuses a header-less file, and the argument there is not fussiness:
+    /// there is no signal that tells `Last, First` from `First, Last`, so a positional read is a
+    /// coin toss that imports a whole camp backwards and reads cleanly while doing it.
+    ///
+    /// A paste box is the one case where that argument does not hold, because the box **states the
+    /// order before anything is typed**. The placeholder is `Serene Chu, 11, F`, which is a
+    /// contract the reader has already agreed to by typing under it — where a file arrives from an
+    /// office that was never asked. So the order is declared here, once, and the same `Columns`
+    /// engine reads it.
+    ///
+    /// A pasted block that *does* carry its header — somebody selecting a spreadsheet range
+    /// including row 1 — is read by that header instead, so the common accident still works.
+    ///
+    /// The residual case is a first line that reads as column names and is really a kid: `Ann
+    /// Nameson, F` is accepted as a header, because the cell contains "name" and nothing in it is a
+    /// number. It is the same arbiter the file path uses rather than a second one, and the mistake
+    /// is visible — the review screen leads with the count, and a roster one short of what was
+    /// pasted is the first thing anybody checks.
+    static func parse(pasted text: String) throws -> IntakeImport {
+        let lines = text.split(whereSeparator: \.isNewline)
+        let separator = separator(in: lines)
+        var rows = lines
+            .map { fields(in: String($0), separator: separator) }
+            .filter { row in row.contains { !$0.isEmpty } }
+
+        guard !rows.isEmpty else { throw ReadError.nothingToImport }
+        if Columns(header: rows[0]) == nil {
+            rows.insert(pastedHeader, at: 0)
+        }
+        return try parse(rows: rows, named: pastedName)
+    }
+
+    /// How many kids a paste would bring in, for the button that has to say so before it is
+    /// pressed.
+    ///
+    /// Swallows the throw on purpose: this runs on **every keystroke** in the box, where a half-
+    /// typed line is the normal state rather than an error, and a message under a field somebody
+    /// is still typing into cannot be acted on. The refusals still happen — `parse(pasted:)` is
+    /// what the button calls — and by then there is something to say them about.
+    static func pastedCount(_ text: String) -> Int {
+        (try? parse(pasted: text))?.players.count ?? 0
+    }
+
     /// Which character this file puts between its columns.
     ///
     /// Sniffed rather than assumed, because the picker on `8c` already accepts more than one

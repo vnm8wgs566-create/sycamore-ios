@@ -157,6 +157,45 @@ extension AppStore {
         } else {
             say("\(dealt) dealt into \(groups) \(groups == 1 ? "group" : "groups")")
         }
+
+        land(on: arrived)
+    }
+
+    /// Puts the reader in front of the kids that just arrived.
+    ///
+    /// `doImport` ends `tab: 'groups', venueSel: venue.id, page: null` (`state1.js:567`), and the
+    /// app ended nowhere in particular: onboarding was torn down by `store.camp` landing and
+    /// `RootView` decided, while `EnrolmentFlowView` called `onClose()` and left whichever screen
+    /// had presented it — Groups, Setup, Camp, Shape or Tournament — showing whatever it had been
+    /// showing. Forty kids were written and the screen looked exactly as it had a moment before,
+    /// which on the one write that changes the most is the worst possible answer.
+    ///
+    /// **Here rather than in the two flows**, because where to land is a consequence of the write
+    /// and not of which screen asked for it — and because the two flows would otherwise each need
+    /// to work out which venue took the most kids, from a graph only this method has both sides of.
+    ///
+    /// **The venue that took the most of them**, ties falling to the camp's own venue order. The
+    /// prototype has one venue selected and no such question; a roster here is routed by age band
+    /// and can land at three at once, and the most useful of the three is the one holding the most
+    /// new names. Venue order breaks the tie so two devices importing the same file land the same
+    /// way, which is the same reason `applyRoster` seats in venue order rather than in a set's.
+    ///
+    /// `venueFilter` and not `chosenVenueID`: Groups reads its venue off the chip row
+    /// (`GroupsView.selectedVenue`), and `chosenVenueID` is section 8's read scope. Writing the one
+    /// that is not read would be a line that looks like it works.
+    private func land(on arrived: [Player]) {
+        guard let camp else { return }
+        var counts: [Venue.ID: Int] = [:]
+        for player in arrived {
+            guard let venueID = player.venueID else { continue }
+            counts[venueID, default: 0] += 1
+        }
+        guard let busiest = camp.orderedVenues.map(\.id).max(by: {
+            counts[$0, default: 0] < counts[$1, default: 0]
+        }), counts[busiest, default: 0] > 0 else { return }
+
+        selectedTab = .groups
+        venueFilter = .venue(busiest)
     }
 
     // MARK: - One kid

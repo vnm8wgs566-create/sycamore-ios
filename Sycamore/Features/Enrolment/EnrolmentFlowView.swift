@@ -99,6 +99,7 @@ struct EnrolmentFlowView: View {
             BringInTheWeekView(
                 venueName: venue,
                 subtitle: subtitle(at: venue),
+                dealNote: dealNote(at: venue),
                 exit: .done,
                 // Only the file is set. `rebuild` reconciles it, seeds the ticks and pushes the
                 // review, in that order — see it for why the push cannot happen here.
@@ -184,6 +185,25 @@ struct EnrolmentFlowView: View {
         let camp = "\(count) kid\(count == 1 ? "" : "s") · \(venue)"
         guard handAddedCount > 0 else { return camp }
         return "\(handAddedCount) added · \(camp)"
+    }
+
+    /// `Everyone is dealt into Sycamore's 6 groups, evenly — rank them after.` — `state1.js:337`.
+    ///
+    /// **Named only when there is one venue to name.** The prototype has a venue selected and a
+    /// single answer; a camp here can have three, and `RosterAgeFit` routes each arrival to the one
+    /// whose band admits them — so promising "Sycamore's 6 groups" to a file that is about to be
+    /// split three ways would be exactly the over-claim the review screen's own outcome line was
+    /// written to avoid. With more than one venue the sentence says what is true of all of them and
+    /// stops.
+    ///
+    /// The venue's `groupCount` rather than `groups(in:).count`: the two agree, and the column is
+    /// what a venue with no groups written yet still knows about itself.
+    private func dealNote(at venue: String) -> String {
+        guard venues.count == 1, let only = venues.first else {
+            return "Everyone is dealt into their venue's groups, evenly — rank them after."
+        }
+        let groups = only.groupCount
+        return "Everyone is dealt into \(venue)'s \(groups) group\(groups == 1 ? "" : "s"), evenly — rank them after."
     }
 
     // MARK: - Reconciling

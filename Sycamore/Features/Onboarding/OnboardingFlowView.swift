@@ -66,6 +66,24 @@ struct OnboardingFlowView: View {
         return named.isEmpty ? venueName : named
     }
 
+    /// `Everyone is dealt into Sycamore's 6 groups, evenly — rank them after.` — `state1.js:337`,
+    /// the one line on `8c` that says where these names are going.
+    ///
+    /// Named only when `8b` drew exactly one venue. `saveRoster` routes the arrivals by age band
+    /// across every venue in the shape, so naming the first of three would promise a placement the
+    /// button underneath it will not make — which is the identical over-claim that made
+    /// `ImportReviewView`'s outcome line disagree with the commit for as long as it did.
+    /// The name is trimmed and checked before it is possessive'd: `8b`'s field can be cleared, and
+    /// "dealt into 's 6 groups" is a worse sentence than the general one.
+    private var dealNote: String {
+        guard shape.venues.count == 1, let only = shape.venues.first,
+              case let name = only.name.trimmingCharacters(in: .whitespaces), !name.isEmpty
+        else {
+            return "Everyone is dealt into their venue's groups, evenly — rank them after."
+        }
+        return "Everyone is dealt into \(name)'s \(only.groups) group\(only.groups == 1 ? "" : "s"), evenly — rank them after."
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             BringInTheWeekView(
@@ -84,6 +102,7 @@ struct OnboardingFlowView: View {
                 subtitle: handAdded.isEmpty
                     ? "Nobody added yet · \(campName)"
                     : "\(handAdded.count) added by hand · \(campName)",
+                dealNote: dealNote,
                 exit: .openCamp,
                 onImported: { imported in
                     file = imported
