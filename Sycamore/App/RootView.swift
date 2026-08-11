@@ -84,12 +84,15 @@ struct RootView: View {
                 // from — see `SeedEntrance` and `SycamoreApp.swift:83`. Failure still speaks,
                 // below; only the in-flight half went quiet.
                 FirstRunView()
-                    // The first run asks for a name, and asking for a name means a write that can
-                    // fail. Screen 3 prints `errorMessage` inline in its own content
-                    // (`CampPickerView.swift:140`), which covered this branch for as long as it
-                    // *was* screen 3 — and screen 3 is the one step of the three that asks for
-                    // nothing. Without this, "That's me" on a bad connection leaves the screen
-                    // sitting still and saying nothing, so the person taps it again.
+                    // Every step of the first run reports its failures here, and only here.
+                    //
+                    // Both halves of that were once untrue. Asking for a name means a write that
+                    // can fail, and without a banner "That's me" on a bad connection left the
+                    // screen sitting still and saying nothing, so the person tapped it again —
+                    // which is why this was added. Screen 3 meanwhile printed `errorMessage`
+                    // inline in its own content, from when it was the only step that could fail,
+                    // so a bad invite code arrived twice: once at the top of the screen and once
+                    // in the middle of it. The inline copy is gone; this is the one surface.
                     .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
             } else {
                 MainTabView(store: store)

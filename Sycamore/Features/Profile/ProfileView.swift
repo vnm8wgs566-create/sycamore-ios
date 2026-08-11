@@ -40,6 +40,7 @@ struct ProfileView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isConfirmingDelete = false
+    @State private var isConfirmingSignOut = false
 
     /// `8u`, presented from here rather than through `store.pushedScreen`.
     ///
@@ -124,6 +125,31 @@ struct ProfileView: View {
             }
             Button("Keep it", role: .cancel) {}
         } message: {
+            // Its own sentence. This shared one word for word with the camp page's **sign out**
+            // dialog, so the most destructive control in the app and the most ordinary one made
+            // the same promise — and the ordinary one's promise is the reassuring half.
+            //
+            // True, too, which the old one was not about this. `deleteAccount` deletes the
+            // `profiles` row and signs out; it cannot touch `auth.users`, which needs the service
+            // role and does not belong in a shipped binary. So the login survives, and signing in
+            // again with the same address builds a fresh, empty profile. Saying "your account is
+            // deleted" without saying that would leave somebody expecting the address to stop
+            // working.
+            Text(
+                "Your name, phone and camp memberships are deleted for good. "
+                + "The email address can still sign in, and would start over with nothing."
+            )
+        }
+        .confirmationDialog(
+            "Sign out?",
+            isPresented: $isConfirmingSignOut,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out", role: .destructive, action: reallySignOut)
+            Button("Stay signed in", role: .cancel) {}
+        } message: {
+            // Word for word the camp page's, because it is word for word the same action. Two
+            // doors to one thing should not describe it two ways.
             Text("Your memberships go with it. Camps you administer keep running without you.")
         }
         .sheet(isPresented: $isManagingCamps) {
@@ -519,7 +545,21 @@ struct ProfileView: View {
         isManagingCamps = false
     }
 
+    /// Asks first, which it did not.
+    ///
+    /// The camp page's Sign out raised a confirmation and this one signed out on the first tap —
+    /// two doors to the same action behaving differently, and the one without the guard sitting
+    /// next to Delete account.
+    ///
+    /// The design signs out immediately (`state1.js:946`), and that is the one place this
+    /// deliberately departs from it: the design is a prototype with no sign-in cost, and this app
+    /// is passwordless. Getting back in means waiting for an eight-digit code to arrive in an
+    /// inbox, which makes a mis-tap expensive in a way a password app's is not.
     private func signOut() {
+        isConfirmingSignOut = true
+    }
+
+    private func reallySignOut() {
         closeBeforeSigningOut()
         Task { await store.signOut() }
     }

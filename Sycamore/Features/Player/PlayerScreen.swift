@@ -93,6 +93,19 @@ struct PlayerScreen: View {
         .sheet(item: $courtRequest) { request in
             PlayerCourtPicker(store: store, playerID: request.id) { courtRequest = nil }
         }
+        // A kid the camp no longer holds — removed on another device, or dropped by a roster
+        // re-import while this was open. Every read here force-defaults, so the screen went on
+        // drawing: an empty serif name, an empty crumb, and a rank cell reading the literal "#0".
+        // The design cannot reach this state at all (`pageKid` is gated on the kid existing), so
+        // there is nothing to port; leaving is the only honest answer.
+        //
+        // `onChange` rather than a check in `body`: dismissing during a layout pass is a write to
+        // state the pass is already reading. `initial: true` covers arriving on a screen for a kid
+        // who was already gone.
+        .onChange(of: player == nil, initial: true) { _, isMissing in
+            guard isMissing else { return }
+            store.popPushed()
+        }
     }
 
     private var player: Player? { store.player(playerID) }

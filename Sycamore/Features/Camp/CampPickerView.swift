@@ -145,12 +145,13 @@ struct CampPickerView: View {
                 // Printed in both contexts now. A join that fails from inside a camp used to
                 // report nothing at all, so the only thing on screen was a code field that had
                 // stopped responding.
-                if let message = store.errorMessage {
-                    Text(message)
-                        .typeStyle(.intakeNote, color: Theme.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
+                // The failure is not printed here.
+                //
+                // It used to be, because this screen could be reached with nothing else on it to
+                // report a bad code — "the only thing on screen was a code field that had stopped
+                // responding". `RootView` hangs `storeErrorBanner` over every branch that draws
+                // this view, including the first run, so saying it again put "No camp uses that
+                // code." at the top of the screen and in the middle of it at the same time.
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.large)
