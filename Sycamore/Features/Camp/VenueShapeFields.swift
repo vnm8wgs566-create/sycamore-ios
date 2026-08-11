@@ -458,33 +458,34 @@ struct VenueTargetStepper: View {
 /// 2. *"Save re-deals all {k} kids into {n} groups by ladder order."* (amber)
 /// 3. *"{name} holds {k} kids — moves happen in Groups."*
 ///
-/// The third is transcribed exactly. The first two describe a machine this app does not have, and
-/// a sentence that promises one is worse than no sentence at all — it is the screen telling
-/// somebody their kids have been dealt while they sit unplaced.
+/// The third is transcribed exactly. The first two used to describe a machine this app did not
+/// have, and this block spent most of its length arguing that — correctly, at the time.
 ///
-/// - **Import does not deal.** `Repository.importPlayers` places arrivals at the venue and
-///   *deliberately* gives them no court: "A kid with no court shows up in Groups' unassigned
-///   band, which is where somebody decides where they belong — as opposed to being dropped into
-///   court 1 by an import and quietly outranking kids already there" (`Repository.swift:611`).
-/// - **The age band gates the deal, not the import.** `Camp.admit(_:at:)` now asks
-///   `AgeBand.admits(_:)` of every kid a deal touches, so a venue that is asking genuinely leaves
-///   the misfits unassigned — but that happens where kids are *dealt onto courts*, and an import
-///   is not that. A sentence promising "import deals every fitting kid into these {n} groups"
-///   would still be describing a machine this app does not have.
-/// - **Saving does not re-deal.** `updateVenue` → `Camp.upsert` → `syncGroups(for:)` adds or trims
-///   courts and nothing else; a kid standing on a court that goes has their `groupID` cleared and
-///   waits (`Models.swift:1580-1589`). The re-deal by ladder order is "Even out", which lives on
-///   Rank and is a camp-wide `store.evenOut()` — not something a venue sheet may fire on the way
-///   past, because it would relevel every *other* venue's courts too.
+/// **The first is now true and the sentence says so.** `AppStore.applyRoster` runs
+/// `seatArrivals` after the insert, so an import really does deal every kid the venue admits
+/// across its groups, in ladder order, onto the emptiest court. The old objection —
+/// `importPlayers`' own "as opposed to being dropped into court 1 by an import and quietly
+/// outranking kids already there" — is answered rather than ignored: the pass seats **only** kids
+/// with no court, so a re-import moves nobody a coach has placed, and it deals onto the emptiest
+/// court rather than the first, so nobody is dropped on top of anybody.
 ///
-/// So the two remaining variants say what the app does, and the amber one splits by direction,
-/// because opening groups and closing them are not the same event for the kids standing in them.
-/// Amber for both, because both leave somebody to place by hand.
+/// The band half was already honest and stays: `Camp.seatUnassigned(at:)` asks
+/// `AgeBand.admits(_:)` per kid, so a venue that is asking leaves the misfits standing at the
+/// venue with no group. That is the sentence under the age picker, not this one.
+///
+/// **Saving still does not re-deal, and the amber variant still says so.** `updateVenue` →
+/// `Camp.upsert` → `syncGroups(for:)` adds or trims courts; a kid standing on a court that goes
+/// has their `groupID` cleared and is re-seated by the same pass, but the *ladder* is not
+/// re-cut. The re-deal by ladder order is "Even out", which lives on Rank and is camp-wide — not
+/// something a venue sheet may fire on the way past, because it would relevel every *other*
+/// venue's courts too.
+///
+/// Amber on the change variant, because moving a group count still leaves somebody to look at.
 enum VenueDealSentence {
 
     /// Nothing exists yet — the venue is being added.
     static func adding(groups: Int) -> String {
-        "Creates \(groups) \(groupWord(groups)) here. Kids you bring in land at the venue unplaced — Groups is where they take a court."
+        "Creates \(groups) \(groupWord(groups)) here. Kids you bring in are dealt across them evenly — rank them after."
     }
 
     /// The venue exists and its group count is unchanged. The design's own sentence.

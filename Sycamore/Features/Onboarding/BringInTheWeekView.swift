@@ -248,7 +248,11 @@ struct BringInTheWeekView: View {
             // the clause naming the header row. That clause is not gone — it is the first row of
             // `FileExampleCard`, in the words the refusal itself uses. See this file's header for
             // why it was allowed to move down rather than being kept here as well.
-            Text("We read names, ages and genders. Everyone lands unranked.")
+            // "Everyone lands unranked" until 2026-08-10, which was true of the *ladder* and read
+            // as a claim about courts — and was the sentence a reader quoted back when an import
+            // left every kid in one pile. Ranking is still something the camp does afterwards on
+            // Rank; what changed is that the groups are no longer empty while it waits.
+            Text("We read names, ages and genders. Everyone is dealt into groups, unranked.")
                 .typeStyle(.emptyBody, color: Theme.inkTertiary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
