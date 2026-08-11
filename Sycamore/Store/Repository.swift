@@ -354,6 +354,18 @@ protocol SycamoreRepository: SectionEightData {
         _ staffID: StaffMember.ID, name: String, phone: String?, campID: Camp.ID
     ) async throws -> Camp
 
+    /// The one line on a kid's page — "Lefty · strong serve · pick up at 3".
+    ///
+    /// Its own verb rather than a field on `updatePlayers`, and the reason is the rule that
+    /// method's payload already enforces: a file owns names, ages and genders, and nothing the
+    /// camp decided afterwards. A note is the camp deciding. Folding it into the shared payload
+    /// meant a roster re-import blanked every note in the camp, which is exactly what happened on
+    /// the first attempt and what `InMemoryRepositoryTests` caught.
+    ///
+    /// Trimmed and bounded by the caller — the column carries a 280-character CHECK and a longer
+    /// string is a rejected write rather than a truncated one.
+    func setPlayerNotes(_ playerID: Player.ID, notes: String, campID: Camp.ID) async throws -> Camp
+
     /// Screen 12's court chips. `nil` means "No court".
     func assignStaff(
         _ staffID: StaffMember.ID, toGroup groupID: Group.ID?, campID: Camp.ID
@@ -736,6 +748,15 @@ actor InMemoryRepository: SycamoreRepository {
         try mutate(campID) { camp in
             guard camp.staff(staffID) != nil else { throw SycamoreError.unknownStaff }
             camp.setRole(role, forStaff: staffID)
+        }
+    }
+
+    func setPlayerNotes(_ playerID: Player.ID, notes: String, campID: Camp.ID) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard let index = camp.players.firstIndex(where: { $0.id == playerID }) else {
+                throw SycamoreError.unknownPlayer
+            }
+            camp.players[index].notes = notes
         }
     }
 

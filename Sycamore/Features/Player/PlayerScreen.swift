@@ -43,6 +43,17 @@ struct PlayerScreen: View {
     let store: AppStore
     let playerID: Player.ID
 
+    /// What is in the note field right now, which is not the same as what is saved.
+    ///
+    /// A local draft plus a settle, rather than a binding straight to the store: the design writes
+    /// `kid.notes` on every keystroke (`state1.js:144`), which is free in a prototype holding its
+    /// data in memory and is a PATCH per character against Postgres. `CreateCampView:142-150`
+    /// established the pattern this follows.
+    @State private var noteDraft = ""
+    /// Bumped on every keystroke; the settle task watches it and writes when it stops moving.
+    @State private var noteEdits = 0
+    @FocusState private var isNoteFocused: Bool
+
     /// `8n`, presented from here rather than through `store.activeSheet`.
     ///
     /// This screen is itself presented, and the root that owns `activeSheet` is underneath it —
@@ -148,7 +159,53 @@ struct PlayerScreen: View {
             actionRows
                 .padding(.bottom, OnTheDayTokens.contentGap)
 
+            notesCard
+                .padding(.bottom, OnTheDayTokens.contentGap)
+
             history
+        }
+    }
+
+    // MARK: - Notes
+
+    /// `showApp.html:484-486` — a label and one bordered field, the whole card.
+    ///
+    /// One line and not a text area, which is the design's shape and the right one: this is the
+    /// thing a coach writes standing on a court holding a phone in one hand, and the placeholder
+    /// says what it is for — "Lefty · strong serve · pick up at 3". Anything longer belongs in
+    /// the feedback log, which is a different table and a different screen.
+    private var notesCard: some View {
+        Card(radius: Radius.card) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Notes")
+                    .typeStyle(.sectionHeader, color: Theme.inkTertiary)
+
+                FormField(
+                    "Lefty · strong serve · pick up at 3",
+                    text: $noteDraft,
+                    label: "Notes",
+                    metrics: .sheetBox,
+                    type: .onTheDayValue,
+                    promptType: .onTheDayPlaceholder,
+                    focus: $isNoteFocused
+                )
+            }
+            .padding(OnTheDayTokens.cardInset)
+        }
+        // Seeded from the kid, and re-seeded if they change underneath — the screen is reachable
+        // for one kid at a time, but a re-read can replace the player while it is open.
+        .onChange(of: player?.notes ?? "", initial: true) { _, saved in
+            guard saved != noteDraft else { return }
+            noteDraft = saved
+        }
+        .onChange(of: noteDraft) { _, _ in noteEdits += 1 }
+        // The settle. Every keystroke restarts this task; only the last one survives long enough
+        // to write, so a sentence typed at speed is one PATCH rather than forty.
+        .task(id: noteEdits) {
+            guard noteEdits > 0 else { return }
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            await store.setPlayerNotes(playerID, to: noteDraft)
         }
     }
 

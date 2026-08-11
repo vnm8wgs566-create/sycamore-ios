@@ -144,6 +144,10 @@ struct PlayerRecord: Decodable, Sendable {
     var isReturning: Bool
     var siteId: UUID?
     var groupId: UUID?
+    /// `not null default ''` in Postgres, but decoded optionally and defaulted here: a row
+    /// selected before the column existed, or by an older client, has no key to decode and the
+    /// whole player would otherwise fail to arrive over one blank note.
+    var notes: String?
 }
 
 struct CoachRecord: Decodable, Sendable {
@@ -414,7 +418,10 @@ extension Player {
             venueID: record.siteId,
             groupID: record.groupId,
             overallRank: overallRank,
-            courtRank: courtRank
+            courtRank: courtRank,
+            // `?? ""` is the column's own default said again on this side, for a row selected
+            // before the column existed. See `PlayerRecord.notes`.
+            notes: record.notes ?? ""
         )
     }
 }

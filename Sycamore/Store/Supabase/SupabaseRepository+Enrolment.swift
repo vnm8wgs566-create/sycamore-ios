@@ -483,6 +483,15 @@ extension SupabaseRepository {
             "age": .int(player.age),
             "gender": .text(PostgresEnum.text(player.gender)),
             "is_returning": .bool(player.isReturning),
+            // **`notes` is deliberately not here**, and a test caught the first attempt to add
+            // it. This payload is shared by the insert and the *update*, and update is what a
+            // roster re-import sends — so a note a coach typed on a kid's page would have been
+            // blanked by the next import of the same file, silently, for every kid in it. It is
+            // the same rule `site_id` and `group_id` are kept out for: a file owns names, ages
+            // and genders, and nothing the camp decided afterwards.
+            //
+            // The column defaults to '' so a new kid needs no value, and the notes editor writes
+            // it through its own verb.
         ]
     }
 

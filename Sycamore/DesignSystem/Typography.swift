@@ -270,8 +270,13 @@ extension TypeStyle {
     static let sheetTitle = TypeStyle(size: 26, weight: .regular, trackingEm: -0.02, lineHeightMultiple: 1.05, isSerif: true)
     /// `600 17`, `-.03em` — venue heading in Rank, a court card's big line, a group's name.
     static let venueHeading = TypeStyle(size: 17, weight: .semibold, trackingEm: -0.03)
-    /// `600 16.5`, `-.028em` — coach name, camp name.
-    static let rowTitleLg = TypeStyle(size: 16.5, weight: .semibold, trackingEm: -0.028)
+    /// `600 15.5`, `-.025em` — a venue's name on the shape page, a camp's name in the picker.
+    ///
+    /// The design system's `--type-row-title-lg`, and confirmed against the drawing itself:
+    /// `showApp.html:394` sets a venue row's name at `600 15.5px / -.025em`. The 16.5 this held
+    /// came from the earlier design and made the largest row title in the app a point heavier
+    /// than the tab titles' own step down.
+    static let rowTitleLg = TypeStyle(size: 15.5, weight: .semibold, trackingEm: -0.025)
     /// `600 16`, `-.025em`.
     static let rowTitle = TypeStyle(size: 16, weight: .semibold, trackingEm: -0.025)
     /// `600 15`, `-.02em` — player name, setting label.

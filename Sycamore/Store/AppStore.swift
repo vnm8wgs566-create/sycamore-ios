@@ -1949,6 +1949,30 @@ extension AppStore {
         say("\(shaped.name) added")
     }
 
+    /// The kid's one line, saved once the typing settles.
+    ///
+    /// **Bounded here, not by the field.** `players_notes_length` is a 280-character CHECK, and a
+    /// longer string is a write Postgres refuses rather than one it shortens — so a coach pasting
+    /// a paragraph would get an error banner over a note they thought they had written. Trimmed
+    /// too: whitespace typed and abandoned is not a note, and "" is what the column defaults to.
+    ///
+    /// Silent on success. Every write in this app that a reader can see the result of stays
+    /// silent, and a note appears in the field as it is typed — a toast saying "Note saved" would
+    /// be the app congratulating itself for the thing already on screen.
+    func setPlayerNotes(_ playerID: Player.ID, to notes: String) async {
+        guard let campID = camp?.id else { return }
+        let trimmed = String(
+            notes.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Player.notesLimit)
+        )
+        guard camp?.player(playerID)?.notes != trimmed else { return }
+
+        await perform {
+            self.camp = try await self.repository.setPlayerNotes(
+                playerID, notes: trimmed, campID: campID
+            )
+        }
+    }
+
     func setRole(_ role: Role, forStaff staffID: StaffMember.ID) async {
         guard let campID = camp?.id else { return }
         await perform {

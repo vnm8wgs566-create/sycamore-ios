@@ -832,6 +832,23 @@ struct Player: Identifiable, Hashable, Codable, Sendable {
     /// Position inside the court, which a coach can reorder independently.
     var courtRank: Int
 
+    /// One glanceable line about this kid — "Lefty · strong serve · pick up at 3".
+    ///
+    /// Non-optional with an empty default, matching the column
+    /// (`players.notes text not null default ''`), because "" and nil would mean the same thing
+    /// here and an optional would make every reader unwrap a distinction that does not exist.
+    ///
+    /// Not a log. `public.feedback` is the log — many rows per kid, each with an author, a
+    /// category and a resolved flag — and this is one line that replaces itself and belongs to
+    /// the child rather than to whoever typed it. The column carries a 280-character CHECK; see
+    /// the migration for why it is bounded at all.
+    var notes: String = ""
+
+    /// `players_notes_length` — the column's own CHECK, said once here so the field, the store
+    /// and the migration cannot drift. 280 is generous for "lefty, strong serve, pick up at 3"
+    /// and short enough that this stays one line rather than becoming a document.
+    static let notesLimit = 280
+
     /// "Serene Chu" once there is a surname, "Serene C" while there is only the initial.
     ///
     /// The design writes the full name on every screen that names a kid, so the surname wins when

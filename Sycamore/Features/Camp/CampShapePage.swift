@@ -140,18 +140,20 @@ struct CampShapePage: View {
     private func content(for camp: Camp) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OnboardingMetrics.cardGap) {
-                if camp.venues.isEmpty {
-                    // The state the design draws for this exact screen — `8b Shape the camp —
-                    // empty`, which is what `VenueEmptyState` was written from, headline, "what a
-                    // venue holds" card and all. It carries its own call to action, which is why
-                    // the dashed "Add a venue" card below is the populated screen's and not both.
-                    VenueEmptyState(courtNoun: camp.sport.groupNoun.lowercased(), onCreate: addVenue)
-                } else {
-                    ForEach(camp.orderedVenues) { venue in
-                        venueCard(venue, in: camp)
-                    }
-                    addVenueCard
+                // No empty state. `Sycamore App.dc.html` draws zero venues as the empty list
+                // plus the dashed card and nothing else (`showApp.html:391-411`) — the venue
+                // rows are an `sc-for` that simply produces nothing, and the pinned CTA is
+                // hidden too because `shapeCta` requires a venue.
+                //
+                // `VenueEmptyState` was transcribed faithfully from `Sycamore App Rebuild.dc.html`,
+                // which draws a headline and a "what a venue holds" card here. The two design
+                // documents disagree and the App file is the one of record, so the plate goes:
+                // the dashed card already says "Add a venue · Name, courts, groups and coaches —
+                // one sheet", which is the whole of what the teaching card was teaching.
+                ForEach(camp.orderedVenues) { venue in
+                    venueCard(venue, in: camp)
                 }
+                addVenueCard
             }
             .padding(.horizontal, Spacing.gutter)
             .padding(.top, Spacing.gutterWide)

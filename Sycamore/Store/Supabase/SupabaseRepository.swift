@@ -765,6 +765,22 @@ actor SupabaseRepository: SycamoreRepository {
         }
     }
 
+    /// One PATCH of one column. `mutateLadder` would be wrong here — nothing about a note moves
+    /// a kid's court or their place in the ladder, so there are no placements to write.
+    func setPlayerNotes(_ playerID: Player.ID, notes: String, campID: Camp.ID) async throws -> Camp {
+        try await serialised(campID) {
+            let before = try await camp(id: campID)
+            guard before.player(playerID) != nil else { throw SycamoreError.unknownPlayer }
+
+            try await db.update(
+                Relation.players,
+                set: ["notes": .text(notes)],
+                where: PostgRESTQuery().eq("id", playerID)
+            )
+            return try await camp(id: campID)
+        }
+    }
+
     /// One PATCH, and the graph back. `coaches.name` and `coaches.phone` are the only columns
     /// this touches — the role, the assignment and the roaming flag are other people's writes.
     func updateStaffIdentity(
