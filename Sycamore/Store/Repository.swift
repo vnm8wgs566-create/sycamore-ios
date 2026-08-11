@@ -155,6 +155,16 @@ protocol SycamoreRepository: SectionEightData {
     /// Setup's "Add" beside the VENUES header.
     func addVenue(campID: Camp.ID) async throws -> Camp
 
+    /// The venue sheet's "Remove this venue" — the venue, its courts, and its kids.
+    ///
+    /// **The kids go, which is the design's answer and the schema's.** `state1.js:256` filters
+    /// both lists, and the button warns before the second tap. In Postgres it is one DELETE:
+    /// `groups.site_id`, `players.site_id` and the rest cascade from `sites`, while
+    /// `coaches.site_id` is `on delete set null` so staff survive it unassigned. No migration.
+    ///
+    /// Throws `unknownVenue` for a venue the camp does not hold, and writes nothing.
+    func deleteVenue(_ venueID: Venue.ID, campID: Camp.ID) async throws -> Camp
+
     /// The Groups tab's "Remove" — one named group off a venue, and only that one.
     ///
     /// **Why this had to become its own verb.** Until it did, the only door onto a venue's courts
@@ -653,12 +663,15 @@ actor InMemoryRepository: SycamoreRepository {
 
     func addVenue(campID: Camp.ID) async throws -> Camp {
         try mutate(campID) { camp in
-            let index = camp.venues.count
+            // Past the highest slot in use, not `venues.count` — see `Camp.nextVenueSlot`. With
+            // deletion shipping, the count ties the survivor that already holds it and the two
+            // venues swap order between reloads.
+            let index = camp.nextVenueSlot
             let icon = Venue.iconOptions[index % Venue.iconOptions.count]
             let template = camp.orderedVenues.last
             camp.upsert(
                 Venue(
-                    name: "Venue \(index + 1)",
+                    name: Camp.positionalVenueName(numbered: index + 1),
                     subtitle: nil,
                     icon: icon,
                     tint: .suggested(for: icon),
@@ -757,6 +770,13 @@ actor InMemoryRepository: SycamoreRepository {
                 throw SycamoreError.unknownPlayer
             }
             camp.players[index].notes = notes
+        }
+    }
+
+    func deleteVenue(_ venueID: Venue.ID, campID: Camp.ID) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard camp.venue(venueID) != nil else { throw SycamoreError.unknownVenue }
+            camp.removeVenue(venueID)
         }
     }
 

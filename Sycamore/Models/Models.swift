@@ -2050,10 +2050,65 @@ extension Camp {
         reindex()
     }
 
+    /// Takes a venue off the camp, with its courts and its kids.
+    ///
+    /// **The kids go too, and that is the design's answer rather than a shortcut.**
+    /// `state1.js:256` filters both lists — `c.venues` and `c.kids` — and the button says so
+    /// before the second tap: "Tap again — removes its 12 kids too". A venue's kids have nowhere
+    /// else to be; leaving them behind would mean rows pointing at a venue that no longer exists,
+    /// which is neither a state any screen draws nor one Postgres would keep.
+    ///
+    /// Everything hanging off those kids goes with them — attendance and history — which is the
+    /// same sweep `InMemoryRepository.removePlayers` makes and the same one Postgres makes on its
+    /// own, where every foreign key into `players` cascades.
+    ///
+    /// **Coaches survive it, unassigned.** `coaches.site_id` and `coaches.group_id` are both
+    /// `on delete set null`, so a coach is not part of the venue — they are somebody who was
+    /// standing in it. `isRoaming` is the half Postgres does not write, which is exactly what
+    /// `removeGroup` has to say here too.
+    mutating func removeVenue(_ venueID: Venue.ID) {
+        guard venues.contains(where: { $0.id == venueID }) else { return }
+
+        let leaving = Set(players.filter { $0.venueID == venueID }.map(\.id))
+
+        venues.removeAll { $0.id == venueID }
+        groups.removeAll { $0.venueID == venueID }
+        players.removeAll { leaving.contains($0.id) }
+        attendance.removeAll { leaving.contains($0.playerID) }
+        history.removeAll { leaving.contains($0.playerID) }
+
+        for index in staff.indices where staff[index].assignment?.venueID == venueID {
+            staff[index].assignment = nil
+            staff[index].isRoaming = staff[index].role.roamsByDefault
+        }
+
+        reindex()
+    }
+
     mutating func removeStaff(_ staffID: StaffMember.ID) {
         staff.removeAll { $0.id == staffID }
         reindex()
     }
+
+    /// `Venue 3` — the name the store hands a venue nobody has named.
+    ///
+    /// The store's copy of `CampShape.positionalName(for:)`, which stays the form's. The format is
+    /// load-bearing rather than cosmetic: `CampShape.isPositionalName` parses it, so a spelling
+    /// that drifted here would mint a name the form reads as one somebody typed.
+    static func positionalVenueName(numbered number: Int) -> String { "Venue \(number)" }
+
+    /// The `sortIndex` a new venue should take, and the number its default name should carry.
+    ///
+    /// **Not `venues.count`, which is what both `addVenue`s used and what deletion breaks.**
+    /// Delete the middle of `Venue 1…3` and the count is 2, so the next venue takes `sortIndex 2`
+    /// and ties the survivor that already holds it — `orderedVenues` sorts on that field and
+    /// `sites` is read back with `.order("sort_index")` and no tiebreaker, so the two swap places
+    /// between reloads. Offline it also mints a second venue literally named "Venue 3".
+    ///
+    /// Past the highest in use, which is the same allocation `syncGroups` was taught to make for
+    /// a court's `rankOrder` after `removeGroup` left it sparse — the identical bug one level
+    /// down, found the same way.
+    var nextVenueSlot: Int { (venues.map(\.sortIndex).max().map { $0 + 1 }) ?? 0 }
 
     /// The smallest court in a venue — where a kid with no better claim goes.
     ///

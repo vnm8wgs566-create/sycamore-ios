@@ -765,6 +765,27 @@ actor SupabaseRepository: SycamoreRepository {
         }
     }
 
+    /// One DELETE, and the graph back.
+    ///
+    /// **No diffing, no `dropCourts`, no cascade written by hand** — unlike `deleteGroup`, which
+    /// has to clear four tables itself because three of them point at `groups` with no
+    /// `on delete` clause. `sites` is the opposite: every foreign key into it either cascades
+    /// (`groups`, `players`, `court_assignments`, `schedule_blocks`, the tournament tables) or
+    /// sets null (`coaches.site_id`, `coaches.group_id`), so Postgres performs the whole of
+    /// `Camp.removeVenue` on its own and the re-read is what tells the app about it.
+    ///
+    /// That asymmetry is worth stating rather than discovering: the reason `deleteGroup` is
+    /// forty lines and this is eight is a difference in the schema, not in the intent.
+    func deleteVenue(_ venueID: Venue.ID, campID: Camp.ID) async throws -> Camp {
+        try await serialised(campID) {
+            let before = try await camp(id: campID)
+            guard before.venue(venueID) != nil else { throw SycamoreError.unknownVenue }
+
+            try await db.delete(Relation.sites, where: PostgRESTQuery().eq("id", venueID))
+            return try await camp(id: campID)
+        }
+    }
+
     /// One PATCH of one column. `mutateLadder` would be wrong here — nothing about a note moves
     /// a kid's court or their place in the ladder, so there are no placements to write.
     func setPlayerNotes(_ playerID: Player.ID, notes: String, campID: Camp.ID) async throws -> Camp {

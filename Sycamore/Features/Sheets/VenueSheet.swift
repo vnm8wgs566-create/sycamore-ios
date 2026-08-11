@@ -31,7 +31,18 @@
 //  Everything the old debounce bought is bought better: no round trip per character, no transient
 //  "Another venue already uses that name." at a colliding prefix, and one write instead of eleven.
 //
-//  ── No Remove ────────────────────────────────────────────────────────────────────────────────
+//  ── Remove ──────────────────────────────────────────────────────────────────────────────────
+//
+//  This file used to carry a paragraph explaining that the design's destructive button was
+//  deliberately absent because no repository could perform it. Both halves are gone: there is a
+//  `deleteVenue` on the protocol now, and the button is `VenueRemoveButton` — the same two-tap
+//  control `VenueShapeSheet` has always drawn, which was written for this and used pre-creation
+//  only, where its `kidCount` is always nought.
+//
+//  It closes the sheet *before* the write rather than after. The sheet is presented from
+//  `store.activeSheet`, keyed on the venue's id; leaving it open over a venue being deleted means
+//  the presenter's item resolves to nothing mid-write, and what happens then is SwiftUI's to
+//  decide rather than ours.
 //
 //  The design draws "Remove this venue" under the CTA for an existing venue, with a two-tap
 //  confirm that names the kids it takes with it. **There is no delete path for a created venue
@@ -161,6 +172,18 @@ struct VenueSheet: View {
 
             saveButton
                 .padding(.top, 18)
+
+            // Only for a venue that exists. The design draws this under `dEditing`
+            // (`sheet-shVenue.html:48`) and there is nothing to remove in add mode — the venue
+            // is not written until Save.
+            if let venueID {
+                VenueRemoveButton(kidCount: kidCount) {
+                    onClose?()
+                    Task { await store.removeVenue(venueID) }
+                }
+                .padding(.top, Spacing.small)
+                .disabled(isSaving)
+            }
         }
     }
 

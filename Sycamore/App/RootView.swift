@@ -150,6 +150,10 @@ struct MainTabView: View {
             sheetView(for: sheet)
                 .environment(store)
                 .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
+                // And the toast, for the reason the banner is repeated here: a sheet covers the
+                // root's presenter, so "North Pool removed" — raised as this very sheet closes —
+                // was said into a pill underneath it. See `pushedView`.
+                .toasts($store.toast)
         }
         // One slot, two presentations — see `Binding.presenting(fullScreen:)`. The cover half goes
         // through `fullScreenPresentation`, which is where the iOS-only `fullScreenCover` and its
@@ -242,6 +246,17 @@ struct MainTabView: View {
         }
         .environment(store)
         .storeErrorBanner(message: store.errorMessage, onDismiss: store.clearError)
+        // And the toast, for the same reason the banner is repeated here: four of these screens
+        // are `isFullScreen` (`AppStore.PushedScreen.isFullScreen`), so the root's presenter is
+        // *underneath* them and anything said from a kid's page, a court, Attendance or First
+        // sort was raised into a pill nobody could see. Moving a kid from `8q` — which is where
+        // the app's one Undo lives — was silent the whole way through.
+        //
+        // Two presenters on one binding is fine and is not an oversight to tidy away.
+        // `ToastPresenter` is an `.overlay` plus a `.task(id:)`: both mount a pill, only the one
+        // above the cover is visible, both run the same 3.2s sleep, and whichever fires first
+        // nils the binding and cancels the other.
+        .toasts($store.toast)
     }
 
     // MARK: Sheets
@@ -257,6 +272,7 @@ struct MainTabView: View {
             StaffSheet(store: store, staffID: staffID)
         }
     }
+
 }
 
 // MARK: - Presenting `8m` and `8q`

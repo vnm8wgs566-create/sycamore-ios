@@ -1995,6 +1995,49 @@ extension AppStore {
         say("\(name) removed")
     }
 
+    /// Takes a venue off the camp, with its courts and its kids.
+    ///
+    /// Optimistic, in the shape `removeGroup` established: mutate the local graph, write, put the
+    /// snapshot back if the write throws. A venue leaving is the largest single edit this app
+    /// makes and waiting a round trip to watch it happen is the complaint that shape answers.
+    ///
+    /// **No Undo**, for the reason `removePlayer` has none and more so: the kids are deleted, not
+    /// unassigned, and putting a venue back would mint new rows for every one of them at the foot
+    /// of the ladder with their courts, ranks and notes gone. The two-tap on the button is the
+    /// caution.
+    ///
+    /// Clears the *chosen* venue when it was this one, so the tabs fall back through
+    /// `readVenueID`'s own chain to a venue that still exists rather than holding an id nothing
+    /// can resolve. `readVenueID` is derived and cannot be assigned; `chosenVenueID` is the only
+    /// link in that chain a reader sets by hand, so it is the only one that can be stale.
+    func removeVenue(_ venueID: Venue.ID) async {
+        guard let campID = camp?.id, var optimistic = camp else { return }
+        guard let leaving = optimistic.venue(venueID) else { return }
+
+        let rollback = optimistic
+        let kids = optimistic.players(in: venueID).count
+        optimistic.removeVenue(venueID)
+        camp = optimistic
+        if chosenVenueID == venueID { chosenVenueID = nil }
+
+        await perform {
+            do {
+                let settled = try await self.repository.deleteVenue(venueID, campID: campID)
+                if settled != self.camp { self.camp = settled }
+            } catch {
+                self.camp = rollback
+                throw error
+            }
+        }
+
+        guard errorMessage == nil else { return }
+        if kids > 0 {
+            say("\(leaving.name) removed · \(kids) \(kids == 1 ? "kid" : "kids") with it")
+        } else {
+            say("\(leaving.name) removed")
+        }
+    }
+
     func setRole(_ role: Role, forStaff staffID: StaffMember.ID) async {
         guard let campID = camp?.id else { return }
         await perform {
