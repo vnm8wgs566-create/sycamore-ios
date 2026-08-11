@@ -1,0 +1,209 @@
+//
+//  SeatingSpreadTests.swift
+//  SycamoreTests
+//
+//  Where kids land — across *courts* and across *venues* — rather than who the band refuses.
+//
+//  This file exists because the suite had 1149 passing tests while the app put an entire imported
+//  roster on one court at one venue, and every one of those tests was right about its own claim.
+//  The gap was the shape of the question. Two habits hid the bug:
+//
+//  1. **Every test that reached the seating loop used a one-court venue.** `CampAgeBandDealTests`
+//     sets `groupCount = 1` before asserting `courtSizes == [3]`; `GroupsUnassignedTests` builds
+//     `Fixture.camp([.init("Home", courts: 1)], …)`. On one court "all on the first court" and
+//     "spread evenly" are the same array, so the assertion cannot tell them apart. Every test
+//     below uses **three**, which is the smallest number where stacking and spreading differ and
+//     the difference survives a rounding argument.
+//
+//  2. **Band tests asserted who was refused, never where the admitted ones sat.** A camp can filter
+//     perfectly and still stack the survivors on Court 1 — that was the shipped behaviour, and it
+//     passes any test written as "the nine-year-old has no group".
+//
+//  So the assertions here are about *distribution*: the sizes of every court in a venue, and the
+//  venue every kid ended at. `smallestGroupID` had no test of its own at all before this file.
+//
+
+import Foundation
+import Testing
+@testable import Sycamore
+
+@Suite("Seating — how kids spread across courts and venues")
+struct SeatingSpreadTests {
+
+    // MARK: - The court-of-last-resort loop
+
+    /// The reported bug, at its smallest.
+    ///
+    /// `smallestGroupID(in:)` used to rank courts by `Group.playerCount`, which is denormalised and
+    /// written only by `reindex()`. `syncGroups(for:)` seats kids in a loop and reindexes *after*
+    /// it, so every iteration read the same pre-loop counts, `min` answered the same court every
+    /// time, and the whole queue landed on it. On a fresh venue all counts are 0, the tie breaks on
+    /// `rankOrder`, and that court is always Court 1.
+    ///
+    /// A rename is the control on purpose: no band, no court-count change, nothing else in
+    /// `syncGroups` has any work to do, so the seating loop is the only thing that can explain the
+    /// result. Before the fix this was `[5, 0, 0]`.
+    @Test("A venue write spreads its unseated kids over every court, not onto the first")
+    func aVenueWriteSpreadsRatherThanStacks() {
+        var camp = Fixture.camp([.init("Home", courts: 3)], players: 5)
+        let venueID = camp.orderedVenues[0].id
+
+        // Everybody at the venue, nobody on a court — the state an import leaves behind.
+        for index in camp.players.indices { camp.players[index].groupID = nil }
+        camp.reindex()
+
+        var renamed = try! #require(camp.venue(venueID))
+        renamed.name = "Home Courts"
+        camp.upsert(renamed)
+
+        #expect(Fixture.courtSizes(camp, in: venueID) == [2, 2, 1])
+        #expect(camp.players.allSatisfy { $0.groupID != nil })
+    }
+
+    /// The same loop, asked to seat more kids than it has courts twice over, so a stacking bug
+    /// cannot hide inside a rounding remainder.
+    @Test("Nine kids over three courts come out three apiece")
+    func nineOverThreeIsEven() {
+        var camp = Fixture.camp([.init("Home", courts: 3)], players: 9)
+        let venueID = camp.orderedVenues[0].id
+
+        for index in camp.players.indices { camp.players[index].groupID = nil }
+        camp.reindex()
+
+        var renamed = try! #require(camp.venue(venueID))
+        renamed.subtitle = "Main site"
+        camp.upsert(renamed)
+
+        #expect(Fixture.courtSizes(camp, in: venueID) == [3, 3, 3])
+    }
+
+    /// The band still gets the last word on *who* is seated. This is the half that already worked,
+    /// pinned here beside the half that did not so a future change cannot trade one for the other.
+    @Test("Spreading seats only the kids the band admits")
+    func spreadingStillObeysTheBand() {
+        var camp = Fixture.camp([.init("Seniors", courts: 3)], players: 0)
+        let venueID = camp.orderedVenues[0].id
+
+        // Six kids, alternating either side of twelve.
+        for rank in 1...6 {
+            camp.players.append(
+                Player(
+                    firstName: "Kid\(rank)",
+                    lastInitial: "T",
+                    age: rank.isMultiple(of: 2) ? 9 : 14,
+                    gender: .x,
+                    isReturning: false,
+                    venueID: venueID,
+                    groupID: nil,
+                    overallRank: rank,
+                    courtRank: rank
+                )
+            )
+        }
+        camp.reindex()
+
+        var banded = try! #require(camp.venue(venueID))
+        banded.ageBand = AgeBand(minAge: 12)
+        camp.upsert(banded)
+
+        // Three fourteen-year-olds, one per court — spread, not stacked.
+        #expect(Fixture.courtSizes(camp, in: venueID) == [1, 1, 1])
+        // The three nine-year-olds keep the venue and take no court.
+        let refused = camp.players.filter { $0.age == 9 }
+        #expect(refused.count == 3)
+        #expect(refused.allSatisfy { $0.groupID == nil && $0.venueID == venueID })
+    }
+
+    // MARK: - Partition across venues
+
+    /// `partition()` walked one ladder and handed each venue a *contiguous* slice of it, which
+    /// ignores the band completely. With the ladder deliberately opposed to the age split, every
+    /// senior was sent to the junior venue and vice versa — and `redistribute`, which *does* gate
+    /// on the band, then refused all of them. The button a coach reaches for when the courts look
+    /// wrong emptied the entire camp.
+    @Test("Partition sends each kid to a venue that admits them, whatever their rank")
+    func partitionRespectsTheBand() {
+        var camp = Fixture.camp(
+            [.init("Seniors", courts: 2), .init("Juniors", courts: 2)],
+            players: 0
+        )
+        let seniorID = camp.orderedVenues[0].id
+        let juniorID = camp.orderedVenues[1].id
+
+        // The top of the ladder is entirely juniors and the bottom entirely seniors, so a
+        // rank-contiguous slice is guaranteed to get every single kid wrong.
+        for rank in 1...8 {
+            camp.players.append(
+                Player(
+                    firstName: "Kid\(rank)",
+                    lastInitial: "T",
+                    age: rank <= 4 ? 9 : 14,
+                    gender: .x,
+                    isReturning: false,
+                    venueID: seniorID,
+                    groupID: nil,
+                    overallRank: rank,
+                    courtRank: rank
+                )
+            )
+        }
+
+        var seniors = try! #require(camp.venue(seniorID))
+        seniors.ageBand = AgeBand(minAge: 12)
+        camp.upsert(seniors)
+        var juniors = try! #require(camp.venue(juniorID))
+        juniors.ageBand = AgeBand(maxAge: 11)
+        camp.upsert(juniors)
+
+        camp.partition()
+
+        // Nobody sits where they would only be refused. `age` is optional, and an unknown age is
+        // failure here rather than a pass — every kid in this fixture has one, so a nil would mean
+        // the fixture stopped saying what the test claims it says.
+        #expect(camp.players(in: seniorID).allSatisfy { ($0.age ?? 0) >= 12 })
+        #expect(camp.players(in: juniorID).allSatisfy { ($0.age ?? 99) <= 11 })
+        #expect(camp.players(in: seniorID).count == 4)
+        #expect(camp.players(in: juniorID).count == 4)
+
+        // And having reached the right venue they are spread over its courts, not stacked.
+        #expect(Fixture.courtSizes(camp, in: seniorID) == [2, 2])
+        #expect(Fixture.courtSizes(camp, in: juniorID) == [2, 2])
+        // Which means nobody is left over anywhere.
+        #expect(camp.players.allSatisfy { $0.groupID != nil })
+    }
+
+    /// A kid no venue will take keeps the venue they had rather than being moved somewhere they
+    /// would only be refused again. The second-offer sweep must not strand them either.
+    @Test("A kid outside every band keeps their venue and takes no court")
+    func aKidNoVenueAdmitsStaysPut() {
+        var camp = Fixture.camp([.init("Seniors", courts: 2)], players: 0)
+        let venueID = camp.orderedVenues[0].id
+
+        for (offset, age) in [14, 15, 8].enumerated() {
+            camp.players.append(
+                Player(
+                    firstName: "Kid\(offset + 1)",
+                    lastInitial: "T",
+                    age: age,
+                    gender: .x,
+                    isReturning: false,
+                    venueID: venueID,
+                    groupID: nil,
+                    overallRank: offset + 1,
+                    courtRank: offset + 1
+                )
+            )
+        }
+
+        var banded = try! #require(camp.venue(venueID))
+        banded.ageBand = AgeBand(minAge: 12)
+        camp.upsert(banded)
+
+        camp.partition()
+
+        let stranded = try! #require(camp.players.first { $0.age == 8 })
+        #expect(stranded.venueID == venueID)
+        #expect(stranded.groupID == nil)
+        #expect(Fixture.courtSizes(camp, in: venueID) == [1, 1])
+    }
+}

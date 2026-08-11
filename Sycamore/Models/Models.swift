@@ -1549,16 +1549,34 @@ extension Camp {
 
     /// "Partition the camp" — fills each venue by rank, inside its player limits, then
     /// deals each venue's block evenly across its courts.
+    /// ── The band picks who, the arithmetic picks how many ────────────────────────────────────
+    ///
+    /// This used to walk one sorted ladder with a cursor and hand each venue a *contiguous* slice
+    /// of it, which is correct only if every venue will take anybody. Against bands it was worse
+    /// than useless: a camp split 12-&-up / 11-&-under came back with every twelve-year-old at
+    /// the junior venue and every nine-year-old at the senior one, and `redistribute` — which
+    /// does gate on the band — then refused all of them, leaving *the entire camp* unassigned.
+    /// This is the button a coach reaches for when the courts look wrong, so it could take a
+    /// merely-untidy camp and empty it.
+    ///
+    /// The counting is unchanged, deliberately: same even share, same floor and ceiling clamps.
+    /// What changed is *which* kids a venue's share is drawn from — the top `take` of the kids
+    /// still unplaced **that this venue admits**, rather than the next `take` in the ladder.
+    /// Rank still decides the order within that pool, so the senior venue still gets the strongest
+    /// seniors first.
     mutating func partition() {
         reindex()
-        let ladder = orderedPlayers
         let venuesInOrder = orderedVenues
         guard !venuesInOrder.isEmpty else { return }
 
-        var cursor = 0
+        // Rank order, top of the camp first; kids leave the list as they are claimed. A list
+        // rather than the old cursor because a venue no longer takes a contiguous run — it reaches
+        // past the kids it cannot admit, and those have to stay available to the venues below.
+        var unplaced = orderedPlayers
+
         for (offset, venue) in venuesInOrder.enumerated() {
             let rest = venuesInOrder.dropFirst(offset + 1)
-            let remaining = ladder.count - cursor
+            let remaining = unplaced.count
             let floorForRest = rest.reduce(0) { $0 + $1.playerMin }
             let ceilingForRest = rest.reduce(0) { $0 + $1.playerMax }
 
@@ -1571,11 +1589,28 @@ extension Camp {
             let high = min(remaining, min(venue.playerMax, remaining - floorForRest))
             take = high >= low ? min(max(take, low), high) : min(max(take, 0), remaining)
 
-            for player in ladder[cursor..<(cursor + take)] {
+            let claimed = unplaced.filter { venue.ageBand.admits($0.age) }.prefix(take)
+            let claimedIDs = Set(claimed.map(\.id))
+            for player in claimed {
                 guard let index = players.firstIndex(where: { $0.id == player.id }) else { continue }
                 players[index].venueID = venue.id
             }
-            cursor += take
+            unplaced.removeAll { claimedIDs.contains($0.id) }
+        }
+
+        // A second offer, for kids the shares could not seat.
+        //
+        // The old code could not leave anybody behind — the last venue's `take` was all of
+        // `remaining` — but a banded last venue can refuse, so the shares above can finish with
+        // kids still in hand. Anyone some venue would admit goes to the first that would, past its
+        // ceiling if it comes to that, which is exactly the licence the last venue always had.
+        // Anyone **no** venue admits keeps the venue they already had: a kid nobody can take is
+        // not a kid to be moved somewhere they will only be refused again.
+        for player in unplaced {
+            guard let venue = venuesInOrder.first(where: { $0.ageBand.admits(player.age) }),
+                  let index = players.firstIndex(where: { $0.id == player.id })
+            else { continue }
+            players[index].venueID = venue.id
         }
 
         for venue in venuesInOrder { redistribute(in: venue.id) }
@@ -1979,10 +2014,33 @@ extension Camp {
     }
 
     /// The smallest court in a venue — where a kid with no better claim goes.
+    ///
+    /// **Counted off `players`, not off `Group.playerCount`, and that is the whole point of the
+    /// method.** `playerCount` is denormalised (`:784`) and has exactly one writer, `reindex()`
+    /// (`:1448`). Every caller here is a *loop* that seats one kid per turn and reindexes at the
+    /// end — `syncGroups(for:)` at `:1828`, `applyRankOrder(_:)` at `:1530` — so a stored count
+    /// read mid-loop is the count from before the loop began. It does not move as kids are
+    /// seated, `min` returns the same court on every iteration, and the entire queue is parked on
+    /// one court. On a fresh venue every count is 0, the tie falls to the lowest `rankOrder`, and
+    /// that court is always Court 1.
+    ///
+    /// That was the "all the kids in one group" bug, and it was reachable without an import at
+    /// all: any ordinary venue write — a rename — runs `upsert` → `syncGroups` and parks the lot.
+    ///
+    /// Refreshing `reindex()` before the loop would not fix it. One refresh is a snapshot, and the
+    /// loop invalidates it on its first pass; the count has to be re-derived per call, which is
+    /// what this now does.
+    ///
+    /// `Group.playerCount` is deliberately left alone. It is what the cards read, `reindex()`
+    /// stays its only writer, and nothing outside a mid-mutation loop needs it fresher than that.
+    /// The cost here is groups × players per call — a hundred kids over twelve courts, inside a
+    /// loop that runs once per unseated kid, which at camp scale is nothing.
     func smallestGroupID(in venueID: Venue.ID) -> Group.ID? {
         groups(in: venueID)
             .min { lhs, rhs in
-                lhs.playerCount == rhs.playerCount ? lhs.rankOrder < rhs.rankOrder : lhs.playerCount < rhs.playerCount
+                let left = players.count { $0.groupID == lhs.id }
+                let right = players.count { $0.groupID == rhs.id }
+                return left == right ? lhs.rankOrder < rhs.rankOrder : left < right
             }?
             .id
     }
