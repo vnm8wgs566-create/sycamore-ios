@@ -172,7 +172,7 @@ struct TournamentView: View {
             ) {
                 // Venues are shaped in Camp settings, which is where the venue sheet is presented
                 // from. There is no "add a venue" screen of its own to send anybody to.
-                store.pushedScreen = .campSettings
+                store.push(.campSettings)
             }
 
         case .noKids(let venueName):

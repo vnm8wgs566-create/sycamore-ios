@@ -152,7 +152,12 @@ struct ProfileView: View {
                         tone: .filled,
                         foreground: Theme.ink
                     ) {
-                        dismiss()
+                        // `popPushed` rather than `dismiss()`: this screen is often opened *from*
+                        // the camp page, and dismissing the sheet dropped the reader on a tab
+                        // because the one `pushedScreen` slot had already lost the page
+                        // underneath. Popping puts back whatever this covered, and covering
+                        // nothing still ends at the tabs.
+                        store.popPushed()
                     }
                     .accessibilityLabel("Close")
                 }
@@ -487,7 +492,7 @@ struct ProfileView: View {
                 icon: "slider.horizontal.3",
                 subtitle: store.isAdmin ? nil : store.adminsOnlyDetail,
                 accessory: store.isAdmin ? .chevron : .lock,
-                action: store.isAdmin ? { store.pushedScreen = .campSettings } : nil
+                action: store.isAdmin ? { store.push(.campSettings) } : nil
             )
             // Same as "Your role here" — but only when the row is locked. With a role that can
             // open it the row is a `Button`, which SwiftUI already merges into one element;

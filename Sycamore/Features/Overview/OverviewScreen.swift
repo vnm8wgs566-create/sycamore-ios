@@ -526,7 +526,7 @@ struct OverviewScreen: View {
         let exit = afterVenueSheet
         afterVenueSheet = nil
         switch exit {
-        case .campSettings: store.pushedScreen = .campSettings
+        case .campSettings: store.push(.campSettings)
         case .yourCamps: isManagingCamps = true
         case nil: break
         }

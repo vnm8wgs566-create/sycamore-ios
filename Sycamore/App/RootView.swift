@@ -337,7 +337,7 @@ private extension Binding where Value == PushedScreen? {
 
 #Preview("Pushed — Camp settings") {
     let store = AppStore.preview
-    store.pushedScreen = .campSettings
+    store.push(.campSettings)
 
     return MainTabView(store: store)
         .environment(store)

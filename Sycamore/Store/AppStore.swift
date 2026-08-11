@@ -494,6 +494,21 @@ final class AppStore {
     /// never stacks two of them.
     var pushedScreen: PushedScreen?
 
+    /// What was showing before `pushedScreen`, so a back control can put it back.
+    ///
+    /// **One level, and that is the design's depth rather than a shortcut.** `closePage`
+    /// (`state1.js:41`) is literally `page: s.page === 'shape' ? 'camp' : null` — the shape page
+    /// returns to the camp page and everything else returns to the tabs. Nothing in the design
+    /// stacks two of these, so a general stack would be machinery for a case that does not exist.
+    ///
+    /// It exists because the single slot was silently destructive in two directions. Camp
+    /// settings' back arrow hardcoded `.profile` — "which is where this screen was opened from",
+    /// true of one of its four entry points and wrong for the other three, so a coach who opened
+    /// it from Tournament or from the camp page landed on a Profile they had never asked for. And
+    /// the camp page → Profile → close sequence landed on a tab rather than back on the camp
+    /// page, because opening the second screen overwrote the first.
+    private(set) var previousPushedScreen: PushedScreen?
+
     /// A tab is in the middle of something a stray tap must not end. While this is true
     /// `MainTabView` does not draw the tab bar.
     ///
@@ -2028,6 +2043,22 @@ extension AppStore {
 // MARK: - Intents: presentation
 
 extension AppStore {
+
+    /// Opens a pushed screen, remembering what it covered.
+    ///
+    /// Assigning `pushedScreen` directly is still fine — and is what the thirty-odd call sites
+    /// that *replace* one screen with another, or open one from a tab, go on doing. This is for
+    /// the handful that open a screen from another screen and owe it a way back.
+    func push(_ screen: PushedScreen) {
+        previousPushedScreen = pushedScreen
+        pushedScreen = screen
+    }
+
+    /// The way back: whatever `push` covered, or the tabs if it covered nothing.
+    func popPushed() {
+        pushedScreen = previousPushedScreen
+        previousPushedScreen = nil
+    }
 
     func present(_ sheet: ActiveSheet) { activeSheet = sheet }
     func dismissSheet() { activeSheet = nil }

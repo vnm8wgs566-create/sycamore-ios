@@ -118,10 +118,15 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: Spacing.small) {
                     CircleIconButton(systemName: "arrow.left", size: 36, tone: .filled) {
-                        // Back means Profile, which is where this screen was opened from.
-                        store.pushedScreen = .profile
+                        // Back means wherever this was opened from, which is not always Profile.
+                        // It hardcoded `.profile` on the grounds that Profile "is where this
+                        // screen was opened from" — true of one of its four entry points. The
+                        // camp page, Tournament's empty state and Overview's venue-sheet follow-up
+                        // all push it too, and all three used to land the reader on a Profile they
+                        // had not asked for.
+                        store.popPushed()
                     }
-                    .accessibilityLabel("Back to your profile")
+                    .accessibilityLabel("Back")
 
                     Spacer(minLength: 0)
 

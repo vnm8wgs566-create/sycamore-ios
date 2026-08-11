@@ -192,7 +192,7 @@ struct CampHomeView: View {
     /// `openProfile`; here that word means what it says.
     private var profileDisc: some View {
         Button {
-            store.pushedScreen = .profile
+            store.push(.profile)
         } label: {
             InitialsAvatar(store.avatarInitials, size: 34, tone: .neutralStrong)
                 .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
@@ -379,7 +379,7 @@ struct CampHomeView: View {
                 icon: "pencil",
                 subtitle: store.isAdmin ? nil : store.adminsOnlyDetail,
                 accessory: store.isAdmin ? .chevron : .lock,
-                action: store.isAdmin ? { store.pushedScreen = .campSettings } : nil
+                action: store.isAdmin ? { store.push(.campSettings) } : nil
             )
             .accessibilityElement(children: store.isAdmin ? .contain : .combine)
             .accessibilityValue(store.isAdmin ? "" : "Locked")
