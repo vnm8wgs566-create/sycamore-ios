@@ -165,8 +165,8 @@ struct BringInTheWeekView: View {
     /// under different controls, and one stale message under the wrong box is the failure both are
     /// arranged to avoid.
     @State private var pasteError: String?
-    /// `FormTextArea`'s Return types a newline, so this screen owes it a way out. See
-    /// `keyboardDoneBar`, applied on `content` below.
+    /// `FormTextArea`'s Return types a newline, so this screen owes it a way out. Cleared by
+    /// `addPasted`, which is the way out that was measured working — see the note on `body`.
     @FocusState private var isTyping: Bool
 
     /// The cap on the sentence inside the plate, scaled for the reason `VenueEmptyState:55-57`
@@ -185,6 +185,26 @@ struct BringInTheWeekView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.surfaceWarm)
+        // **Measured absent here, and left in anyway. Read this before trusting it.**
+        //
+        // `keyboardDoneBar`'s own doc says it installs silently or not at all and that a screen
+        // whose only way out it is should be walked by hand. This one was — iPhone 17, iOS 26.5,
+        // through onboarding — first with the modifier on the `ScrollView` inside `content` and
+        // then here on `body`, which is exactly where `AddPlayerView` puts its own working copy.
+        // Neither drew a bar: the keyboard came up over the paste box with QuickType above it and
+        // nothing else. So this is a third data point for that doc's unresolved question, not a
+        // way out anybody should rely on.
+        //
+        // **The way out that was measured working is the button.** `addPasted` clears `isTyping`,
+        // and the button is reachable with the keyboard up — the column scrolls, the box is near
+        // the top of it, and "Add 10 kids" comes up over the keyboard with one short drag. So the
+        // screen is finishable; it just is not finishable by a control that is not there.
+        //
+        // Kept rather than deleted because it costs nothing, because it is the app's one spelling
+        // of this bar, and because a screen that gains a `NavigationStack` between it and the root
+        // may well start drawing it — at which point the comment above is the thing to re-run.
+        .scrollDismissesKeyboard(.interactively)
+        .keyboardDoneBar { isTyping = false }
         // Cross-platform: `fileImporter` is the SwiftUI wrapper over the document browser and
         // exists on macOS too, so the whole intake path builds for both without a shim.
         //
@@ -263,10 +283,6 @@ struct BringInTheWeekView: View {
             .padding(.top, Spacing.sheet)
             .padding(.bottom, Spacing.hero)
         }
-        // The paste box's Return types a newline, so this is the only way the keyboard goes down
-        // without a drag — and the button that acts on what was typed is underneath it.
-        .scrollDismissesKeyboard(.interactively)
-        .keyboardDoneBar { isTyping = false }
     }
 
     /// A sentence about why something did not come in. Two controls raise one of these and they
