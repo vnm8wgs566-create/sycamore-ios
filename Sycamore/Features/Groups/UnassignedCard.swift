@@ -19,6 +19,27 @@
 //  the smallest thing that makes them honest — say who, say why, and give the same handle every
 //  other kid on the screen has.
 //
+//  **One tap places them, and the drag still does too.** `showApp.html:58-69` draws an outlined
+//  `Add` pill at the end of each row; `assignKid` (`state1.js:702-711`) puts the kid in a group at
+//  the venue, at the end of it, and toasts. That pill is now here, on the rows where it can keep
+//  its promise — see `UnassignedReason.admitsOneTap` for the rows where it cannot, and
+//  `AppStore.landing(of:at:)` for why the sentence it raises had to stop reading the argument.
+//
+//  It lands them in the **emptiest** group rather than the design's last one. `assignKid` takes
+//  `venue.groups - 1` because the prototype has nothing better to say; this app does — every other
+//  write that puts a kid somewhere unspecified goes through `smallestGroupID(in:)`, which is what
+//  `Camp.movePlayer` answers a nil group with, and what `seatUnassigned` deals an arrival onto. A
+//  one-tap Add is exactly the "somewhere sensible" case, so it asks for no group and lets the model
+//  answer. Placing a kid on a *named* court is what the drag is for.
+//
+//  **The design's `unassignedNote` is deliberately not drawn.** `state1.js:124` composes
+//  "Unassigned · {n} — search a name to add them to {venue}." and shows it only while the search
+//  box is empty — because in the prototype this card exists *only* during a search
+//  (`vals.unassignedHits` is built inside `if (q)`). This card is always on screen, and it already
+//  says who and how many, and it says why as well, which the note never does. Transcribing the
+//  sentence would put a second count beside the first and instruct the reader to run a search they
+//  do not need to run.
+//
 //  **They are a drag source and not a drop target, and that asymmetry is the design.** "No group"
 //  is a state the model puts a kid in; it is not a place you can aim one at. So this card emits no
 //  slots (`GroupsView.slots(for:)` never sees it), draws no ghost and never lights up as a target
@@ -88,6 +109,31 @@ enum UnassignedReason: Hashable {
         case .groupRemoved: false
         }
     }
+
+    /// Whether a one-tap `Add` is honest for this run.
+    ///
+    /// **It is not, for a kid the band refuses**, and the reason is the model rather than taste.
+    /// `Camp.admit(_:at:)` runs on every venue upsert (`Models.swift:1869`) and nils the `groupID`
+    /// of everybody outside the band — so a kid placed here by one tap would be standing on a court
+    /// until the next time somebody renamed the venue or moved a court, and then silently back in
+    /// this card with no record of having left. A pill that undoes itself hours later is worse than
+    /// no pill: the reader has no reason to look again.
+    ///
+    /// It would also contradict the line directly above it. The card has just said "Outside this
+    /// venue's 11 & under band"; offering to put them in one of that venue's groups on the next
+    /// line is the screen arguing with itself.
+    ///
+    /// The drag is left alone, and that is not an inconsistency. A lift-and-carry is a deliberate
+    /// two-second gesture aimed at a named card by somebody who is looking at the reason line while
+    /// they do it; a pill is a thing you tap because it is there. The way to actually move these
+    /// kids is to widen the band or send them to a venue that admits them, and both are one screen
+    /// away.
+    var admitsOneTap: Bool {
+        switch self {
+        case .outsideBand: false
+        case .groupRemoved: true
+        }
+    }
 }
 
 // MARK: - The card
@@ -105,7 +151,14 @@ struct UnassignedCard: View {
     let isMoving: Bool
     let isSource: Bool
 
+    /// Where a one-tap `Add` would send them, named — `Group 2`. Nil when the venue has no groups
+    /// shaped yet, which takes the pill off every row: "Add" with nowhere to add to is a button
+    /// that cannot answer for itself, and the thing to do at a venue with no groups is add one.
+    let addsTo: String?
+
     let onOpenPlayer: (PlayerRow) -> Void
+    /// One tap, for a kid the band admits. See `UnassignedReason.admitsOneTap`.
+    let onAdd: (PlayerRow) -> Void
     let onMoveBegan: (PlayerRow) -> Void
     let onMoveChanged: (CGFloat) -> Void
     let onMoveEnded: () -> Void
@@ -169,7 +222,7 @@ struct UnassignedCard: View {
                         reasonLine(run.reason)
 
                         ForEach(run.rows) { row in
-                            rowView(row)
+                            rowView(row, in: run.reason)
                         }
                     }
                 }
@@ -253,7 +306,7 @@ struct UnassignedCard: View {
     /// row opens the kid, and the bar there opens `PlayerCourtPicker`, which lists every group in
     /// the camp with its fill and its coach. That is a better tool for this particular job than two
     /// one-step nudges would be, and it is already built and already tested.
-    private func rowView(_ row: PlayerRow) -> some View {
+    private func rowView(_ row: PlayerRow, in reason: UnassignedReason) -> some View {
         GroupPlayerRow(
             row: row,
             isAiming: isMoving,
@@ -262,7 +315,8 @@ struct UnassignedCard: View {
             onMoveChanged: onMoveChanged,
             onMoveEnded: onMoveEnded,
             onMoveCancelled: onMoveCancelled,
-            onNudge: nil
+            onNudge: nil,
+            onAdd: add(row, in: reason)
         )
         .opacity(heldRowID == row.id ? GroupsMetrics.heldOpacity : 1)
         .onGeometryChange(for: CGRect.self) {
@@ -270,6 +324,21 @@ struct UnassignedCard: View {
         } action: {
             onRowFrame(row.id, $0)
         }
+    }
+
+    /// The `Add` pill for one row, or nil where a tap would be a promise the model breaks.
+    ///
+    /// Two conditions, and both are absences rather than preferences: `addsTo` is nil at a venue
+    /// with no groups, and `admitsOneTap` is false for a kid the band refuses. Each is argued where
+    /// it is declared.
+    ///
+    /// The name is in the spoken sentence and not on the pill, which draws the design's one word.
+    /// "Add" alone is the button a rotor reads out eleven times down this card with nothing to tell
+    /// them apart — the row's own label already carries the name, and `children: .combine` puts the
+    /// two together as one utterance.
+    private func add(_ row: PlayerRow, in reason: UnassignedReason) -> GroupRowAdd? {
+        guard let addsTo, reason.admitsOneTap else { return nil }
+        return GroupRowAdd(spoken: "Add to \(addsTo)") { onAdd(row) }
     }
 }
 
@@ -287,7 +356,9 @@ struct UnassignedCard: View {
             band: .upTo(11),
             isMoving: false,
             isSource: false,
+            addsTo: "Group 2",
             onOpenPlayer: { _ in },
+            onAdd: { _ in },
             onMoveBegan: { _ in },
             onMoveChanged: { _ in },
             onMoveEnded: {},

@@ -1562,10 +1562,29 @@ extension AppStore {
         }
 
         guard errorMessage == nil, let name else { return }
-        let landed = groupID.flatMap { camp?.group($0) }.map { "Group \($0.number)" }
+        say("\(name) → \(landing(of: playerID, at: venueID))", undo: undoMove(playerID, to: wasAt))
+    }
+
+    /// Where a kid ended up, **read off the graph that came back** rather than off what was asked
+    /// for.
+    ///
+    /// The two are not the same question, and `group: nil` is where they part. It is a real
+    /// request — "put them wherever this venue has room" — which `Camp.movePlayer` answers with
+    /// `smallestGroupID(in:)`, so the kid lands on a court and a sentence built from the *argument*
+    /// would name the venue instead of it. That is the caller Groups' one-tap Add is: it asks for
+    /// no particular group on purpose, and the reader would have been told "Ellis → Sycamore" about
+    /// a kid now standing in Group 2.
+    ///
+    /// The same rule the import toast had to learn, in the other direction: count what happened,
+    /// not what was sent.
+    private func landing(of playerID: Player.ID, at venueID: Venue.ID) -> String {
+        // `Group.label` rather than `"Group \(number)"`, which is what this said and what a camp
+        // whose sport calls them lanes was told anyway. The label is the model's own word for a
+        // court, kept right through a renumber by `reindex()`.
+        camp?.player(playerID)?.groupID
+            .flatMap { camp?.group($0)?.label }
             ?? camp?.venue(venueID)?.name
             ?? "the venue"
-        say("\(name) → \(landed)", undo: undoMove(playerID, to: wasAt))
     }
 
     /// The way back from a move, or nil when there is nowhere to go back to.

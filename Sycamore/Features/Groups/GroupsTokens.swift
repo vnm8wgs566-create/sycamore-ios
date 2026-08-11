@@ -141,6 +141,10 @@ enum GroupsMetrics {
     static let markGlyph: CGFloat = 13
     /// `font-size:17px` — the drag handle, held and lifted alike.
     static let handleGlyph: CGFloat = 17
+    /// `padding:7px 14px` — the outlined `Add` pill on an unassigned row (`showApp.html:63`).
+    /// Drawn at 7/14 and touched at 44; see `GroupPlayerRow.addPill`.
+    static let addPillPaddingVertical: CGFloat = 7
+    static let addPillPaddingHorizontal: CGFloat = 14
 
     // MARK: The move
 

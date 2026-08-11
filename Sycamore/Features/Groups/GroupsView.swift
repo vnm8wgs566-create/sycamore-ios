@@ -333,7 +333,11 @@ struct GroupsView: View {
                 band: venue.ageBand,
                 isMoving: move != nil,
                 isSource: move != nil && move?.sourceGroupID == nil,
+                addsTo: oneTapDestination(at: venue),
                 onOpenPlayer: { store.pushedScreen = .player($0.id) },
+                onAdd: { row in
+                    Task { await store.movePlayer(row.id, toVenue: venue.id) }
+                },
                 onMoveBegan: { beginMove($0, from: nil, among: unassignedRows) },
                 onMoveChanged: updateMove(to:),
                 onMoveEnded: endTracking,
@@ -346,6 +350,23 @@ struct GroupsView: View {
                 heldRowID: move?.sourceGroupID == nil ? move?.row.id : nil
             )
         }
+    }
+
+    /// What the `Add` pill on an unassigned row promises: `Group 2`, or nothing at a venue that has
+    /// no groups to add to.
+    ///
+    /// Asked of the *model*, through the same call the write will make. `Camp.movePlayer` answers a
+    /// nil group with `smallestGroupID(in:)`, so this names the group that tap will actually land
+    /// in rather than a number this screen picked — and the pill cannot come to promise one court
+    /// while the store writes another. It is a render behind the graph, which costs nothing: the
+    /// toast after the write reports where the kid genuinely went.
+    private func oneTapDestination(at venue: Venue) -> String? {
+        guard let camp = store.camp,
+              let groupID = camp.smallestGroupID(in: venue.id)
+        else { return nil }
+        // `Group.label`, not `"Group \(number)"`: a camp whose sport calls them lanes says lanes,
+        // and `reindex()` is what keeps that word right after a removal renumbers the rest.
+        return camp.group(groupID)?.label
     }
 
     private func cardView(_ entry: GroupsEntry) -> some View {

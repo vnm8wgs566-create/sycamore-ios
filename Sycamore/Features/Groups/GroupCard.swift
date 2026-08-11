@@ -259,7 +259,9 @@ struct GroupCard: View {
             onMoveChanged: onMoveChanged,
             onMoveEnded: onMoveEnded,
             onMoveCancelled: onMoveCancelled,
-            onNudge: { onNudge(row, $0) }
+            onNudge: { onNudge(row, $0) },
+            // A kid already standing on a court has nowhere for "Add" to mean anything.
+            onAdd: nil
         )
         // Dimmed rather than replaced, and it **keeps its space**. The row owns the gesture that
         // is carrying the kid, and a view swapped out from under a live gesture takes the gesture
@@ -411,6 +413,22 @@ private enum CardSeat: Identifiable {
 
 // MARK: - Player row
 
+/// The one-tap way out of "no group yet", drawn as a pill at the end of the row.
+///
+/// A type rather than a bare closure so the pill and the rotor action cannot come to disagree
+/// about where the tap sends the kid. The word on the pill is the design's single `Add`; the
+/// sentence VoiceOver reads has to name the destination, because "Add" on its own is a button that
+/// does not say what it does — and the two are one value, set once, by the card that knows.
+///
+/// Nil on every row in a group card, which is the common case: a kid already standing on a court
+/// has nowhere for "Add" to mean anything. `UnassignedCard` supplies one for the kids whose group
+/// was removed, and deliberately not for the kids the venue's band refuses; the argument is there.
+struct GroupRowAdd {
+    /// `Add to Group 2` — the accessibility label, and the rotor action's name.
+    let spoken: String
+    let action: () -> Void
+}
+
 /// `1   Serene Chu                    ♀ ⏱   ≡`
 ///
 /// Rank, name, whatever is true about the kid today, and the handle. The meta line the old card
@@ -438,6 +456,8 @@ struct GroupPlayerRow: View {
     /// that silently does nothing is worse than an absent one. `UnassignedCard.rowView` carries the
     /// argument for what those readers get instead.
     let onNudge: ((Int) -> Void)?
+    /// The `Add` pill, on the rows that have somewhere to add the kid to. See `GroupRowAdd`.
+    let onAdd: GroupRowAdd?
 
     /// True for exactly as long as the lift gesture is live. A sequenced gesture that is
     /// *cancelled* never calls `onEnded`, and `@GestureState` is the one thing SwiftUI
@@ -475,6 +495,13 @@ struct GroupPlayerRow: View {
             if let onNudge {
                 Button("Move up") { onNudge(-1) }
                 Button("Move down") { onNudge(1) }
+            }
+            // The pill is inside a combined element, so its own button is unreachable by
+            // rotor — `children: .combine` merges the labels and drops the actions. Restated
+            // here for the same reason the nudges are: the drawn affordance and the spoken one
+            // are two presentations of one intent, not two intents.
+            if let onAdd {
+                Button(onAdd.spoken, action: onAdd.action)
             }
         }
         .overlay(alignment: .trailing) { handle }
@@ -520,9 +547,45 @@ struct GroupPlayerRow: View {
                     .foregroundStyle(GroupsPalette.pickup)
                     .accessibilityLabel("Leaves at \(leavesAt.formatted)")
             }
+
+            if let onAdd {
+                addPill(onAdd)
+            }
         }
         // `margin-right:2px` — the marks stop just short of the handle.
         .padding(.trailing, Spacing.hairGap)
+    }
+
+    /// `padding:7px 14px;border-radius:999px;border:1.5px solid #C3DFCF;color:#1A7F55;font:600 12.5`
+    /// — `showApp.html:63`.
+    ///
+    /// Inside the row's trailing content rather than after it, which puts it where the design puts
+    /// it — at the right-hand end of what the row says — while leaving the handle at the very edge,
+    /// exactly where every group card draws one. The alternative was a pill outside the row, and
+    /// that moves the handle inward on this card alone: the whole claim `UnassignedCard` makes is
+    /// that these rows are draggable like anybody else, and a drag affordance that has moved is a
+    /// weaker version of that claim than a pill beside it.
+    ///
+    /// The 30pt pill grows to 44 without being drawn any larger — `.frame` before `.contentShape`,
+    /// so the touch is the reserved box and not the capsule. The row is already 44 tall, so nothing
+    /// on screen moves.
+    private func addPill(_ add: GroupRowAdd) -> some View {
+        Button(action: add.action) {
+            Text("Add")
+                .typeStyle(.sectionHeader, color: Theme.accent)
+                .padding(.vertical, GroupsMetrics.addPillPaddingVertical)
+                .padding(.horizontal, GroupsMetrics.addPillPaddingHorizontal)
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.input)
+                }
+                .frame(minHeight: HitTarget.minimum)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        // The row underneath opens the kid on a tap, and this button sits on top of it. The label
+        // is what the pill *does*, not the word it wears — see `GroupRowAdd`.
+        .accessibilityLabel(add.spoken)
     }
 
     private var handle: some View {
