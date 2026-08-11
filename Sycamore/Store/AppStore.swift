@@ -1150,12 +1150,27 @@ extension AppStore {
         }
     }
 
+    /// Opens a camp and lands on the tab that can do something about it.
+    ///
+    /// **Not always Overview.** This set `.overview` unconditionally, and Overview is a Coming
+    /// Soon placeholder — so creating a camp, or joining one, or switching to one, dropped the
+    /// reader on a card explaining that the tab is not built yet. On a camp with no venues that
+    /// is the second dead end in a row, because there is nothing on any tab to do until the camp
+    /// is shaped.
+    ///
+    /// The design routes on exactly this question (`state1.js:58`): a camp with no venues opens
+    /// on the page that can give it some, and a camp that has them opens on Groups. Groups is
+    /// also the one tab of the four that is actually built, which makes it the honest default
+    /// until Overview and Schedule land.
     func select(_ membership: Membership) async {
         await perform {
             let loaded = try await self.repository.camp(id: membership.campID)
             self.selectedMembership = membership
             self.camp = loaded
-            self.selectedTab = .overview
+            self.selectedTab = .groups
+            // A camp with nowhere to put anybody opens on the screen that fixes that, over the
+            // top of the tabs — the same route the camp page's own "Shape the camp" row takes.
+            self.pushedScreen = loaded.venues.isEmpty ? .campSettings : nil
             self.resetFilters()
         }
     }
@@ -1964,10 +1979,42 @@ extension AppStore {
         }
     }
 
+    /// Saves the profile, then brings this camp's copy of it along.
+    ///
+    /// **`coaches.name` and `coaches.phone` are a denormalisation, and nothing was maintaining
+    /// it.** They are written once, out of the profile, at the moment somebody joins or creates a
+    /// camp. Editing your name here wrote `profiles` and stopped — so the Staff list, every staff
+    /// sheet and every coach chip went on showing the name you signed up with, and to everybody
+    /// else in the camp the rename had simply not happened. The one person who could not see the
+    /// bug was the one who caused it.
+    ///
+    /// Only the camp in hand. A person in four camps has four staff rows, and reaching into the
+    /// other three would mean loading three graphs to patch a row in each — on the main actor,
+    /// while somebody waits for a name field to settle. The others come right the next time each
+    /// camp is opened, which is the same moment their own screens would have shown the stale
+    /// value anyway.
+    ///
+    /// Second write, not folded into the first: `updateAccount` is `profiles` and this is
+    /// `coaches`, and a profile that saved while the camp write failed should still be saved.
     func updateAccount(_ updated: Account) async {
         await perform {
             let saved = try await self.repository.updateAccount(updated)
             self.auth = .signedIn(saved)
+        }
+
+        guard errorMessage == nil,
+              let campID = camp?.id,
+              let mine = camp?.staff.first(where: { $0.accountID == updated.id }),
+              mine.name != updated.displayName || mine.phone != updated.emergencyPhone
+        else { return }
+
+        await perform {
+            self.camp = try await self.repository.updateStaffIdentity(
+                mine.id,
+                name: updated.displayName,
+                phone: updated.emergencyPhone,
+                campID: campID
+            )
         }
     }
 

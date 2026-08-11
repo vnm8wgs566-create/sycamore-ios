@@ -765,6 +765,27 @@ actor SupabaseRepository: SycamoreRepository {
         }
     }
 
+    /// One PATCH, and the graph back. `coaches.name` and `coaches.phone` are the only columns
+    /// this touches — the role, the assignment and the roaming flag are other people's writes.
+    func updateStaffIdentity(
+        _ staffID: StaffMember.ID, name: String, phone: String?, campID: Camp.ID
+    ) async throws -> Camp {
+        try await serialised(campID) {
+            let before = try await camp(id: campID)
+            guard before.staff(staffID) != nil else { throw SycamoreError.unknownStaff }
+
+            try await db.update(
+                Relation.coaches,
+                // `.null` rather than an empty string for a cleared phone: the column is nullable
+                // and "" would be a phone number that renders as a blank row rather than as no
+                // number at all.
+                set: ["name": .text(name), "phone": phone.map { .text($0) } ?? .null],
+                where: PostgRESTQuery().eq("id", staffID)
+            )
+            return try await camp(id: campID)
+        }
+    }
+
     func updateStaffRole(
         _ staffID: StaffMember.ID, role: Role, campID: Camp.ID
     ) async throws -> Camp {

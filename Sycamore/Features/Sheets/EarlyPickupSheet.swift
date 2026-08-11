@@ -152,7 +152,14 @@ struct EarlyPickupSheet: View {
         .overlay { shape.strokeBorder(Theme.accentBorder, lineWidth: BorderWidth.hairline) }
     }
 
-    /// Five equal chips. `fillsWidth` plus a plain `HStack` gives the design's `flex:1` row.
+    /// One chip per day the camp actually runs — `fillsWidth` plus a plain `HStack` gives the
+    /// design's `flex:1` row.
+    ///
+    /// **Off `camp.days`, not off `Weekday.allCases`.** This comment claimed "five equal chips"
+    /// and the code drew seven: `Weekday` synthesises `allCases` over all seven, so a Monday-to-
+    /// Friday camp offered a Saturday pick-up that no block could ever fall in and no coach would
+    /// ever see. The comment was right about the design and wrong about the code beneath it,
+    /// which is the shape of every bug in this file.
     ///
     /// Selected draws black rather than green, which is what the design has: this card is
     /// already outlined in green, overlined in green and closed by a green button, and a green
@@ -160,9 +167,17 @@ struct EarlyPickupSheet: View {
     ///
     /// The `Chip` is drawn without an action and wrapped in a button of our own: `.day` metrics
     /// come out about 40pt tall, and `Chip` clips its own hit region to exactly what it drew.
+    /// The camp's own days, in week order, falling back to the whole week only when there is no
+    /// camp to ask — a preview, or a sheet outliving its store. A camp with no days set at all
+    /// would otherwise draw an empty row and no way to choose one.
+    private var campDays: [Weekday] {
+        let days = Weekday.allCases.filter { store.camp?.days.contains($0) ?? false }
+        return days.isEmpty ? Weekday.allCases : days
+    }
+
     private var dayChips: some View {
         HStack(spacing: Spacing.tight) {
-            ForEach(Weekday.allCases) { day in
+            ForEach(campDays) { day in
                 Button { select(day) } label: {
                     Chip(
                         day.shortName,

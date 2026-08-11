@@ -335,6 +335,25 @@ protocol SycamoreRepository: SectionEightData {
 
     /// Screen 12's role chips.
     func updateStaffRole(_ staffID: StaffMember.ID, role: Role, campID: Camp.ID) async throws -> Camp
+
+    /// Brings a staff row's name and phone back in step with the profile they were copied from.
+    ///
+    /// **These are a denormalisation, and nothing was maintaining it.** `coaches.name` and
+    /// `coaches.phone` are written once, when somebody joins or creates a camp, out of the
+    /// `profiles` row as it stood then. Editing your name in Profile writes `profiles` and stops
+    /// there — so the Staff list, every staff sheet and every coach chip in the camp kept showing
+    /// the name you signed up with, for as long as the camp existed. To everybody else in the
+    /// camp, your rename simply had not happened.
+    ///
+    /// A verb rather than a join at read time: `Camp` is already assembled from six selects, and
+    /// adding a seventh to resolve a name that changes twice a year is the wrong trade. One PATCH
+    /// when the profile changes is the cheaper half of it.
+    ///
+    /// Throws `unknownStaff` for an id the camp does not hold, and writes nothing.
+    func updateStaffIdentity(
+        _ staffID: StaffMember.ID, name: String, phone: String?, campID: Camp.ID
+    ) async throws -> Camp
+
     /// Screen 12's court chips. `nil` means "No court".
     func assignStaff(
         _ staffID: StaffMember.ID, toGroup groupID: Group.ID?, campID: Camp.ID
@@ -717,6 +736,18 @@ actor InMemoryRepository: SycamoreRepository {
         try mutate(campID) { camp in
             guard camp.staff(staffID) != nil else { throw SycamoreError.unknownStaff }
             camp.setRole(role, forStaff: staffID)
+        }
+    }
+
+    func updateStaffIdentity(
+        _ staffID: StaffMember.ID, name: String, phone: String?, campID: Camp.ID
+    ) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard let index = camp.staff.firstIndex(where: { $0.id == staffID }) else {
+                throw SycamoreError.unknownStaff
+            }
+            camp.staff[index].name = name
+            camp.staff[index].phone = phone
         }
     }
 
