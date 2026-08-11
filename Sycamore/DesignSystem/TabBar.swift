@@ -54,7 +54,7 @@ struct FloatingTabBar: View {
         return Button {
             selection = tab
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: Spacing.markGap) {
                 // `selectedSymbol` already names the outline glyph for the two symbols with no
                 // filled variant (list.number, slider.horizontal.3), so the selected item just
                 // stops being hollow rather than changing shape.

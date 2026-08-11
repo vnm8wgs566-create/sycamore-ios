@@ -640,7 +640,7 @@ struct CreateCampView: View {
     /// were the same eleven lines twice, down to the two type styles and the warm plate. Taking
     /// the two strings as arguments is the whole of the difference between them.
     private func summaryRow(_ lead: String, trailing: String) -> some View {
-        CardRow(spacing: 9, horizontalPadding: 13, verticalPadding: Spacing.row) {
+        CardRow(spacing: Spacing.cardGap, horizontalPadding: 13, verticalPadding: Spacing.row) {
             Text(lead)
                 .typeStyle(.intakeOverline, color: Theme.inkTertiary)
             Spacer(minLength: 0)

@@ -210,7 +210,7 @@ struct VenueShapeSheet: View {
     // MARK: - Name
 
     private func nameBlock(problem: String?) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: Spacing.cardGap) {
             // The same block `VenueSheet` draws, because it is the same block of screen 11 — see
             // `VenueNameFields`. Only the error line under it belongs to this screen: there is
             // nowhere else a name can be refused before it reaches the camp.

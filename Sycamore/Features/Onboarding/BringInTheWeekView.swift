@@ -440,7 +440,7 @@ struct BringInTheWeekView: View {
     /// regardless. Advertising a column that is silently ignored is the failure this whole screen
     /// is arranged to avoid; `FileExampleCard.swift:40-42` refused the identical promise.
     private var fileNote: some View {
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: Spacing.cardGap) {
             Image(systemName: "info.circle")
                 .font(.system(size: noteGlyph, weight: .regular))
                 .foregroundStyle(Theme.inkFaint)

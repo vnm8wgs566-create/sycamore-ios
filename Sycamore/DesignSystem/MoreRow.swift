@@ -60,7 +60,7 @@ struct MoreRowMetrics: Sendable {
         showsPlus: false,
         label: .chipSoft,
         caretSize: 14,
-        spacing: 7,
+        spacing: Spacing.markGap,
         verticalPadding: 10,
         horizontalPadding: 13
     )

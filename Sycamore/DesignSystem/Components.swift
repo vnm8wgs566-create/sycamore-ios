@@ -270,7 +270,7 @@ struct ChipMetrics: Sendable {
 
     /// Groups' venue filter — `700 12.5`, `7/13`, pill, emoji 15.
     static let venue = ChipMetrics(font: .chipMedium, horizontalPadding: 13, verticalPadding: 7,
-                                   radius: Radius.pill, spacing: 7, unselectedBorder: Theme.strokeChip,
+                                   radius: Radius.pill, spacing: Spacing.markGap, unselectedBorder: Theme.strokeChip,
                                    emojiSize: 15)
     /// Groups' attribute filter — `600 12`, `6/12`, pill.
     static let attribute = ChipMetrics(font: .chipSmall, horizontalPadding: 12, verticalPadding: 6,
@@ -278,7 +278,7 @@ struct ChipMetrics: Sendable {
                                        emojiSize: 12)
     /// New camp's sport picker — `700 13`, `9/15`, pill.
     static let sport = ChipMetrics(font: .chip, horizontalPadding: 15, verticalPadding: 9,
-                                   radius: Radius.pill, spacing: 7, unselectedBorder: Theme.strokeChip,
+                                   radius: Radius.pill, spacing: Spacing.markGap, unselectedBorder: Theme.strokeChip,
                                    emojiSize: 13)
     /// Setup's staff filter — `700 12`, `7/13`, pill, emoji at the label's own 12.
     static let staffFilter = ChipMetrics(font: .chipCompact, horizontalPadding: 13, verticalPadding: 7,
@@ -312,7 +312,7 @@ struct ChipMetrics: Sendable {
     /// `strokeChip` rather than `strokeAlt` for the same reason `venue` and `attribute` take it:
     /// a pill's border is the one that has to hold its own against a fully round edge.
     static let dayPill = ChipMetrics(font: .timelineTitle, horizontalPadding: 0, verticalPadding: 10,
-                                     radius: Radius.pill, spacing: 7, unselectedBorder: Theme.strokeChip,
+                                     radius: Radius.pill, spacing: Spacing.markGap, unselectedBorder: Theme.strokeChip,
                                      emojiSize: 13.5)
 }
 
@@ -1456,14 +1456,14 @@ struct SearchField: View {
             .padding(.bottom, Spacing.section)
 
             SectionHeader("Sport")
-            HStack(spacing: 7) {
+            HStack(spacing: Spacing.markGap) {
                 Chip("Tennis", isSelected: true, metrics: .sport)
                 Chip("Soccer", metrics: .sport)
                 Chip("Swim", metrics: .sport)
             }
             .padding(.bottom, 12)
 
-            HStack(spacing: 7) {
+            HStack(spacing: Spacing.markGap) {
                 Chip("All", count: 100, isSelected: true)
                 Chip("Sycamore", emoji: "🌳", count: 50)
                 Chip("Everyone", isSelected: true, selectedTone: .tinted, metrics: .attribute)

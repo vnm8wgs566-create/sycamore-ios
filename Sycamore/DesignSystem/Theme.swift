@@ -126,6 +126,25 @@ enum Theme {
     /// A step *between* `ink` and `inkSecondary` in weight but green-tinted rather than neutral,
     /// which is what makes it warm — the brand's green showing through the type rather than a
     /// second grey. Where the design does use it, `ink` is not merely darker but colder.
+    ///
+    /// ── It is **not** the body default, and this was checked rather than assumed ──────────────
+    ///
+    /// "Make `--ink-warm` the body colour" sat on this project's list for a while. Counted across
+    /// every region in `design/app/regions/`, the design of record uses `#3F4A44` **nine times**,
+    /// against 63 `#71757E`, 42 `#A2A6AE`, 41 `#5C6068` and 37 `#8A8E96`. Body prose is grey there
+    /// and always has been.
+    ///
+    /// All nine are the same thing: a **value or a name inside a component**, where the label
+    /// beside it is darker and the caption under it is grey. `showApp.html:432-433` — the kid
+    /// page's `Group` and `Rank in camp` values. `:54` — "Uneven after moves · 4·4·3". `:23` — the
+    /// venue pill's name. `:211` and `:274` — a team's names and a standings W–L.
+    /// `sheet-shVenue.html:23` — the "Kids per group" title on the target row.
+    ///
+    /// So a sweep would have repainted three hundred grey captions to make nine values match, and
+    /// flattened the one hierarchy this colour exists to create. What the audit found instead is
+    /// that the app already draws the two most prominent of the nine — the kid page's stat values
+    /// — in exactly this token, and that `ChipTone.outline` resolving to `inkSecondary` agrees
+    /// with 41 design sites against the venue pill's 2. Nothing to sweep; a measurement to keep.
     static let inkWarm = Color(light: "3F4A44", dark: "C8D2CC")
 
     /// `#B3B7BE` — a glyph on a plate. The design's icons are a step lighter than its text.
@@ -431,11 +450,30 @@ enum Spacing {
     // Generic scale, named for how the design uses each step.
     static let hairGap: CGFloat = 2
     static let tight: CGFloat = 6
+    /// `gap:7px` — a mark and the word beside it: an emoji in a chip, the icon over a tab's
+    /// label, the gender and clock at the end of a player row.
+    ///
+    /// **The design's single commonest gap, and the scale had no step for it.** Counted across
+    /// `design/app/regions/`: 26 sevens, 24 nines, 23 elevens, 16 twelves, 14 tens. Of those five,
+    /// only 11 and 12 had a token, so a screen that wanted the design's 7 wrote `spacing: 7` — and
+    /// fourteen of them did, across eleven files, none of which could be found by looking at this
+    /// enum. Adding the step changes no pixel; it makes the commonest number in the design a thing
+    /// that can be searched for and moved.
+    static let markGap: CGFloat = 7
     static let small: CGFloat = 8
+    /// `gap:9px` — between the stacked pieces of one card, and between a glyph and the two-line
+    /// block it introduces. The design's second commonest gap; see `markGap`.
+    static let cardGap: CGFloat = 9
     static let row: CGFloat = 11
     static let medium: CGFloat = 12
     static let large: CGFloat = 16
     static let section: CGFloat = 22
+
+    // **10 is deliberately absent**, and it is the third commonest gap in the design (14 of them).
+    // It has no role of its own: every site that draws one is a row's glyph reaching its text,
+    // which is what `row` (11) already means — the design simply draws that gap at both widths
+    // depending on the card. A token could only be named after its number, and `Spacing.ten` is a
+    // literal with extra steps. The seventeen sites that want it keep writing it out.
 }
 
 // MARK: - Border widths

@@ -445,7 +445,7 @@ struct VenueNameFields: View {
         // The keyboard travels down the environment to both fields, which is why `FormField` does
         // not own it (`FormField.swift:20-25`). Capitalised words and no autocorrect: a venue is
         // a proper noun, and "LATC" is not a typo.
-        let fields = VStack(spacing: 9) {
+        let fields = VStack(spacing: Spacing.cardGap) {
             FormField(
                 "Venue name",
                 text: $name,

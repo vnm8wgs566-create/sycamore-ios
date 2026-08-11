@@ -127,7 +127,7 @@ struct RankView: View {
     /// Emoji, venue name, the block's slice of the ladder, then the ink rule.
     private func heading(for section: RankSection) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 9) {
+            HStack(spacing: Spacing.cardGap) {
                 VenueLetterTile(
                     section.venue.name,
                     size: 26,

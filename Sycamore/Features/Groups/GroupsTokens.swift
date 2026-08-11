@@ -103,7 +103,7 @@ enum GroupsMetrics {
     /// `Spacing.gutter` and the foot is `Spacing.tabBarClearance`.
     static let listTop: CGFloat = 14
     /// `gap:9px` — between cards.
-    static let cardGap: CGFloat = 9
+    static let cardGap = Spacing.cardGap
     /// `gap:14px` — `8g` sets its two blocks further apart than `8o` sets its cards.
     static let lockedGap: CGFloat = 14
 
@@ -136,7 +136,7 @@ enum GroupsMetrics {
     /// `HitTarget.minimum`, which is what the row actually measures.
     static let rowPadding: CGFloat = 5
     /// `gap:7px` — between the marks at the end of a row.
-    static let markGap: CGFloat = 7
+    static let markGap = Spacing.markGap
     /// `font-size:13px` — every mark.
     static let markGlyph: CGFloat = 13
     /// `font-size:17px` — the drag handle, held and lifted alike.

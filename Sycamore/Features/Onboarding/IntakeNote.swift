@@ -24,7 +24,7 @@ struct IntakeNote: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Radius.chipSquare, style: .continuous)
 
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: Spacing.cardGap) {
             Image(systemName: "info.circle")
                 .font(.system(size: glyphSize, weight: .regular))
                 .foregroundStyle(Theme.accent)

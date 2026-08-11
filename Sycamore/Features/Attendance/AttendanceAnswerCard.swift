@@ -85,7 +85,7 @@ struct AttendanceAnswerCard: View {
         let shape = RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
 
         return Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: Spacing.markGap) {
                 Image(systemName: systemImage)
                     .font(.system(size: 16, weight: .semibold))
                 Text(title)
@@ -119,7 +119,7 @@ struct AttendanceAnswerCard: View {
     /// as the control's value.
     private var leavingEarly: some View {
         Button(action: onLeavingEarly) {
-            HStack(spacing: 7) {
+            HStack(spacing: Spacing.markGap) {
                 Image(systemName: "clock")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(Theme.accent)

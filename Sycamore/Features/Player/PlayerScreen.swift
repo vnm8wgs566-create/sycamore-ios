@@ -248,7 +248,7 @@ struct PlayerScreen: View {
     /// the feedback log, which is a different table and a different screen.
     private var notesCard: some View {
         Card(radius: Radius.card) {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: Spacing.markGap) {
                 Text("Notes")
                     .typeStyle(.sectionHeader, color: Theme.inkTertiary)
 
