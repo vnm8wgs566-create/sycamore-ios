@@ -207,3 +207,108 @@ struct SeatingSpreadTests {
         #expect(Fixture.courtSizes(camp, in: venueID) == [1, 1])
     }
 }
+
+/// The same question asked of the real write path rather than of `Camp` alone.
+///
+/// A separate suite because `AppStore` is `@MainActor` and the model tests above are not —
+/// isolating the whole file would put the pure arithmetic on the main actor for no reason.
+@MainActor
+@Suite("Seating — an import, through the store")
+struct ImportSeatingTests {
+
+    /// **The seam nothing covered.** `RosterAgeFitTests` stops at what the review screen is handed;
+    /// `AppStoreEnrolmentTests` never asked where anybody sat. Between them a roster could be
+    /// routed correctly on screen, written to one venue, and stacked on one court, and every test
+    /// passed.
+    ///
+    /// So this drives the real path — `AppStore.applyRoster` over `InMemoryRepository` — with a
+    /// commit built exactly the way `OnboardingFlowView.saveRoster()` builds one: raw rows whose
+    /// `venueIndex` is defaulted, because no roster file has a venue column.
+    @Test("An imported roster lands by band and spreads over the courts")
+    func anImportRoutesAndDeals() async throws {
+        var camp = Fixture.camp(
+            [.init("Seniors", courts: 3), .init("Juniors", courts: 3)],
+            players: 0
+        )
+        var seniors = try #require(camp.venue(camp.orderedVenues[0].id))
+        seniors.ageBand = AgeBand(minAge: 12)
+        camp.upsert(seniors)
+        var juniors = try #require(camp.venue(camp.orderedVenues[1].id))
+        juniors.ageBand = AgeBand(maxAge: 11)
+        camp.upsert(juniors)
+
+        let venues = camp.orderedVenues.map(\.id)
+        let store = AppStore(repository: InMemoryRepository(camps: [camp]))
+        store.camp = camp
+
+        // Twelve kids, six either side of the split, every one of them defaulted to venue 0 —
+        // which is the state a spreadsheet actually arrives in.
+        let rows = (1...12).map { index in
+            IntakePlayer(
+                firstName: "Kid\(index)", lastName: "T",
+                age: index.isMultiple(of: 2) ? 9 : 14, gender: .x
+            )
+        }
+        let fit = [seniors.rosterVenue, juniors.rosterVenue]
+
+        await store.applyRoster(
+            RosterReconciliation.Commit(inserting: rows, updating: [], removing: [])
+                .routed(by: fit),
+            venues: venues
+        )
+
+        let after = try #require(store.camp)
+        #expect(store.errorMessage == nil)
+
+        // Routed: each kid at the venue whose band admits them.
+        #expect(after.players(in: venues[0]).count == 6)
+        #expect(after.players(in: venues[1]).count == 6)
+        #expect(after.players(in: venues[0]).allSatisfy { ($0.age ?? 0) >= 12 })
+        #expect(after.players(in: venues[1]).allSatisfy { ($0.age ?? 99) <= 11 })
+
+        // Dealt: spread over each venue's three courts, not stacked on the first.
+        #expect(Fixture.courtSizes(after, in: venues[0]) == [2, 2, 2])
+        #expect(Fixture.courtSizes(after, in: venues[1]) == [2, 2, 2])
+        #expect(after.players.allSatisfy { $0.groupID != nil })
+    }
+
+    /// Seating an arrival must not disturb a coach's own ordering, which is the objection the
+    /// import path's "deliberately no group" comment was written to answer. It is answered by
+    /// seating only the group-less: a second import moves nobody.
+    @Test("A second import seats the new kids and leaves the placed ones alone")
+    func aSecondImportMovesNobody() async throws {
+        let camp = Fixture.camp([.init("Home", courts: 3)], players: 0)
+        let venueID = camp.orderedVenues[0].id
+        let store = AppStore(repository: InMemoryRepository(camps: [camp]))
+        store.camp = camp
+
+        func send(_ names: [String]) async {
+            await store.applyRoster(
+                RosterReconciliation.Commit(
+                    inserting: names.map {
+                        IntakePlayer(firstName: $0, lastName: "T", age: 12, gender: .x)
+                    },
+                    updating: [], removing: []
+                ),
+                venues: [venueID]
+            )
+        }
+
+        await send(["Ada", "Bo", "Cy"])
+        let firstPass = try #require(store.camp)
+        let placements = Dictionary(
+            uniqueKeysWithValues: firstPass.players.map { ($0.firstName, $0.groupID) }
+        )
+        #expect(Fixture.courtSizes(firstPass, in: venueID) == [1, 1, 1])
+
+        await send(["Dev", "Eve", "Fin"])
+        let secondPass = try #require(store.camp)
+
+        // The first three are exactly where they were.
+        for name in ["Ada", "Bo", "Cy"] {
+            let kid = try #require(secondPass.players.first { $0.firstName == name })
+            #expect(kid.groupID == placements[name])
+        }
+        #expect(Fixture.courtSizes(secondPass, in: venueID) == [2, 2, 2])
+    }
+}

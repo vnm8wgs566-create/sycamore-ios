@@ -283,6 +283,22 @@ extension SupabaseRepository {
         }
     }
 
+    /// `mutateLadder` is the whole implementation, and it is the right one: this changes exactly
+    /// what that helper exists to persist — which court a kid stands on (`writePlacements`) and
+    /// where they sit in the ladder (`writeLadder`) — and nothing else. No table but `players` is
+    /// touched, so there is no second write to fall out of step with.
+    ///
+    /// It re-reads the camp inside the lock rather than trusting what the caller just wrote, which
+    /// is what makes this safe to run straight after `importPlayers`: the arrivals are already in
+    /// Postgres by then, and the seating is computed from the graph that came back rather than from
+    /// the rows the app hoped it had inserted.
+    func seatArrivals(atVenue venueID: Venue.ID, campID: Camp.ID) async throws -> Camp {
+        try await mutateLadder(campID) { camp in
+            guard camp.venue(venueID) != nil else { throw SycamoreError.unknownVenue }
+            camp.seatUnassigned(at: venueID)
+        }
+    }
+
     /// One filtered PATCH per kid the file actually changes, sent together.
     ///
     /// The shape `writePlacements` already uses for exactly this problem

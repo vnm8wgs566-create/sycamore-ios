@@ -133,10 +133,23 @@ struct AppStoreEnrolmentTests {
             venues: venues
         )
 
-        let nina = try #require(store.camp?.players.first { $0.firstName == "Nina" })
+        let after = try #require(store.camp)
+        let nina = try #require(after.players.first { $0.firstName == "Nina" })
         #expect(nina.venueID == venues[1])
-        // And with no court, which is what Groups' unassigned band is for.
-        #expect(nina.groupID == nil)
+
+        // **And on a court, which is a reversal.** This asserted `groupID == nil` for as long as it
+        // existed, matching `importPlayers`' deliberate "no group" and the argument behind it: an
+        // arrival dropped into court 1 would quietly outrank kids already there. The argument was
+        // sound and the outcome was not — nothing else on the import path ever seated them, so a
+        // roster landed as one undivided "No group yet" pile beside a venue's empty courts, which
+        // is what a reader reported.
+        //
+        // `applyRoster` now runs `seatArrivals` after the insert, and that answers the original
+        // worry rather than ignoring it: it seats only kids with no court, so nobody already placed
+        // is moved, and it deals in ladder order onto the emptiest court rather than onto the
+        // first.
+        let court = try #require(nina.groupID)
+        #expect(after.groups(in: venues[1]).contains { $0.id == court })
     }
 
     /// `min(index, count - 1)`. A file carries no venue column, so every row defaults to 0 — but a

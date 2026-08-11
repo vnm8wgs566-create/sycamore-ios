@@ -1853,13 +1853,38 @@ extension Camp {
 
         // Anyone left without a court after a trim lands on the smallest one — unless the band is
         // the reason they have no court, which is the whole of the previous paragraph undone if
-        // this loop is allowed to run over them. `admits(_:)` is asked twice on purpose rather than
-        // this loop being narrowed to "kids the trim just displaced": the honest invariant is that
-        // nothing in this method ever seats a kid the venue refuses, whatever put them in reach.
-        for index in players.indices
-        where players[index].venueID == venueID
-            && players[index].groupID == nil
-            && venue.ageBand.admits(players[index].age) {
+        // this were allowed to run over them. `admits(_:)` is asked twice on purpose rather than
+        // narrowing this to "kids the trim just displaced": the honest invariant is that nothing in
+        // this method ever seats a kid the venue refuses, whatever put them in reach.
+        seatUnassigned(at: venueID)
+    }
+
+    /// Puts every kid standing at a venue with no court onto the emptiest one, in rank order,
+    /// and leaves everybody who already has a court exactly where they are.
+    ///
+    /// **Extracted from `syncGroups(for:)` so an import can ask for it by name.** It was the tail
+    /// of that method and reachable only as a side effect of writing a venue, which is why a
+    /// roster could arrive and sit in one undivided "No group yet" pile until somebody happened to
+    /// rename the place. It is the same work, said out loud.
+    ///
+    /// **Not `redistribute(in:)`, and the difference is the whole reason this exists.** The
+    /// whole-venue deal re-seats *everybody*, which is right for "Even out" and wrong for an
+    /// arrival: `updatePlayers`' own contract says a re-import that silently reseated the camp
+    /// "would undo a week of somebody's judgement". This touches only kids with no court, so it is
+    /// idempotent — running it twice changes nothing the second time — and a coach's ordering
+    /// survives every later import.
+    ///
+    /// Rank order, so the deal is not the order rows happened to arrive in. `orderedPlayers` is the
+    /// camp ladder; filtering it keeps that order, and the emptiest-court choice then spreads them
+    /// one apiece rather than stacking. The band is asked per kid: a venue narrowed to 12-&-up
+    /// seats the twelves and leaves the nines standing, which is what makes an age filter mean
+    /// something at import time rather than only after the next venue edit.
+    mutating func seatUnassigned(at venueID: Venue.ID) {
+        guard let venue = venue(venueID), !groups(in: venueID).isEmpty else { return }
+
+        for player in orderedPlayers
+        where player.venueID == venueID && player.groupID == nil && venue.ageBand.admits(player.age) {
+            guard let index = players.firstIndex(where: { $0.id == player.id }) else { continue }
             players[index].groupID = smallestGroupID(in: venueID)
             players[index].courtRank = Int.max / 2
         }

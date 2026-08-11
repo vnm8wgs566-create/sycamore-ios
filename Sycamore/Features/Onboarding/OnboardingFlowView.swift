@@ -190,12 +190,28 @@ struct OnboardingFlowView: View {
     /// each: "one at a time, because one at a time is how they were typed in" was a sentence about
     /// the reader's experience of a screen, spent on forty sequential network calls at the one
     /// moment somebody is waiting for a camp to open.
+    /// **Routed, which it was not.** `ImportReviewView` has always computed the age fit and printed
+    /// it — "38 go to Sycamore · 4 need someone to place them" — and then this method built the
+    /// commit from the file's untouched rows and handed it over. `IntakePlayer.venueIndex` defaults
+    /// to 0 and no file has a venue column, so every arrival grouped under key 0 and the whole
+    /// roster went to the first venue: the screen showed a split the button did not perform.
+    ///
+    /// `routed(by:)` is the verb written for exactly this and `EnrolmentFlowView` was its only
+    /// caller. It runs the identical `RosterAgeFit` over the identical rows, off the identical
+    /// `shape.venues` the review screen was drawn from three lines above — which is what makes the
+    /// two answers the same answer rather than two computations that agree today.
+    ///
+    /// Safe for the by-hand kids in front of the file. `RosterAgeFit` treats a row's existing
+    /// `venueIndex` as its *home* and leaves it alone when that venue admits them, so a walk-in
+    /// stays on the chip they were saved against; the only ones it moves are those whose chosen
+    /// venue would refuse them, which is the one case where honouring the chip is the bug.
     private func saveRoster() async {
         let arriving = handAdded + (file?.players ?? [])
         guard !arriving.isEmpty else { return }
 
         await store.applyRoster(
-            RosterReconciliation.Commit(inserting: arriving, updating: [], removing: []),
+            RosterReconciliation.Commit(inserting: arriving, updating: [], removing: [])
+                .routed(by: shape.venues.map(\.rosterVenue)),
             venues: (store.camp?.orderedVenues ?? []).map(\.id)
         )
     }

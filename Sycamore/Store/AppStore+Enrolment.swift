@@ -77,12 +77,40 @@ extension AppStore {
             // venue column, so everybody lands in the first. Batched rather than looped over
             // `addPlayer` because a roster is forty-odd kids and an insert either lands whole or
             // not at all; half a roster is worse than none, since nobody can tell which half.
+            // Which venues actually took somebody, so the seating pass below asks only about those.
+            // A set rather than the grouping's keys, because two indices past the end of `venues`
+            // resolve to the same venue through the `min` and asking twice would be a wasted round
+            // trip on the one path where an import is already the slowest thing in the app.
+            var arrivedAt: Set<Venue.ID> = []
+
             for (index, kids) in Dictionary(grouping: commit.inserting, by: \.venueIndex)
                 .sorted(by: { $0.key < $1.key }) {
                 let venueID = venues[min(index, venues.count - 1)]
                 camp = try await repository.importPlayers(
                     kids.map { $0.asPlayer() }, toVenue: venueID, campID: campID
                 )
+                arrivedAt.insert(venueID)
+            }
+
+            // And then deal them onto courts.
+            //
+            // `importPlayers` lands everybody group-less on purpose, and for a long time nothing on
+            // this path ever picked them up: a roster arrived and sat in one undivided "No group
+            // yet" pile beside a venue's six empty courts, which is what a reader reported as "all
+            // the kids in one group at one venue".
+            //
+            // Separate from the insert rather than folded into it, because the two answer different
+            // questions and only one of them is safe to repeat. `importPlayers` must not run twice;
+            // `seatArrivals` is idempotent by construction — it only ever touches kids with no
+            // court — so a retry after a half-failed import re-seats the new arrivals and moves
+            // nobody a coach has already placed.
+            //
+            // In venue order rather than the set's, which has none. Two venues seated in a
+            // different order on two devices would produce two different-looking camps from the
+            // same file, and "why is Ellis on court 3 on your phone and court 1 on mine" is not a
+            // question anybody should have to answer about an import.
+            for venueID in venues where arrivedAt.contains(venueID) {
+                camp = try await repository.seatArrivals(atVenue: venueID, campID: campID)
             }
 
             if !commit.updating.isEmpty {

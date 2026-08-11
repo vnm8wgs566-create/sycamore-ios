@@ -265,6 +265,29 @@ protocol SycamoreRepository: SectionEightData {
         _ players: [Player], toVenue venueID: Venue.ID, campID: Camp.ID
     ) async throws -> Camp
 
+    /// Seats a venue's group-less kids on its emptiest courts, and touches nobody else.
+    ///
+    /// **What an import now does after it writes, and the reason a roster stops arriving in one
+    /// undivided pile.** `importPlayers` deliberately lands everybody without a court — see its
+    /// note — and until this verb existed nothing on the import path ever put them on one. The
+    /// result was the state a reader reported as "all the kids in one group at one venue": forty
+    /// arrivals under a single "No group yet" heading, with the venue's six courts empty beside
+    /// them.
+    ///
+    /// **Deliberately not `evenOut`.** That re-deals the whole venue, which is the right answer for
+    /// a button labelled "Even out" and the wrong one for an arrival: `updatePlayers` argues at
+    /// length that a re-import must not silently reseat kids a coach has already placed, and it is
+    /// right. This seats only the kids with no court, so a second import — or a retry after a
+    /// failed one — moves nobody who already has a place.
+    ///
+    /// The venue's age band decides who is seated at all, so a venue narrowed to 12-&-up deals its
+    /// twelves and leaves the nines standing at the venue with no group, which is the state the
+    /// unassigned card is for.
+    ///
+    /// Throws `unknownVenue` for a venue that is not in the camp. Seating nobody is success, not a
+    /// throw — an import of kids the band refuses is an ordinary afternoon.
+    func seatArrivals(atVenue venueID: Venue.ID, campID: Camp.ID) async throws -> Camp
+
     /// `8d` again, a week later — the same file re-read against the camp it already built.
     ///
     /// Plural for the reason `importPlayers` is plural. Reconciling a roster is forty-odd kids at
@@ -760,6 +783,15 @@ actor InMemoryRepository: SycamoreRepository {
                 joined.courtRank = 0
                 camp.players.append(joined)
             }
+        }
+    }
+
+    /// `mutate` reindexes afterwards, which is what turns the `Int.max / 2` sentinel
+    /// `seatUnassigned` writes into a real court rank at the foot of each court.
+    func seatArrivals(atVenue venueID: Venue.ID, campID: Camp.ID) async throws -> Camp {
+        try mutate(campID) { camp in
+            guard camp.venue(venueID) != nil else { throw SycamoreError.unknownVenue }
+            camp.seatUnassigned(at: venueID)
         }
     }
 
