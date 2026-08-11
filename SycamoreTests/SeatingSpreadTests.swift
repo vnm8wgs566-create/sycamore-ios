@@ -312,3 +312,55 @@ struct ImportSeatingTests {
         #expect(Fixture.courtSizes(secondPass, in: venueID) == [2, 2, 2])
     }
 }
+
+/// The sentence under the age band, which is arithmetic a reader is asked to trust before they
+/// save. It has to agree with `Camp.seatUnassigned` exactly — a count that says eight will take a
+/// court while the deal seats seven is worse than no count at all.
+@Suite("The age band's live consequence")
+struct AgeBandConsequenceTests {
+
+    private func line(_ band: AgeBand, _ ages: [Int?]) -> String? {
+        AgeBandConsequence.sentence(of: band, over: ages)
+    }
+
+    /// Nothing to report is nil, not "0 of 0" — a venue with no kids has no consequence, and a
+    /// zero pair reads as a warning about something that has not happened.
+    @Test("A venue with nobody at it says nothing")
+    func silentWhenEmpty() {
+        #expect(line(AgeBand(minAge: 12), []) == nil)
+    }
+
+    @Test("A band that refuses nobody says so without a split")
+    func allAdmitted() {
+        #expect(line(AgeBand(minAge: 12), [12, 14, 15]) == "All 3 here still take a court.")
+    }
+
+    @Test("A band that refuses somebody counts both sides")
+    func someRefused() {
+        #expect(
+            line(AgeBand(minAge: 12), [12, 9, 14, 8])
+                == "2 of 4 here take a court · 2 wait to be placed."
+        )
+    }
+
+    /// The one that could silently disagree with the deal. `AgeBand.admits(_:)` refuses a nil age
+    /// at a restricted band — a spreadsheet with a blank cell — so the count has to refuse it too.
+    @Test("A kid with no age on file counts as refused, the way the deal refuses them")
+    func nilAgeCountsAsRefused() {
+        #expect(
+            line(AgeBand(minAge: 12), [12, nil])
+                == "1 of 2 here take a court · 1 wait to be placed."
+        )
+        // The same rule from the far side: a venue that is not asking admits them, so an
+        // unrestricted band reports no split at all.
+        #expect(line(AgeBand(), [12, nil]) == "All 2 here still take a court.")
+    }
+
+    @Test("A closed band counts both bounds")
+    func closedBand() {
+        #expect(
+            line(AgeBand(minAge: 9, maxAge: 12), [8, 9, 12, 13])
+                == "2 of 4 here take a court · 2 wait to be placed."
+        )
+    }
+}

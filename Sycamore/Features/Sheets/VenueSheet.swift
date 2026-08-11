@@ -143,7 +143,9 @@ struct VenueSheet: View {
                 .padding(.bottom, 18)
 
             VenueFieldLabel(title: "Age group")
-            VenueAgeBandPicker(ageBand: $draft.ageBand)
+            // The only caller that can answer this: `VenueShapeSheet` shapes a venue before the
+            // camp exists, so it has nobody to count and leaves the default empty.
+            VenueAgeBandPicker(ageBand: $draft.ageBand, agesAtVenue: agesAtVenue)
 
             VenueFieldLabel(title: "Numbers")
             VenueCountsCard(
@@ -211,6 +213,15 @@ struct VenueSheet: View {
         return VenueDealSentence.recutting(
             from: openingGroupCount, to: draft.groupCount, kids: kidCount
         )
+    }
+
+    /// The ages of the kids standing at this venue, for the band picker's live count.
+    ///
+    /// Optional ages included rather than filtered: a kid with no age on file is refused by a
+    /// venue that is asking, so dropping them here would make the count disagree with the deal.
+    private var agesAtVenue: [Int?] {
+        guard let venueID, let camp = store.camp else { return [] }
+        return camp.players(in: venueID).map(\.age)
     }
 
     // MARK: - Coaches

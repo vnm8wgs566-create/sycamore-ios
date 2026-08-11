@@ -84,6 +84,36 @@ struct VenueFieldLabel: View {
     }
 }
 
+// MARK: - What a band would cost
+
+/// The line under the age steppers: what this band does to the kids who are already here.
+///
+/// A free enum rather than a method on the picker, the same shape `VenueDealSentence` takes and
+/// for the same two reasons. It is a sentence rather than a view, so it can be read and checked
+/// on its own; and a `static` on a `View` cannot be reached from a test process without pulling
+/// SwiftUI's machinery in behind it, which on macOS traps before the arithmetic ever runs.
+enum AgeBandConsequence {
+
+    /// "2 of 4 here take a court · 2 wait to be placed", or nil where there is nobody to count.
+    ///
+    /// Nil rather than "0 of 0": a venue with no kids yet has no consequence to report, and a
+    /// zero pair reads as a warning about something that has not happened.
+    ///
+    /// **This has to agree with `Camp.seatUnassigned(at:)` exactly.** It asks the identical
+    /// question of the identical rule — `AgeBand.admits(_:)`, per kid, optional age and all — so
+    /// a count that promised eight and seated seven is not a thing that can happen from here.
+    static func sentence(of band: AgeBand, over ages: [Int?]) -> String? {
+        guard !ages.isEmpty else { return nil }
+
+        let admitted = ages.count { band.admits($0) }
+        let refused = ages.count - admitted
+        guard refused > 0 else {
+            return "All \(ages.count) here still take a court."
+        }
+        return "\(admitted) of \(ages.count) here take a court · \(refused) wait to be placed."
+    }
+}
+
 // MARK: - Age band
 
 /// Which ages this venue takes: pick the *shape* of the answer, then pick the age.
@@ -118,12 +148,28 @@ struct VenueFieldLabel: View {
 struct VenueAgeBandPicker: View {
     @Binding var ageBand: AgeBand
 
+    /// The ages of the kids standing at this venue right now, or empty where there are none to
+    /// count — a venue being added, or the whole of the pre-creation flow.
+    ///
+    /// **Why the control takes this at all.** Four shapes over nineteen ages is every contiguous
+    /// band a min/max pair can hold, which is a lot of answers and no way to see what any of them
+    /// costs. A reader narrowing a venue to "12 & up" is really asking "how many does that turn
+    /// out", and until the line below existed the only way to find out was to save and go and
+    /// look at the unassigned card.
+    var agesAtVenue: [Int?] = []
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.small) {
             shapeChips
 
             if !ageBand.isUnrestricted {
                 boundsCard
+
+                if let consequence {
+                    Text(consequence)
+                        .typeStyle(.meta.lineHeight(1.5), color: Theme.accentDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 // Said here because this is the screen where somebody narrows a venue, and the
                 // consequence is the one thing about a band that surprises people: it does not
@@ -165,6 +211,19 @@ struct VenueAgeBandPicker: View {
             case .between: "Between two ages"
             }
         }
+    }
+
+    /// "8 of 14 stay on a court · 6 wait to be placed" — counted live off the kids actually here,
+    /// so moving a stepper moves the number.
+    ///
+    /// Nil where there is nobody to count, rather than "0 of 0": a venue with no kids yet has no
+    /// consequence to report, and a zero pair reads as a warning about something that has not
+    /// happened.
+    ///
+    /// A kid with no age on file counts as refused, which is what `AgeBand.admits(_:)` decides —
+    /// the count has to agree with the deal or it is worse than no count.
+    private var consequence: String? {
+        AgeBandConsequence.sentence(of: ageBand, over: agesAtVenue)
     }
 
     private var shape: Shape {
