@@ -54,6 +54,7 @@ actor SupabaseRepository: SycamoreRepository {
     // extension, and an extension cannot reach a private stored property.
     let auth: SupabaseAuth
     let db: PostgRESTClient
+    let storage: StorageClient
 
     // `closedCourts: [Group.ID: String]` stood here — courts taken out of play, held for the life
     // of the process because nothing in the schema said a court was shut. It is
@@ -70,6 +71,7 @@ actor SupabaseRepository: SycamoreRepository {
         let auth = SupabaseAuth(urlSession: urlSession)
         self.auth = auth
         self.db = PostgRESTClient(auth: auth, urlSession: urlSession)
+        self.storage = StorageClient(auth: auth, urlSession: urlSession)
     }
 
     /// Runs `body` with no other write to this camp in progress.
@@ -160,22 +162,72 @@ actor SupabaseRepository: SycamoreRepository {
         return Account(row)
     }
 
-    /// `avatarImageData` is carried through untouched rather than saved: `profiles.avatar_url`
-    /// holds a URL into Storage, not bytes, and uploading one is a feature with a bucket and a
-    /// policy behind it. Dropping the photo the profile screen just took would look like a bug,
-    /// so the value the caller passed comes straight back.
+    /// The three columns, and — since the `avatars` bucket exists — the photo as well.
+    ///
+    /// **This used to carry `avatarImageData` through untouched and save nothing**, under a comment
+    /// saying that uploading one was "a feature with a bucket and a policy behind it". Both now
+    /// exist (`20260810…_avatars_bucket_and_policies`), so the bytes go to Storage and the URL goes
+    /// in the column. A photo taken on Monday survives Tuesday's relaunch, which it did not.
+    ///
+    /// ── The photo is written before the row, deliberately ─────────────────────────────────────
+    ///
+    /// There is no transaction across the two, so the order decides what a half-failure leaves.
+    /// Upload first means the worst case is an object in the bucket that no row points at — dead
+    /// bytes, 80 KiB, replaced by the next upload to the same fixed path. The other order's worst
+    /// case is a row pointing at an object that was never written, which is a broken image on
+    /// every screen that draws the person until somebody sets a new one.
+    ///
+    /// A failed upload therefore fails the whole intent rather than quietly saving the name and
+    /// dropping the picture: "your photo did not save" is a sentence somebody can act on, and a
+    /// silent drop is the bug this method used to have by design.
+    ///
+    /// ── Nil means remove, and it has to, because the picker can clear ─────────────────────────
+    ///
+    /// `avatarImageData == nil` deletes the object and nulls the column. Treating nil as "no
+    /// change" would make the photo the one thing on this screen that cannot be taken back.
     func updateAccount(_ account: Account) async throws -> Account {
+        let url = try await writeAvatar(account)
+
         let values: RowValues = [
             "display_name": .text(account.displayName),
             "emergency_phone": .text(account.emergencyPhone),
             "notifications_enabled": .bool(account.notificationsEnabled),
+            "avatar_url": url.map { .text($0.absoluteString) } ?? .null,
         ]
         try await db.update(
             Relation.profiles, set: values, where: PostgRESTQuery().eq("id", account.id)
         )
         var saved = try await self.account(id: account.id)
+        // Handed back rather than re-fetched. The caller already has the bytes in memory and a
+        // round trip to read back what we just sent is a second upload's worth of camp wifi.
         saved.avatarImageData = account.avatarImageData
         return saved
+    }
+
+    /// Puts the photo in the bucket, or takes it out, and answers with what the column should say.
+    private func writeAvatar(_ account: Account) async throws -> URL? {
+        let path = StorageClient.avatarPath(for: account.id)
+        guard let data = account.avatarImageData else {
+            try await storage.delete(path, in: StorageClient.Bucket.avatars)
+            return nil
+        }
+        // JPEG because that is what `ProfileView.loadPhoto` produces — see it for why the picked
+        // image is re-encoded rather than sent as whatever the library held.
+        return try await storage.upload(
+            data, to: path, in: StorageClient.Bucket.avatars, contentType: "image/jpeg"
+        )
+    }
+
+    /// The bytes behind `profiles.avatar_url`, or nil where there is no photo.
+    ///
+    /// Asked by path rather than by fetching the stored URL: the two always agree — the path is a
+    /// pure function of the account id — and going by path means a row whose URL was written by an
+    /// older build, or by hand, still resolves. A missing object is nil rather than a throw, which
+    /// is the common case for everybody who has never set one.
+    func avatarData(for accountID: Account.ID) async throws -> Data? {
+        try await storage.fetch(
+            StorageClient.avatarPath(for: accountID), in: StorageClient.Bucket.avatars
+        )
     }
 
     /// Deletes the profile, which cascades to every membership and detaches every staff row.

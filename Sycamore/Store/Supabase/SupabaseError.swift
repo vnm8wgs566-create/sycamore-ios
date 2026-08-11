@@ -58,6 +58,18 @@ enum SupabaseError: LocalizedError, Equatable {
         return false
     }
 
+    /// The object is not there, which is a *state* on the one path that asks: a person who has
+    /// never set a profile photo has no object in the bucket, and Storage answers 404. Turning
+    /// that into a banner would report a failure on a screen doing exactly what it should.
+    ///
+    /// Deliberately narrow. `StorageClient.fetch` and `.delete` are its only readers, and every
+    /// other status they can raise still throws — a 403 from the owner policy in particular, which
+    /// means somebody reached for a folder that is not theirs and is worth hearing about.
+    var isNotFound: Bool {
+        if case .rejected(let status, _) = self { return status == 404 }
+        return false
+    }
+
     /// Postgres raises `23505` for a unique violation, and PostgREST passes the code through in
     /// the message. Two callers need to tell that apart from a real failure and retry with a
     /// different name — `sites.name` and `camps.invite_code` are both globally unique.

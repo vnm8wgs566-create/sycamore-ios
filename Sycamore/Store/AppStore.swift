@@ -1146,6 +1146,27 @@ extension AppStore {
         try await fetchMemberships(for: account.id)
         selectedMembership = nil
         camp = nil
+        await loadAvatar(for: account.id)
+    }
+
+    /// Fetches the profile photo out of Storage and attaches it to the signed-in account.
+    ///
+    /// **After the memberships, and outside their `try`.** A photo is decoration on one screen;
+    /// the memberships are what decide whether there is an app at all. Ordering it last means a
+    /// Storage outage cannot stop somebody reaching their camp, and swallowing its failure means
+    /// it cannot raise a banner about a picture over a screen that has everything it needs. A
+    /// person with no photo and a person whose photo would not download look the same, which is
+    /// the right answer for both.
+    ///
+    /// Once per sign-in rather than per read. `avatarData(for:)` is a separate round trip from
+    /// `account(id:)` precisely so that every screen asking a person's name does not fetch an
+    /// image; doing it here is what pays that cost exactly once.
+    private func loadAvatar(for accountID: Account.ID) async {
+        guard let data = try? await repository.avatarData(for: accountID),
+              case .signedIn(var account) = auth, account.id == accountID
+        else { return }
+        account.avatarImageData = data
+        auth = .signedIn(account)
     }
 
     /// The one place memberships arrive.

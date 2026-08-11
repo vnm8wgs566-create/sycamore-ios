@@ -301,15 +301,59 @@ struct ProfileView: View {
     }
 
     #if os(iOS)
-    /// Reads the picked asset into the account. Nothing leaves the device — the bytes go
-    /// straight into `Account.avatarImageData`.
+    /// Reads the picked asset, cuts it down to something worth sending, and saves it.
+    ///
+    /// **The bytes do leave the device now**, and this comment used to say they did not — they go
+    /// to the `avatars` bucket, one private folder per person, and the URL goes in
+    /// `profiles.avatar_url`. Before that bucket existed the photo lived in memory and was gone at
+    /// the next launch.
+    ///
+    /// ── Which is why it is re-encoded, and not merely resized ─────────────────────────────────
+    ///
+    /// What the picker hands over is the original asset: a current iPhone shoots 12 MP HEIC at
+    /// 3–8 MB. Three separate things refuse that. The bucket caps an object at 2 MiB. Its
+    /// `allowed_mime_types` does list HEIC, but the upload declares `image/jpeg` and a declared
+    /// type that disagrees with the bytes is a lie somebody debugs later. And 8 MB up a camp's
+    /// wifi to draw a 64pt disc is a minute of somebody's morning for no pixels.
+    ///
+    /// 512 on the long edge at quality 0.8 lands around 60–100 KiB — four times the disc's size at
+    /// 3× so it stays sharp on every phone, and small enough that the upload is not something you
+    /// wait for. `UIGraphicsImageRenderer` handles the orientation flags a HEIC carries, which a
+    /// naive `CGContext` draw would leave sideways.
+    ///
+    /// A failure at any step leaves the account untouched rather than writing half of one.
     private func loadPhoto(_ item: PhotosPickerItem) async {
         guard var account = store.account,
-              let data = try? await item.loadTransferable(type: Data.self)
+              let data = try? await item.loadTransferable(type: Data.self),
+              let jpeg = Self.thumbnail(from: data)
         else { return }
-        account.avatarImageData = data
+        account.avatarImageData = jpeg
         await store.updateAccount(account)
     }
+
+    /// `512`px on the long edge, JPEG at `0.8`. Nil for bytes that are not an image at all.
+    ///
+    /// `static` and free of any view state so it can be called from the `@Sendable` context above
+    /// without capturing `self` — the same constraint `AvatarWell` exists for.
+    private static func thumbnail(from data: Data) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+
+        let longEdge = max(image.size.width, image.size.height)
+        // Already small enough: re-encoding it would only lose a generation of quality.
+        guard longEdge > avatarMaxEdge else { return image.jpegData(compressionQuality: 0.8) }
+
+        let scale = avatarMaxEdge / longEdge
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        .jpegData(compressionQuality: 0.8)
+    }
+
+    /// Four times the 64pt well at 3×, which keeps it sharp on every phone the app runs on and
+    /// still lands two orders under the bucket's 2 MiB ceiling.
+    private static let avatarMaxEdge: CGFloat = 512
     #endif
 
     // MARK: - Body

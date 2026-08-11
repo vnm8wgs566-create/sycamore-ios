@@ -91,6 +91,16 @@ protocol SycamoreRepository: SectionEightData {
 
     func account(id: Account.ID) async throws -> Account
     func updateAccount(_ account: Account) async throws -> Account
+
+    /// The bytes of somebody's profile photo, or nil where they have never set one.
+    ///
+    /// **Separate from `account(id:)` because it is a separate round trip**, and one most callers
+    /// do not want: `account` reads a row from Postgres, this reads an object out of Storage, and
+    /// folding them together would put an image download in front of every place the app asks a
+    /// person's name. The store fetches it once, after sign-in.
+    ///
+    /// Nil is the ordinary answer, not a failure — see `SupabaseError.isNotFound`.
+    func avatarData(for accountID: Account.ID) async throws -> Data?
     func deleteAccount(id: Account.ID) async throws
 
     // MARK: Camps
@@ -461,10 +471,20 @@ actor InMemoryRepository: SycamoreRepository {
         return account
     }
 
+    /// Stores the bytes on the account itself, which is where this repository keeps everything.
+    ///
+    /// The Postgres one splits them — a row in `profiles`, an object in the `avatars` bucket — and
+    /// that split is exactly what `avatarData(for:)` exists to bridge. Offline there is nothing to
+    /// bridge, so the two verbs read the same field and the seam is invisible, which is the point:
+    /// a screen that works against one must work against the other.
     func updateAccount(_ account: Account) async throws -> Account {
         guard accounts[account.id] != nil else { throw SycamoreError.unknownAccount }
         accounts[account.id] = account
         return account
+    }
+
+    func avatarData(for accountID: Account.ID) async throws -> Data? {
+        accounts[accountID]?.avatarImageData
     }
 
     func deleteAccount(id: Account.ID) async throws {

@@ -37,6 +37,9 @@ enum SupabaseConfig {
     /// GoTrue.
     static var authURL: URL { projectURL.appending(path: "auth/v1") }
 
+    /// Storage. One bucket hangs off it — `avatars`, private, one folder per person.
+    static var storageURL: URL { projectURL.appending(path: "storage/v1") }
+
     /// Long enough that a coach on camp wifi is not told the network failed while it is merely
     /// slow, short enough that a dead connection does not hold a sheet open for a minute.
     static let requestTimeout: TimeInterval = 20
